@@ -1,0 +1,28 @@
+Tri-Quarter Theorem Animation v1.0
+# Authors: Nathan O. Schmidt and Grok
+# Created Date: March 7, 2025
+# Modified Date: March 7, 2025
+# Requirements: Python 3.8+, matplotlib, numpy
+# Note: Works good with Python 3.13 on Fedora 41 Linux and Windows 11, should be fine on Python 3.8+ elsewhere.
+
+Assuming that you've already downloaded tri_quarter.py and installed Python 3.8+ on your box...
+
+[Fedora Linux]
+ --> Bust out your favorite terminal.
+ --> Install: `sudo dnf install python3-pip`
+ --> Install: `pip install matplotlib numpy`
+ --> Install: `sudo dnf install python3-tkinter`
+ --> Execute: `python3 tri_quarter.py`
+
+[Windows]
+ --> Download: https://bootstrap.pypa.io/get-pip.py
+ --> Bust out powershell or good ole command prompt.
+ --> Install: `python3 get-pip.py`
+ --> Install: `pip install matplotlib numpy`
+ --> Execute: `python3 tri_quarter.py`
+
+[macOS]
+ --> Download: https://bootstrap.pypa.io/get-pip.py
+ --> Bust out your terminal.
+ --> Install: `pip install matplotlib numpy`
+ --> Execute: `python3 tri_quarter.py`
