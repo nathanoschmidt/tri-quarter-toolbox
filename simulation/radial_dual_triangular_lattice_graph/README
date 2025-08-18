@@ -1,0 +1,135 @@
+# Tri-Quarter Toolbox
+
+This repository contains Python simulation scripts for the Tri-Quarter framework, as described in the paper "The Tri-Quarter Framework: Radial Dual Triangular Lattice Graph with Combinatorial Duality, Reflective Duality, Bijective Self-Duality, and Invariant Encodings" by Nathan O. Schmidt (2025). The scripts demonstrate key concepts such as radial dual lattice graphs, circle inversion for path mirroring, and benchmarking of duality-based optimizations.
+
+The framework focuses on mathematical and computational structures for efficient graph traversals, symmetries, and bijective mappings in triangular lattices, with applications in areas like robotics, network optimization, and quantum-inspired simulations.
+
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Scripts Overview](#scripts-overview)
+- [Usage](#usage)
+- [Examples](#examples)
+- [Contributing](#contributing)
+- [License](#license)
+- [Citation](#citation)
+- [Contact](#contact)
+
+## Requirements
+
+- **Python Version:** Python 3.8 or higher (tested on 3.12.3).
+- **Dependencies:**
+  - Pygame: For graphical visualization in the dynamic simulation.
+  - NetworkX: For graph construction and path computations in benchmarking scripts.
+  - Standard libraries: `math`, `random`, `time`, `argparse`, `statistics` (included in Python standard library).
+
+No additional hardware is required beyond a standard computer with a graphical interface (e.g., Windows, macOS, or Linux with X11). Internet access is not needed for running the scripts.
+
+## Installation
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/nathanoschmidt/tri-quarter-toolbox.git
+   cd tri-quarter-toolbox
+   ```
+
+2. Install dependencies using pip (works on Windows, Linux, and macOS):
+   ```
+   pip install pygame networkx
+   ```
+
+If using a virtual environment (recommended):
+   ```
+   python -m venv venv
+   source venv/bin/activate  # On Linux/macOS
+   venv\Scripts\activate     # On Windows
+   pip install pygame networkx
+   ```
+
+## Scripts Overview
+
+- **01_visualizing-random-connections.py**: Animates random adjacent paths in the outer zone of the radial dual triangular lattice graph, mirroring them to the inner zone via circle inversion. Updates every 5 seconds to demonstrate reflective duality dynamically.
+- **triangular_lattice_graph.py**: Utility script to generate truncated radial dual triangular lattice graphs, including outer/inner zones and the inversion bijection map. Used by the benchmarking scripts.
+- **simulation_02_benchmark_standard_path_mirroring.py**: Benchmarks the standard (recompute) approach to shortest-path mirroring in dual zones, serving as a baseline.
+- **simulation_03_benchmark_tri-quarter_path_mirroring.py**: Benchmarks the Tri-Quarter duality approach to path mirroring, using bijection for efficiency gains.
+
+All scripts are self-contained and can be run independently, with configurable parameters via command-line arguments where applicable.
+
+## Usage
+
+### Running the Visualization Script
+Execute directly:
+```
+python 01_visualizing-random-connections.py
+```
+- The window displays the lattice with animated random paths (3-5 vertices) in red (outer) and blue (inner via inversion).
+- Press the close button to exit.
+
+### Building Graphs (Utility)
+This script is imported by the benchmarks but can be tested standalone for graph generation:
+```
+python triangular_lattice_graph.py
+```
+(Note: It defines a function; import it in a test script to build and inspect graphs.)
+
+### Running Benchmark Scripts
+Both benchmark scripts support command-line arguments for truncation radius (`R`), number of runs, and timing repeats.
+
+- Standard approach:
+  ```
+  python simulation_02_benchmark_standard_path_mirroring.py [R] --runs [NUM] --timing_repeats [NUM]
+  ```
+  Example: `python simulation_02_benchmark_standard_path_mirroring.py 10 --runs 20 --timing_repeats 100`
+
+- Tri-Quarter approach:
+  ```
+  python simulation_03_benchmark_tri-quarter_path_mirroring.py [R] --runs [NUM] --timing_repeats [NUM]
+  ```
+  Example: `python simulation_03_benchmark_tri-quarter_path_mirroring.py 15 --runs 20 --timing_repeats 100`
+
+Outputs include graph sizes and average benchmark times in milliseconds (ms) with standard deviation.
+
+## Examples
+
+- Visualize with default settings:
+  ```
+  python 01_visualizing-random-connections.py
+  ```
+
+- Benchmark standard mirroring for R=5:
+  ```
+  python simulation_02_benchmark_standard_path_mirroring.py 5
+  ```
+
+- Compare Tri-Quarter speedup for R=15:
+  ```
+  python simulation_03_benchmark_tri-quarter_path_mirroring.py 15
+  ```
+
+Results will print to the console, e.g., "Standard Path Mirroring (Recompute): 7.70 ms (+/-0.50)".
+
+## Contributing
+
+Contributions are welcome! Please fork the repository and submit a pull request with improvements, bug fixes, or additional simulations. Ensure code follows PEP 8 style and includes tests where possible.
+
+- Report issues via GitHub Issues.
+- For major changes, open an issue first to discuss.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Citation
+
+If you use this toolbox in your research, please cite this work.
+
+The source code is available at: https://github.com/nathanoschmidt/tri-quarter-toolbox/
+
+## Contact
+
+- Author: Nathan O. Schmidt
+- Email: nate.o.schmidt@coldhammer.net
+- GitHub: [nathanoschmidt](https://github.com/nathanoschmidt)
+
+For questions or collaborations, feel free to open an issue or reach out directly.
