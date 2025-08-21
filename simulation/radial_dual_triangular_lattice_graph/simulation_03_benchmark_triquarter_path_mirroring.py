@@ -1,11 +1,3 @@
-# Tri-Quarter Framework: Simulates and benchmarks the Tri-Quarter approach
-# to inversion-based path mirroring.
-# Version: 1.0
-# Authors: Nathan O. Schmidt and Grok
-# Created Date: August 17, 2025
-# Modified Date: August 17, 2025
-# License: MIT (see LICENSE file)
-
 import networkx as nx
 import time
 import random

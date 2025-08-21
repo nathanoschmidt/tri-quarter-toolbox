@@ -42,9 +42,9 @@ center_x, center_y = WIDTH // 2, HEIGHT // 2
 # Scaling factor reduced to make drawing smaller and fit better: 120 -> 100
 scale = 100  # Adjust this to zoom in/out
 
-# Define inversion radius r = sqrt(3), r_sq = 3 for boundary
-r = math.sqrt(3)
-r_sq = 3
+# Define inversion radius r = sqrt(1), r_sq = 1 for boundary (aligned with sector boundaries)
+r = math.sqrt(1)
+r_sq = 1
 
 # Truncation radius R = 4 for generating finite vertices
 R = 4
@@ -92,15 +92,15 @@ boundary_vertices.sort(key = lambda p: p['angle'])
 
 # Generate inner vertices by inverting outer vertices
 inner_vertices = []  # List of inner vertices with positions and radii
-min_dist_prime = r_sq / math.sqrt(max_intnorm)  # Min distance for inner scaling
-max_dist_prime = r_sq / math.sqrt(min_intnorm_outer)  # Max distance for inner scaling
+min_dist_prime = r_sq / math.sqrt(max_intnorm)  # Min distance for inner scaling (adjusted for r_sq=1)
+max_dist_prime = r_sq / math.sqrt(min_intnorm_outer)  # Max distance for inner scaling (adjusted for r_sq=1)
 for m, n in outer_vertices:
     pos = compute_pos(m, n)
     intnorm = compute_norm_sq(m, n)
-    xprime = r_sq * pos[0] / intnorm  # Invert x
-    yprime = r_sq * pos[1] / intnorm  # Invert y
+    xprime = r_sq * pos[0] / intnorm  # Invert x (r_sq=1)
+    yprime = r_sq * pos[1] / intnorm  # Invert y (r_sq=1)
     dist_prime = math.sqrt(xprime**2 + yprime**2)
-    # Scale radius based on distance (smaller near origin)
+    # Scale radius based on distance (smaller near origin, adjusted for new norms)
     rad_blue = 1 + (dist_prime - min_dist_prime) / (max_dist_prime - min_dist_prime) if max_dist_prime > min_dist_prime else 1
     inner_vertices.append({'pos': (xprime, yprime), 'rad': rad_blue, 'orig_mn': (m,n)})
 
@@ -254,21 +254,25 @@ def draw_background():
 
     # Render zone labels with Unicode and subscripts
     # Inner zone Lambda_{-,r}
-    pos_x, pos_y = to_screen(0.9, 0.9)
+    pos_x, pos_y = to_screen(1.1, 0.5)
     text_main = font_largedium.render('\u039B', True, BLUE)
     screen.blit(text_main, (pos_x, pos_y))
     text_sub = font_tiny.render('-,\u221A' + str(r_sq), True, BLUE)
     screen.blit(text_sub, (pos_x + text_main.get_width(), pos_y + 20))
+    # Draw inner zone pointer line segment (because Lambda_{-,r} is too big to fit inside the circle)
+    ptr_line_start = (pos_x, pos_y + 20)
+    ptr_line_end = (pos_x - 50, pos_y + 20)
+    draw_dashed_line(ptr_line_start, ptr_line_end, BLUE, dash_length = 5, thickness = 2)
 
     # Boundary zone Lambda_{T,r}
-    pos_x, pos_y = to_screen(1.4, 1.4)
+    pos_x, pos_y = to_screen(0.9, 0.9)
     text_main = font_largedium.render('\u039B', True, GREEN)
     screen.blit(text_main, (pos_x, pos_y))
     text_sub = font_tiny.render('T,\u221A' + str(r_sq), True, GREEN)
     screen.blit(text_sub, (pos_x + text_main.get_width(), pos_y + 20))
 
     # Outer zone Lambda_{+,r}
-    pos_x, pos_y = to_screen(1.7, 1.7)
+    pos_x, pos_y = to_screen(1.5, 1.5)
     text_main = font_largedium.render('\u039B', True, RED)
     screen.blit(text_main, (pos_x, pos_y))
     text_sub = font_tiny.render('+,\u221A' + str(r_sq), True, RED)
@@ -292,7 +296,7 @@ def draw_background():
     text_sub = font_tiny.render('1', True, BLACK)
     screen.blit(text_sub, (px + 5, py + 17))
 
-    # Special psition for angular sector S4 to avoid overlap
+    # Special position for angular sector S4 to avoid overlap
     px, py = to_screen(ang_sect_radius * math.cos(math.radians(277)), ang_sect_radius * math.sin(math.radians(277)))
     py -= 20
     text_main = font_large.render('S', True, BLACK)
@@ -356,46 +360,39 @@ def draw_background():
     text = font_large.render('\U0001D540', True, BLACK)
     screen.blit(text, to_screen(-0.3, 4))
 
-# Draw all vertices: boundary, outer, inner
 def draw_vertices():
-    # Draw boundary zone vertices in green
     for p in boundary_vertices:
         px, py = to_screen(*p['pos'])
-        pygame.draw.circle(screen, GREEN, (px, py), 8)  # Size 8
+        pygame.draw.circle(screen, GREEN, (px, py), 8)
 
-    # Draw outer zone vertices in red
     for m, n in outer_vertices:
         pos = compute_pos(m, n)
         px, py = to_screen(*pos)
-        pygame.draw.circle(screen, RED, (px, py), 8)  # Size 8
+        pygame.draw.circle(screen, RED, (px, py), 8)
 
-    # Draw inner zone vertices in blue with varying size (adjusted scaling to make max 8)
     for p in inner_vertices:
         px, py = to_screen(*p['pos'])
-        rad = int(p['rad'] * 4)  # *4: range 4-8, max 8
+        rad = int(p['rad'] * 4)
         pygame.draw.circle(screen, BLUE, (px, py), rad)
 
-# Select a random connected path of 3-5 adjacent outer vertices
 def select_random_path():
-    num_verts = random.randint(3, 5)  # Random length 3 to 5
-    start = random.choice(outer_vertices)  # Random starting vertex
+    num_verts = random.randint(3, 5)
+    start = random.choice(outer_vertices)
     path = [start]
     visited = set([start])
     while len(path) < num_verts:
         curr = path[-1]
-        avail = [n for n in neighbors[curr] if n not in visited]  # Unvisited neighbors
+        avail = [n for n in neighbors[curr] if n not in visited]
         if not avail:
-            break  # No more adjacent, stop
+            break
         next_v = random.choice(avail)
         path.append(next_v)
         visited.add(next_v)
     return path
 
-# Get position from lattice coords
 def get_pos(mn):
     return compute_pos(*mn)
 
-# Get inverted position from lattice coords
 def get_inv_pos(mn):
     m, n = mn
     intnorm = compute_norm_sq(m, n)
@@ -404,9 +401,7 @@ def get_inv_pos(mn):
     yprime = r_sq * pos[1] / intnorm
     return xprime, yprime
 
-# Draw the selected path on outer (red) and mirrored on inner (blue)
 def draw_selected_path(path):
-    # Draw red edges for outer path
     for i in range(len(path) - 1):
         pos1 = get_pos(path[i])
         pos2 = get_pos(path[i + 1])
@@ -414,7 +409,6 @@ def draw_selected_path(path):
         p2 = to_screen(*pos2)
         pygame.draw.line(screen, RED, p1, p2, 4)
 
-    # Draw blue edges for inner path
     for i in range(len(path) - 1):
         pos1 = get_inv_pos(path[i])
         pos2 = get_inv_pos(path[i + 1])
@@ -422,7 +416,6 @@ def draw_selected_path(path):
         p2 = to_screen(*pos2)
         pygame.draw.line(screen, BLUE, p1, p2, 4)
 
-    # Draw gray dashed lines connecting corresponding vertices
     for v in path:
         pos = get_pos(v)
         inv = get_inv_pos(v)
@@ -430,31 +423,24 @@ def draw_selected_path(path):
         p2 = to_screen(*inv)
         draw_dashed_line(p1, p2, GRAY, dash_length = 5)
 
-# Main simulation loop
-clock = pygame.time.Clock()  # For controlling frame rate
-current_path = select_random_path()  # Initial random path
-timer = 0  # Timer for changing paths every 5 seconds
+clock = pygame.time.Clock()
+current_path = select_random_path()
+timer = 0
 
 while True:
-    # Handle events
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
 
-    # Update timer
-    dt = clock.tick(60) / 1000.0  # Delta time in seconds, 60 FPS
+    dt = clock.tick(60) / 1000.0
     timer += dt
 
-    # Change path every 5 seconds
     if timer >= 5:
         current_path = select_random_path()
-        timer = 0  # Reset timer
+        timer = 0
 
-    # Draw everything
-    draw_background()  # Background elements
-    draw_vertices()    # All points
-    draw_selected_path(current_path)  # Current path
-
-    # Update display
+    draw_background()
+    draw_vertices()
+    draw_selected_path(current_path)
     pygame.display.flip()
