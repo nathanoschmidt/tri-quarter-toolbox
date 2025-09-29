@@ -8,7 +8,7 @@
 # Author: Nathan O. Schmidt
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
-# Date: September 24, 2025
+# Date: September 28, 2025
 #
 # Description:
 # This Python script benchmarks the standard (recompute) approach to path
@@ -42,7 +42,7 @@ import random
 import argparse
 import statistics
 
-from radial_dual_triangular_lattice_graph import build_radial_dual_triangular_lattice_graph
+from radial_dual_triangular_lattice_graph import build_zone_subgraphs
 
 # Benchmark the standard path computation in the dual zones (recompute inner
 # from scratch). Computes shortest paths from a random outer start vertex,
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # Build graphs
     print(f"Building radial dual triangular lattice graph with "
           f"truncation radius R={args.R}...")
-    G_outer, G_inner, inversion_map = build_radial_dual_triangular_lattice_graph(args.R)
+    G_outer, G_inner, inversion_map = build_zone_subgraphs(args.R)
     num_outer = len(G_outer.nodes())
     num_inner = len(G_inner.nodes())
     print(f"Graphs built: Outer {num_outer} vertices, Inner {num_inner} vertices.")

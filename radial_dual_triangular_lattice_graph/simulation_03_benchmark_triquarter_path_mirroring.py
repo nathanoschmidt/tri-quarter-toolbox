@@ -9,7 +9,7 @@
 # Author: Nathan O. Schmidt
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
-# Date: September 24, 2025
+# Date: September 28, 2025
 #
 # Description:
 # This Python script benchmarks the Tri-Quarter duality approach to path
@@ -43,7 +43,7 @@ import random
 import argparse
 import statistics
 
-from radial_dual_triangular_lattice_graph import build_radial_dual_triangular_lattice_graph
+from radial_dual_triangular_lattice_graph import build_zone_subgraphs
 
 # Mirror a path dictionary via the circle inversion bijection iota_r
 # (O(|path|) time complexity for the mapping operation).
@@ -115,7 +115,7 @@ if __name__ == "__main__":
         f"with truncation radius R={args.R}..."
     )
     G_outer, G_inner, inversion_map = (
-        build_radial_dual_triangular_lattice_graph(args.R)
+        build_zone_subgraphs(args.R)
     )  # Build outer/inner subgraphs and bijection map
     num_outer = len(G_outer.nodes())
     num_inner = len(G_inner.nodes())

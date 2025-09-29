@@ -8,7 +8,7 @@
 # Author: Nathan O. Schmidt
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
-# Date: September 24, 2025
+# Date: September 28, 2025
 #
 # Description:
 # This Python script computes vertex counts in the radial dual triangular
@@ -38,7 +38,7 @@
 
 import math
 import argparse
-from radial_dual_triangular_lattice_graph import build_radial_dual_triangular_lattice_graph
+from radial_dual_triangular_lattice_graph import build_zone_subgraphs
 
 def compute_eisenstein_representations(max_nsq):
     """
@@ -159,9 +159,7 @@ def main():
         return
 
     # Generate truncated radial dual triangular lattice graph using imported function
-    G_outer, G_inner, inversion_map = build_radial_dual_triangular_lattice_graph(
-        args.R, r_sq
-    )
+    G_outer, G_inner, inversion_map = build_zone_subgraphs(args.R, r_sq)
 
     # Count vertices in outer and inner zones (excluding boundary)
     count_outer = len(G_outer.nodes)

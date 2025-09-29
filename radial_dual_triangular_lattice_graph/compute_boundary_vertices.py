@@ -8,7 +8,7 @@
 # Author: Nathan O. Schmidt
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
-# Date: September 24, 2025
+# Date: September 28, 2025
 #
 # Description:
 # This Python script computes the explicit boundary vertices in the boundary
