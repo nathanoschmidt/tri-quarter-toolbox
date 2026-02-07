@@ -1,0 +1,131 @@
+# TQF-NN Runtime Requirements
+# ===========================================================
+# Author: Nathan O. Schmidt
+# Organization: Cold Hammer Research & Development LLC
+# Date: February 2026
+# ===========================================================
+#
+# CROSS-PLATFORM COMPATIBLE: Windows | Linux | macOS
+# Python Version: 3.8+
+# CUDA Version: 12.6 (for GPU acceleration on NVIDIA hardware)
+# Tested Hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+#
+# This file contains only the core runtime dependencies needed to run TQF-NN.
+# For development (testing, linting, etc.), use requirements-dev.txt instead.
+#
+# Installation:
+#   pip install -r requirements.txt
+#
+# For CPU-only installation (Linux/macOS/Windows):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+
+
+# =============================================================================
+# CORE RUNTIME DEPENDENCIES
+# =============================================================================
+
+# PyTorch ecosystem - Deep learning framework
+# Compatible with CUDA 12.6
+torch>=2.5.0,<3.0.0
+torchvision>=0.20.0,<1.0.0
+
+# Numerical computing
+numpy>=1.24.0,<3.0.0
+
+# Image processing
+Pillow>=10.0.0,<11.0.0
+
+# Scientific computing and statistics
+scipy>=1.10.0,<2.0.0
+
+# FLOPs estimation for model complexity analysis
+ptflops>=0.7.0,<1.0.0
+
+
+# =============================================================================
+# VERSION NOTES
+# =============================================================================
+#
+# PyTorch 2.5.0+:
+#   - Full CUDA 12.6 support (Windows/Linux)
+#   - MPS (Metal Performance Shaders) support for Apple Silicon (macOS)
+#   - CPU fallback for all platforms
+#   - Optimized for RTX 4060 and modern NVIDIA GPUs
+#   - Improved mixed precision training
+#   - Better memory management for 8GB VRAM
+#
+# NumPy 1.24.0+:
+#   - Python 3.8-3.13+ support (all platforms)
+#   - Compatible with PyTorch tensor operations
+#   - NumPy 2.x required for Python 3.13+ (no 1.x wheels available)
+#   - Native performance on x86_64 and ARM64 (Apple Silicon)
+#
+# Pillow 10.0.0+:
+#   - Cross-platform image processing
+#   - Security updates
+#   - Better image handling
+#   - Compatible with torchvision transforms
+#
+# SciPy 1.10.0+:
+#   - Statistical functions used in evaluation.py
+#   - Compatible with NumPy 1.24+
+#   - Optimized binaries for Windows, Linux, macOS
+#
+# === PLATFORM-SPECIFIC NOTES ===
+#
+# WINDOWS:
+#   - num_workers=0 recommended for DataLoader (default in config.py)
+#   - CUDA 12.6 fully supported
+#   - Use venv\Scripts\activate
+#
+# LINUX:
+#   - num_workers can be increased to 4-8 for faster data loading
+#   - CUDA 12.6 fully supported
+#   - Use source venv/bin/activate
+#
+# macOS:
+#   - Apple Silicon (M1/M2/M3): MPS acceleration available
+#   - Intel Macs: CPU-only or external GPU
+#   - num_workers can be increased to 4-8
+#   - Use source venv/bin/activate
+#
+# =============================================================================
+# INSTALLATION EXAMPLES
+# =============================================================================
+#
+# === WINDOWS (CUDA 12.6) ===
+# python -m venv venv
+# venv\Scripts\activate
+# pip install torch>=2.5.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu126
+# pip install -r requirements.txt
+#
+# === LINUX (CUDA 12.6) ===
+# python3 -m venv venv
+# source venv/bin/activate
+# pip install torch>=2.5.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu126
+# pip install -r requirements.txt
+#
+# === macOS (CPU or MPS) ===
+# python3 -m venv venv
+# source venv/bin/activate
+# pip install torch>=2.5.0 torchvision>=0.20.0  # MPS acceleration on Apple Silicon
+# pip install -r requirements.txt
+#
+# === CPU-ONLY (All Platforms) ===
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# pip install -r requirements.txt
+#
+# === Minimal Installation (Production Only, All Platforms) ===
+# pip install torch>=2.5.0 torchvision>=0.20.0 numpy>=1.24.0 scipy>=1.10.0 Pillow>=10.0.0
+#
+# === For Development (Testing, Linting, etc.) ===
+# pip install -r requirements-dev.txt
+#
+# Verify installation:
+#   python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}')"
+#   python -c "import numpy; print(f'NumPy: {numpy.__version__}')"
+#   python -c "import scipy; print(f'SciPy: {scipy.__version__}')"
+#   python -c "import PIL; print(f'Pillow: {PIL.__version__}')"
+#
+# =============================================================================

@@ -1,0 +1,150 @@
+# TQF-NN Development Requirements
+# ==================================
+# Author: Nathan O. Schmidt
+# Organization: Cold Hammer Research & Development LLC
+# Date: February 2026
+#
+# CROSS-PLATFORM COMPATIBLE: Windows | Linux | macOS
+# Python Version: 3.8+
+# CUDA Version: 12.6 (for GPU acceleration on NVIDIA hardware)
+# Tested Hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+#
+# This file includes all runtime dependencies plus testing and development tools.
+# Use this for development, testing, and contributing to TQF-NN.
+#
+# Installation:
+#   pip install -r requirements-dev.txt
+#
+# For production/runtime-only installation, use requirements.txt instead.
+
+
+# =============================================================================
+# CORE RUNTIME DEPENDENCIES
+# =============================================================================
+# Include all production dependencies from requirements.txt
+-r requirements.txt
+
+
+# =============================================================================
+# TESTING DEPENDENCIES
+# =============================================================================
+
+# Modern test framework
+pytest>=7.4.0,<9.0.0
+
+# Test coverage reporting
+pytest-cov>=4.1.0,<6.0.0
+
+# Parallel test execution
+pytest-xdist>=3.3.0,<4.0.0
+
+
+# =============================================================================
+# OPTIONAL: Code Quality Tools
+# =============================================================================
+# Uncomment if you want to use these tools:
+#
+# # Code formatting (auto-format on save in VS Code)
+# black>=23.0.0,<25.0.0
+#
+# # Linting
+# flake8>=6.0.0,<8.0.0
+#
+# # Type checking (integrates with VS Code)
+# mypy>=1.5.0,<2.0.0
+
+
+# =============================================================================
+# OPTIONAL: Visualization Tools
+# =============================================================================
+# Uncomment if you need plotting/visualization:
+#
+# # Basic plotting
+# matplotlib>=3.7.0,<4.0.0
+#
+# # Training visualization
+# tensorboard>=2.14.0,<3.0.0
+
+
+# =============================================================================
+# VERSION NOTES
+# =============================================================================
+#
+# This development environment includes:
+#   - All runtime dependencies (via -r requirements.txt)
+#   - Testing framework (pytest + coverage + parallel execution)
+#   - Optional code quality tools (commented out, uncomment as needed)
+#   - Optional visualization tools (commented out, uncomment as needed)
+#
+# pytest 7.4.0+:
+#   - Modern testing features (all platforms)
+#   - Better error messages
+#   - Parallel execution support with pytest-xdist
+#   - Works with unittest and pytest test suites
+#
+# For Visual Studio Code integration:
+#   - VS Code has built-in Python support
+#   - Install "Python" extension by Microsoft
+#   - Install "Pylance" for IntelliSense (included with Python extension)
+#   - Optional: Install "Python Test Explorer" for test UI
+#
+# VS Code settings.json recommendations:
+#   {
+#     "python.testing.pytestEnabled": true,
+#     "python.testing.unittestEnabled": false,
+#     "python.linting.enabled": true,
+#     "python.linting.pylintEnabled": false,
+#     "python.linting.flake8Enabled": false,
+#     "python.formatting.provider": "none",
+#     "editor.formatOnSave": false
+#   }
+#
+# If you uncomment black:
+#   - Set "python.formatting.provider": "black"
+#   - Set "editor.formatOnSave": true
+#
+# If you uncomment flake8:
+#   - Set "python.linting.flake8Enabled": true
+#
+# If you uncomment mypy:
+#   - Set "python.linting.mypyEnabled": true
+#
+
+
+# =============================================================================
+# INSTALLATION EXAMPLES
+# =============================================================================
+#
+# === WINDOWS (CUDA 12.6) ===
+# python -m venv venv
+# venv\Scripts\activate
+# pip install torch>=2.5.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu126
+# pip install -r requirements-dev.txt
+#
+# === LINUX (CUDA 12.6) ===
+# python3 -m venv venv
+# source venv/bin/activate
+# pip install torch>=2.5.0 torchvision>=0.20.0 --index-url https://download.pytorch.org/whl/cu126
+# pip install -r requirements-dev.txt
+#
+# === macOS (CPU or MPS) ===
+# python3 -m venv venv
+# source venv/bin/activate
+# pip install torch>=2.5.0 torchvision>=0.20.0
+# pip install -r requirements-dev.txt
+#
+# === CPU-ONLY (All Platforms) ===
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# pip install -r requirements-dev.txt
+#
+# Verify installation:
+#   python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}')"
+#   python -c "import numpy; print(f'NumPy: {numpy.__version__}')"
+#   pytest --version
+#
+# Run tests:
+#   pytest tests/ -v
+#   pytest tests/ -v --cov=. --cov-report=html
+#   pytest tests/ -n auto  # parallel execution with pytest-xdist
+#
+# =============================================================================

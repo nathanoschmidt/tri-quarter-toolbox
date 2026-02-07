@@ -1,0 +1,50 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Source code - LF line endings
+*.py text eol=lf
+*.sh text eol=lf
+
+# Configuration files - LF line endings
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+
+# Documentation - LF line endings
+*.md text eol=lf
+*.rst text eol=lf
+*.txt text eol=lf
+
+# Windows files - CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files - never modify
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.zip binary
+
+# Data science / ML binary files
+*.h5 binary
+*.hdf5 binary
+*.pkl binary
+*.pickle binary
+*.npy binary
+*.npz binary
+*.pt binary
+*.pth binary
+*.onnx binary
+*.pb binary
+*.joblib binary
+
+# Jupyter notebooks (treat as text but special handling)
+*.ipynb text eol=lf

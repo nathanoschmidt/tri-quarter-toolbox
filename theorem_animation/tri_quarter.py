@@ -1,9 +1,10 @@
 # Tri-Quarter Theorem Animation
 # Version: 1.0
-# Authors: Nathan O. Schmidt and Grok
+# Authors: Nathan O. Schmidt
+# Organization: Cold Hammer Research & Development LLC
 # Created Date: March 7, 2025
-# Modified Date: March 7, 2025
-# License: MIT (see LICENSE file)
+# Modified Date: June 13, 2025
+# License: MIT
 
 import numpy as np
 import matplotlib.pyplot as plt

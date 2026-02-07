@@ -1,0 +1,26 @@
+# Tri-Quarter Framework: Radial Dual Triangular Lattice Graph
+# Simulation/Experiment Source Code RuntimeRequirements
+# ===========================================================
+# Author: Nathan O. Schmidt
+# Organization: Cold Hammer Research & Development LLC
+# Date: February 2026
+# ===========================================================
+#
+# CROSS-PLATFORM COMPATIBLE: Windows | Linux | macOS
+# Python Version: 3.8+
+#
+# This file contains only the core runtime dependencies needed to run TQF-NN.
+# For development (testing, linting, etc.), use requirements-dev.txt instead.
+#
+# Installation:
+#   pip install -r requirements.txt
+
+# =============================================================================
+# CORE RUNTIME DEPENDENCIES
+# =============================================================================
+
+# Graph Data Structures & Algorithms
+networkx>=3.0
+
+# Visualization (required for simulation_01, optional for others)
+pygame>=2.5.0

@@ -1,0 +1,34 @@
+# Tri-Quarter Framework: Theorem Animation
+# Development Dependencies
+# =============================================================
+# Author: Nathan O. Schmidt
+# Organization: Cold Hammer Research & Development LLC
+# Date: February 2026
+# =============================================================
+#
+# CROSS-PLATFORM COMPATIBLE: Windows | Linux | macOS
+# Python Version: 3.8+
+#
+# This file includes all runtime dependencies plus testing and development tools.
+#
+# Installation:
+#   pip install -r requirements-dev.txt
+
+# =============================================================================
+# DEVELOPMENT DEPENDENCIES
+# =============================================================================
+
+# Include core requirements
+-r requirements.txt
+
+# Testing
+pytest>=7.3.0
+pytest-cov>=4.1.0
+
+# Code Quality
+black>=23.3.0
+mypy>=1.3.0
+flake8>=6.0.0
+
+# Type Stubs
+types-requests>=2.31.0

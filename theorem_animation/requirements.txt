@@ -1,0 +1,26 @@
+# Tri-Quarter Framework: Theorem Animation
+# Core Dependencies
+# ========================================================
+# Author: Nathan O. Schmidt
+# Organization: Cold Hammer Research & Development LLC
+# Date: February 2026
+# ========================================================
+#
+# CROSS-PLATFORM COMPATIBLE: Windows | Linux | macOS
+# Python Version: 3.8+
+#
+# This file contains only the core runtime dependencies needed to run TQF-NN.
+# For development (testing, linting, etc.), use requirements-dev.txt instead.
+#
+# Installation:
+#   pip install -r requirements.txt
+
+# =============================================================================
+# CORE RUNTIME DEPENDENCIES
+# =============================================================================
+
+# Numerical computing
+numpy>=1.24.0
+
+# Visualization & animation
+matplotlib>=3.5.0
