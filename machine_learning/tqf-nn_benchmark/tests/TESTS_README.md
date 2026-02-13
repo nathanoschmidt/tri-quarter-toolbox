@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Date:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -36,7 +36,7 @@
 This automated testing framework provides comprehensive coverage of all modules in the TQF-NN project, ensuring scientific rigor, reproducibility, and code quality.
 
 Key Features:
-- **700 total test cases** across 18 test files
+- **760 total test cases** across 18 test files
 - **~5-10 second** full test suite execution time
 - Shared utility infrastructure (conftest.py)
 - Full type hint coverage
@@ -286,7 +286,7 @@ pytest --lf
 
 ### Overall Coverage
 
-- **Total test cases:** 700 (varies based on skip conditions)
+- **Total test cases:** 760 (varies based on skip conditions)
 - **Test files:** 18
 - **Full suite execution time:** ~5-10 seconds
 - **Core module coverage:** 100%
@@ -296,13 +296,13 @@ pytest --lf
 
 | Test File | Test Cases | Status | Focus Area |
 |-----------|------------|--------|------------|
-| test_cli.py | 100 | All passing | Command-line interface validation |
-| test_config.py | 61 | All passing | Configuration constants and validation |
+| test_cli.py | 108 | All passing | CLI validation, orbit mixing flags, range constant consistency |
+| test_config.py | 81 | All passing | Configuration constants, range constants, defaults-within-ranges |
 | test_datasets.py | 23 | All passing | Data loading and transformations |
 | test_dual_metrics.py | 53 | All passing | Geometric dual metrics, k-hop neighbors |
 | test_dual_metrics_hexagonal_lattice.py | 37 | All passing | Hexagonal lattice Eisenstein coordinates |
 | test_engine.py | 48 | All passing | Training loop, optimizer setup, losses |
-| test_evaluation.py | 28 | All passing | Performance metrics and evaluation |
+| test_evaluation.py | 30 | All passing | Performance metrics, evaluation, orbit mixing |
 | test_fibonacci_inner_zone_mirroring.py | 24 | All passing | Fibonacci weight scaling and mirroring |
 | test_logging_utils.py | 25 | All passing | Logging and output formatting |
 | test_main.py | 13 | Varies | Main pipeline integration |
@@ -310,8 +310,8 @@ pytest --lf
 | test_output_formatters.py | 49 | All passing | Result formatting and display |
 | test_param_matcher.py | 33 | All passing | Parameter matching and auto-tuning |
 | test_performance.py | 14 | All passing | Performance benchmarks |
-| test_symmetry_ops.py | 29 | All passing | Symmetry ops unit tests (Z6/D6/T24) |
-| test_tqf_ann.py | 64 | All passing | TQF-ANN architecture, k-hop, checkpointing |
+| test_symmetry_ops.py | 53 | All passing | Symmetry ops unit tests (Z6/D6/T24) |
+| test_tqf_ann.py | 69 | All passing | TQF-ANN architecture, k-hop, checkpointing, inner zone caching |
 | test_tqf_ann_integration.py | 41 | Slow/Skip | TQF-ANN end-to-end integration tests |
 | test_verification_features.py | 26 | All passing | Model verification utilities |
 
@@ -321,17 +321,17 @@ pytest --lf
 
 | Module | Coverage | Test Cases | Notes |
 |--------|----------|------------|-------|
-| cli.py | 95% | 100 | All CLI arguments, validation, defaults |
-| config.py | 95% | 61 | All constants, paths, hyperparameters |
+| cli.py | 95% | 108 | All CLI arguments, validation, defaults, range constant consistency |
+| config.py | 95% | 81 | All constants, range constants, defaults-within-ranges, orbit mixing |
 | dual_metrics.py | 92% | 53 | Metrics, k-hop precomputation, edge cases |
-| models_tqf.py | 90% | 64+ | Architecture, k-hop, checkpointing |
+| models_tqf.py | 90% | 69+ | Architecture, k-hop, checkpointing, inner zone caching |
 | models_baseline.py | 85% | 13+ | All baseline models (via param_matcher) |
 | datasets.py | 92% | 23 | Loading, transforms, validation |
 | engine.py | 80% | 48 | Training loops, evaluation, orchestration |
-| evaluation.py | 85% | 28 | Metrics, statistical tests, timing |
+| evaluation.py | 90% | 30 | Metrics, statistical tests, timing, orbit mixing |
 | output_formatters.py | 93% | 49 | All formatters, edge cases, constants |
 | param_matcher.py | 90% | 33 | Parameter counting, model registry |
-| symmetry_ops.py | 92% | 29 | Z6/D6/T24 group transformations |
+| symmetry_ops.py | 95% | 53 | Z6/D6/T24 group transformations |
 | logging_utils.py | 88% | 25 | Separators, config logging, progress |
 
 ---
@@ -345,14 +345,14 @@ When you run `pytest -v`, you'll see output like:
 ```
 ======================================================== test session starts ========================================================
 platform win32 -- Python 3.13.9, pytest-9.0.2, pluggy-1.6.0
-collected 700 items
+collected 760 items
 
 test_cli.py::TestGetAllModelNames::test_returns_list PASSED                                                                    [  0%]
 test_cli.py::TestGetAllModelNames::test_contains_tqf_ann PASSED                                                                [  0%]
 ...
 test_verification_features.py::TestParameterCounting::test_count_parameters_tqf PASSED                                         [100%]
 
-================================================== 700 passed, N skipped in 5-10s ==================================================
+================================================== 760 passed, N skipped in 5-10s ==================================================
 ```
 
 **Key Elements:**
@@ -390,7 +390,7 @@ test_verification_features.py::TestParameterCounting::test_count_parameters_tqf 
 # -> Run full suite without --quick to include these tests
 ```
 
-**Current skip status (as of Jan 2026):**
+**Current skip status (as of Feb 2026):**
 - Number of skipped tests varies based on environment and test execution flags
 - All conditionally skipped tests are properly documented with clear skip reasons
 
@@ -585,7 +585,7 @@ git log --oneline -5
 
 [OK] **Healthy test suite:**
 ```
-700 passed, N skipped in 5-10s
+760 passed, N skipped in 5-10s
 ```
 - All core tests passing
 - Skips vary by environment (CUDA availability, slow markers)
@@ -875,11 +875,11 @@ temp_data_dir                   # Temporary data directory
 
 ## 11. Recap Summary
 
-This automated testing framework provides robust validation of the TQF-NN project through **700 comprehensive test cases** organized across **18 test modules**. The framework emphasizes scientific rigor, maintainability, and ease of use through shared utilities (conftest.py), standardized configuration (pytest.ini), and clear documentation.
+This automated testing framework provides robust validation of the TQF-NN project through **760 comprehensive test cases** organized across **18 test modules**. The framework emphasizes scientific rigor, maintainability, and ease of use through shared utilities (conftest.py), standardized configuration (pytest.ini), and clear documentation.
 
 ### Key Statistics
 
-- **Total test cases:** 700 (varies based on skip conditions)
+- **Total test cases:** 760 (varies based on skip conditions)
 - **Skipped tests:** Varies by environment (CUDA availability, slow test markers)
 - **Test modules:** 18
 - **Execution time:** ~5-10 seconds (full suite)
@@ -900,18 +900,18 @@ This automated testing framework provides robust validation of the TQF-NN projec
 
 ### Testing Categories
 
-1. **Unit tests (~600 tests):** Individual functions and components
+1. **Unit tests (~624 tests):** Individual functions and components
 2. **Integration tests (~75 tests):** Module interactions and workflows
 3. **End-to-end tests (~25 tests):** Complete pipeline validation (marked slow, run selectively)
 
 ### Coverage Breakdown
 
-- **Configuration & CLI:** 95% (161 tests)
-- **Core algorithms:** 90% (119 tests)
-- **Models & architecture:** 88% (137 tests)
+- **Configuration & CLI:** 95% (189 tests)
+- **Core algorithms:** 92% (143 tests)
+- **Models & architecture:** 88% (142 tests)
 - **Training engine:** 80% (48 tests)
 - **Utilities & formatting:** 93% (74 tests)
-- **Evaluation & metrics:** 85% (28 tests)
+- **Evaluation & metrics:** 90% (30 tests)
 
 The framework ensures that the TQF-NN implementation maintains high quality, correctness, and reproducibility across all components. All tests follow PEP 8 style guidelines, include comprehensive type hints, and provide clear documentation for maintainability.
 
@@ -921,8 +921,8 @@ The framework ensures that the TQF-NN implementation maintains high quality, cor
 
 **`QED`**
 
-**Last Updated:** February 5, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

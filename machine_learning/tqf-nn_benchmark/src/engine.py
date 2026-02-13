@@ -52,7 +52,7 @@ Date: February 2026
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import os
+import sys
 import time
 import random
 import warnings
@@ -75,12 +75,17 @@ try:
         print_epoch_progress,
         print_early_stopping_message,
         print_seed_header,
-        print_seed_results_summary
+        print_seed_results_summary,
+        save_seed_result_to_disk
     )
     OUTPUT_FORMATTERS_AVAILABLE: bool = True
 except ImportError:
     OUTPUT_FORMATTERS_AVAILABLE: bool = False
     logging.warning("output_formatters not available, using basic output")
+
+    def save_seed_result_to_disk(*args, **kwargs) -> None:
+        """Fallback no-op when output_formatters not available."""
+        pass
 
 from config import (
     LEARNING_RATE_DEFAULT,
@@ -91,7 +96,10 @@ from config import (
     LABEL_SMOOTHING_DEFAULT,
     LEARNING_RATE_WARMUP_EPOCHS,
     TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-    TQF_VERIFY_DUALITY_INTERVAL_DEFAULT
+    TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
 )
 from models_baseline import get_model, MODEL_REGISTRY
 from evaluation import (
@@ -102,7 +110,8 @@ from evaluation import (
     compute_inversion_consistency_metrics,
     measure_inference_time,
     compute_statistical_significance,
-    print_comprehensive_metrics
+    print_comprehensive_metrics,
+    evaluate_with_orbit_mixing
 )
 from param_matcher import TARGET_PARAMS, TARGET_PARAMS_TOLERANCE_PERCENT
 
@@ -540,42 +549,16 @@ class TrainingEngine:
 
     def evaluate(
         self,
-        val_loader: DataLoader,
-        use_orbit_mixing: bool = False,
-        orbit_mixing_temperature: float = 0.3,
-        verbose: bool = False
+        val_loader: DataLoader
     ) -> Tuple[float, float]:
         """
-        Evaluate on validation set with optional Z6 orbit mixing.
+        Evaluate on validation set.
 
         Args:
             val_loader: Validation data loader
-            use_orbit_mixing: Whether to use Z6 orbit mixing (TQF-ANN only)
-            orbit_mixing_temperature: Temperature for adaptive mixing (default: 0.5)
-            verbose: Whether to print progress
         Returns:
             Tuple of (loss, accuracy)
         """
-        # Check if orbit mixing is requested and available
-        if use_orbit_mixing:
-            # Import orbit mixing evaluation
-            from evaluation import evaluate_with_z6_orbit_mixing
-
-            # Use orbit mixing evaluation
-            avg_loss, accuracy = evaluate_with_z6_orbit_mixing(
-                self.model,
-                val_loader,
-                self.device,
-                temperature=orbit_mixing_temperature,
-                use_amp=self.use_amp,
-                verbose=verbose
-            )
-
-            # Update history (don't append to avoid duplicate entries)
-            # Note: Caller should manage history updates
-            return avg_loss, accuracy
-
-        # Standard evaluation (no orbit mixing)
         self.model.eval()
         total_loss: float = 0.0
         correct: int = 0
@@ -827,12 +810,16 @@ def run_single_seed_experiment(
     z6_equivariance_weight: Optional[float] = None,
     d6_equivariance_weight: Optional[float] = None,
     t24_orbit_invariance_weight: Optional[float] = None,
-    adaptive_mixing_temp: float = 0.5,
-    use_orbit_mixing: bool = False,
     total_seeds: int = 1,
     seed_idx: int = 1,
     verbose: bool = True,
-    use_compile: bool = False
+    use_compile: bool = False,
+    use_z6_orbit_mixing: bool = False,
+    use_d6_orbit_mixing: bool = False,
+    use_t24_orbit_mixing: bool = False,
+    orbit_mixing_temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    orbit_mixing_temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
 ) -> Dict:
     """
     Run single-seed experiment for a model.
@@ -858,11 +845,15 @@ def run_single_seed_experiment(
         z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
         d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
         t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
-        adaptive_mixing_temp: Temperature for Z6 orbit mixing (TQF-ANN only)
-        use_orbit_mixing: Whether to use Z6 orbit mixing during evaluation (TQF-ANN only)
         total_seeds: Total number of seeds (for display)
         seed_idx: Current seed index (for display)
         verbose: Whether to print progress
+        use_z6_orbit_mixing: Enable Z6 rotation orbit mixing at evaluation
+        use_d6_orbit_mixing: Enable D6 reflection orbit mixing at evaluation
+        use_t24_orbit_mixing: Enable T24 zone-swap orbit mixing at evaluation
+        orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
+        orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
+        orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
     Returns:
         Dict with results
     """
@@ -922,19 +913,6 @@ def run_single_seed_experiment(
     apply_d6_weight: Optional[float] = d6_equivariance_weight if is_tqf_model else None
     apply_t24_weight: Optional[float] = t24_orbit_invariance_weight if is_tqf_model else None
 
-    # Warn about orbit pooling + orbit mixing conflict
-    # These mechanisms are mathematically incompatible: orbit pooling destroys
-    # rotation-specific information that orbit mixing needs to work effectively
-    if use_orbit_mixing and is_tqf_model:
-        symmetry_level: str = model_config.get('symmetry_level', 'none')
-        if symmetry_level != 'none':
-            logging.warning(
-                f"Both orbit pooling (symmetry_level={symmetry_level}) and orbit mixing are enabled. "
-                "These mechanisms conflict - orbit pooling destroys rotation-specific information "
-                "that orbit mixing needs. Consider using --tqf-symmetry-level none with orbit mixing, "
-                "or disable orbit mixing with --no-orbit-mixing."
-            )
-
     # Train with specified patience
     start_time: float = time.time()
     history: Dict = engine.train(
@@ -956,17 +934,16 @@ def run_single_seed_experiment(
     # Standard evaluation on unrotated test set
     _, test_acc = engine.evaluate(dataloaders['test'])
 
-    # Rotated test set evaluation:
-    # - If use_orbit_mixing is True and model is TQF: Use Z6 orbit mixing (6x inference, ensemble voting)
-    # - Otherwise: Use standard evaluation (single forward pass with internal symmetry)
-    if use_orbit_mixing and 'TQF' in model_name:
-        if verbose:
-            logging.info(f"  Evaluating on rotated test set with Z6 orbit mixing (temp={adaptive_mixing_temp:.2f})...")
-        _, test_rot_acc = engine.evaluate(
-            dataloaders['test_rot'],
-            use_orbit_mixing=True,
-            orbit_mixing_temperature=adaptive_mixing_temp,
-            verbose=False
+    any_orbit_mixing: bool = use_z6_orbit_mixing or use_d6_orbit_mixing or use_t24_orbit_mixing
+    if 'TQF' in model_name and any_orbit_mixing:
+        _, test_rot_acc = evaluate_with_orbit_mixing(
+            model, dataloaders['test_rot'], device,
+            use_z6=True,
+            use_d6=use_d6_orbit_mixing or use_t24_orbit_mixing,
+            use_t24=use_t24_orbit_mixing,
+            temp_rotation=orbit_mixing_temp_rotation,
+            temp_reflection=orbit_mixing_temp_reflection,
+            temp_inversion=orbit_mixing_temp_inversion
         )
     else:
         _, test_rot_acc = engine.evaluate(dataloaders['test_rot'])
@@ -1039,9 +1016,14 @@ def run_multi_seed_experiment(
     z6_equivariance_weight: Optional[float] = None,
     d6_equivariance_weight: Optional[float] = None,
     t24_orbit_invariance_weight: Optional[float] = None,
-    adaptive_mixing_temp: float = 0.5,
-    use_orbit_mixing: bool = False,
-    use_compile: bool = False
+    use_compile: bool = False,
+    output_path: Optional[str] = None,
+    use_z6_orbit_mixing: bool = False,
+    use_d6_orbit_mixing: bool = False,
+    use_t24_orbit_mixing: bool = False,
+    orbit_mixing_temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    orbit_mixing_temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
 ) -> Dict[str, List[Dict]]:
     """
     Run multi-seed experiments for multiple models.
@@ -1067,8 +1049,13 @@ def run_multi_seed_experiment(
         z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
         d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
         t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
-        adaptive_mixing_temp: Temperature for Z6 orbit mixing (TQF-ANN only)
-        use_orbit_mixing: Whether to use Z6 orbit mixing during evaluation (TQF-ANN only)
+        output_path: Path to JSON file for incremental result saving (None=no disk save)
+        use_z6_orbit_mixing: Enable Z6 rotation orbit mixing at evaluation
+        use_d6_orbit_mixing: Enable D6 reflection orbit mixing at evaluation
+        use_t24_orbit_mixing: Enable T24 zone-swap orbit mixing at evaluation
+        orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
+        orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
+        orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
     Returns:
         Dict mapping model_name -> list of results (one per seed)
     """
@@ -1104,14 +1091,22 @@ def run_multi_seed_experiment(
                 z6_equivariance_weight,
                 d6_equivariance_weight,
                 t24_orbit_invariance_weight,
-                adaptive_mixing_temp,
-                use_orbit_mixing,
                 total_seeds=total_seeds,
                 seed_idx=seed_idx,
                 verbose=True,
-                use_compile=use_compile
+                use_compile=use_compile,
+                use_z6_orbit_mixing=use_z6_orbit_mixing,
+                use_d6_orbit_mixing=use_d6_orbit_mixing,
+                use_t24_orbit_mixing=use_t24_orbit_mixing,
+                orbit_mixing_temp_rotation=orbit_mixing_temp_rotation,
+                orbit_mixing_temp_reflection=orbit_mixing_temp_reflection,
+                orbit_mixing_temp_inversion=orbit_mixing_temp_inversion
             )
             model_results.append(result)
+
+            # Incrementally save to disk so results survive crashes/session expiry
+            if output_path:
+                save_seed_result_to_disk(result, output_path)
 
         all_results[model_name] = model_results
 
@@ -1121,6 +1116,7 @@ def run_multi_seed_experiment(
             print_model_training_end(model_name)
 
     return all_results
+
 
 def compare_models_statistical(
     results: Dict[str, List[Dict]]
@@ -1156,15 +1152,13 @@ def compare_models_statistical(
     return summary
 
 def print_final_comparison_table(
-    summary: Dict[str, Dict[str, Tuple[float, float]]],
-    use_orbit_mixing: bool = False
+    summary: Dict[str, Dict[str, Tuple[float, float]]]
 ) -> None:
     """
     Print final comparison table.
 
     Args:
         summary: Aggregated statistics dict
-        use_orbit_mixing: Whether Z6 orbit mixing was used for TQF models
     """
     print("\n" + "=" * 120)
     print("FINAL MODEL COMPARISON (Mean +/- Std)")
@@ -1199,9 +1193,3 @@ def print_final_comparison_table(
         )
 
     print("=" * 120)
-
-    # Scientific disclosure: Only note when orbit mixing is actually used
-    # (Default behavior needs no explanation - it's standard evaluation)
-    if use_orbit_mixing:
-        print("\nNote: TQF models evaluated on 'Rot Acc' using Z6 orbit mixing (6x inference with ensemble voting).")
-        print("      This is the theoretically appropriate evaluation for hexagonal symmetry architectures.")

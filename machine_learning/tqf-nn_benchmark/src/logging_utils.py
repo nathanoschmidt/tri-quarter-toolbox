@@ -76,13 +76,15 @@ from config import (
     TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
     TQF_FRACTAL_EPSILON_DEFAULT,
     TQF_BOX_COUNTING_WEIGHT_DEFAULT,
-    TQF_ADAPTIVE_MIXING_TEMP_DEFAULT,
     TQF_BOX_COUNTING_SCALES_DEFAULT,
     TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
     TQF_HOP_ATTENTION_TEMP_DEFAULT,
     TQF_DUALITY_TOLERANCE_DEFAULT,
     TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-    TQF_FIBONACCI_DIMENSION_MODE_DEFAULT
+    TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
 )
 
 ###################################################################################
@@ -138,7 +140,8 @@ def print_separator(title: str = "", width: int = 92) -> None:
 def log_experiment_config(
     args: argparse.Namespace,
     seeds: List[int],
-    device: torch.device
+    device: torch.device,
+    output_path: str = ""
 ) -> None:
     """
     Log comprehensive experiment configuration to console.
@@ -214,7 +217,7 @@ def log_experiment_config(
     # EXPERIMENT OVERVIEW SECTION
     # -------------------------------------------------------------------------
     print_separator("EXPERIMENT CONFIGURATION")
-    print(f"\nModels                           : {selected_models_str}")
+    print(f"\nModels                             : {selected_models_str}")
     print(f"Random Seeds                       : {len(seeds)} seeds: {seeds}")
     print(f"Seed Start                         : {getattr(args, 'seed_start', SEED_DEFAULT)}")
     print(f"Device                             : {device} ({'CUDA' if cuda_available else 'CPU'})")
@@ -222,6 +225,10 @@ def log_experiment_config(
     print(f"Max Epochs                         : {getattr(args, 'num_epochs', MAX_EPOCHS_DEFAULT)}")
     compile_enabled = getattr(args, 'compile', False)
     print(f"Torch Compile                      : {'Enabled' if compile_enabled else 'Disabled'}")
+    if output_path:
+        print(f"Result Output                      : {output_path}")
+    else:
+        print(f"Result Output                      : Disabled (--no-save-results)")
 
     # -------------------------------------------------------------------------
     # SYSTEM INFORMATION SECTION
@@ -254,8 +261,9 @@ def log_experiment_config(
     print(f"  Validation samples               : {getattr(args, 'num_val', NUM_VAL_DEFAULT)}")
     print(f"  Test (unrotated)                 : {getattr(args, 'num_test_unrot', NUM_TEST_UNROT_DEFAULT)}")
     print(f"  Test (rotated)                   : {getattr(args, 'num_test_rot', NUM_TEST_ROT_DEFAULT)} base * 6 rotations")
-    print(f"  Num workers                      : {NUM_WORKERS_DEFAULT}")
-    print(f"  Pin memory                       : {PIN_MEMORY_DEFAULT}")
+    print(f"  Num workers                      : {getattr(args, 'num_workers', NUM_WORKERS_DEFAULT)}")
+    pin_mem = getattr(args, 'pin_memory', PIN_MEMORY_DEFAULT)
+    print(f"  Pin memory                       : {'Enabled' if pin_mem else 'Disabled'}")
 
     # -------------------------------------------------------------------------
     # OPTIMIZATION HYPERPARAMETERS SECTION
@@ -310,18 +318,15 @@ def log_experiment_config(
         sym_ops = sym_ops_map.get(sym_level, '')
         print(f"    Symmetry level                 : {sym_level} {sym_ops}")
         print(f"    Fibonacci weighting mode       : {getattr(args, 'tqf_fibonacci_mode', TQF_FIBONACCI_DIMENSION_MODE_DEFAULT)}")
-        use_orbit_mixing = getattr(args, 'tqf_use_orbit_mixing', False)
-        print(f"    Orbit mixing (evaluation)      : {'Enabled (6x inference)' if use_orbit_mixing else 'Disabled'}")
 
         # Fractal Parameters
         print("\n  Fractal Parameters:")
         print(f"    Fractal iterations             : {getattr(args, 'tqf_fractal_iterations', TQF_FRACTAL_ITERATIONS_DEFAULT)}")
-        print(f"    Fractal dim tolerance          : {getattr(args, 'tqf_fractal_dim_tolerance', TQF_FRACTAL_DIM_TOLERANCE_DEFAULT)}")
+        print(f"    Fractal dim tolerance          : {TQF_FRACTAL_DIM_TOLERANCE_DEFAULT} (internal default)")
         print(f"    Fractal epsilon                : {TQF_FRACTAL_EPSILON_DEFAULT}")
         print(f"    Self-similarity weight         : {getattr(args, 'tqf_self_similarity_weight', TQF_SELF_SIMILARITY_WEIGHT_DEFAULT)}")
         print(f"    Box-counting weight            : {getattr(args, 'tqf_box_counting_weight', TQF_BOX_COUNTING_WEIGHT_DEFAULT)}")
-        print(f"    Box-counting scales            : {getattr(args, 'tqf_box_counting_scales', TQF_BOX_COUNTING_SCALES_DEFAULT)}")
-        print(f"    Adaptive mixing temperature    : {getattr(args, 'tqf_adaptive_mixing_temp', TQF_ADAPTIVE_MIXING_TEMP_DEFAULT)}")
+        print(f"    Box-counting scales            : {TQF_BOX_COUNTING_SCALES_DEFAULT} (internal default)")
         use_phi_binning = getattr(args, 'tqf_use_phi_binning', False)
         print(f"    Phi (golden ratio) binning     : {'Enabled' if use_phi_binning else 'Disabled'}")
 
@@ -330,7 +335,7 @@ def log_experiment_config(
         print(f"    Geometry regularization weight : {getattr(args, 'tqf_geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)}")
         # Inversion (duality) loss - enabled by providing weight value via CLI
         inv_weight = getattr(args, 'tqf_inversion_loss_weight', None)
-        inv_status = f"enabled (weight={inv_weight})" if inv_weight is not None else "disabled"
+        inv_status = f"Enabled (weight={inv_weight})" if inv_weight is not None else "Disabled"
         print(f"    Inversion (duality) loss       : {inv_status}")
         # Hop attention temperature: controls neighbor aggregation sharpness
         # - < 1.0: Sharp attention, prefer similar neighbors
@@ -343,21 +348,35 @@ def log_experiment_config(
         print(f"    Duality tolerance              : {TQF_DUALITY_TOLERANCE_DEFAULT}")
         print(f"    Duality verify interval        : {getattr(args, 'tqf_verify_duality_interval', TQF_VERIFY_DUALITY_INTERVAL_DEFAULT)} epochs")
         verify_geom = getattr(args, 'tqf_verify_geometry', False)
-        verify_geom_status = "enabled (ensures fractal losses active)" if verify_geom else "disabled"
+        verify_geom_status = "Enabled (verifies fractal losses active)" if verify_geom else "Disabled"
         print(f"    Verify geometry flag           : {verify_geom_status}")
 
         # Symmetry/Invariance/Equivariance Losses
         # These losses are enabled by providing a weight value via CLI (None = disabled)
         print("\n  Symmetry/Invariance/Equivariance Losses:")
         z6_weight = getattr(args, 'tqf_z6_equivariance_weight', None)
-        z6_status = f"enabled (weight={z6_weight})" if z6_weight is not None else "disabled"
+        z6_status = f"Enabled (weight={z6_weight})" if z6_weight is not None else "Disabled"
         print(f"    Z6 equivariance loss           : {z6_status}")
         d6_weight = getattr(args, 'tqf_d6_equivariance_weight', None)
-        d6_status = f"enabled (weight={d6_weight})" if d6_weight is not None else "disabled"
+        d6_status = f"Enabled (weight={d6_weight})" if d6_weight is not None else "Disabled"
         print(f"    D6 equivariance loss           : {d6_status}")
         t24_weight = getattr(args, 'tqf_t24_orbit_invariance_weight', None)
-        t24_status = f"enabled (weight={t24_weight})" if t24_weight is not None else "disabled"
+        t24_status = f"Enabled (weight={t24_weight})" if t24_weight is not None else "Disabled"
         print(f"    T24 orbit invariance loss      : {t24_status}")
+
+        # Orbit Mixing (evaluation-time ensemble)
+        print("\n  Orbit Mixing (Evaluation-Time):")
+        use_z6_om = getattr(args, 'tqf_use_z6_orbit_mixing', False)
+        use_d6_om = getattr(args, 'tqf_use_d6_orbit_mixing', False)
+        use_t24_om = getattr(args, 'tqf_use_t24_orbit_mixing', False)
+        any_om = use_z6_om or use_d6_om or use_t24_om
+        print(f"    Z6 orbit mixing                : {'Enabled' if use_z6_om else 'Disabled'}")
+        print(f"    D6 orbit mixing                : {'Enabled' if use_d6_om else 'Disabled'}")
+        print(f"    T24 orbit mixing               : {'Enabled' if use_t24_om else 'Disabled'}")
+        if any_om:
+            print(f"    Temp (rotation)                : {getattr(args, 'tqf_orbit_mixing_temp_rotation', TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT)}")
+            print(f"    Temp (reflection)              : {getattr(args, 'tqf_orbit_mixing_temp_reflection', TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT)}")
+            print(f"    Temp (inversion)               : {getattr(args, 'tqf_orbit_mixing_temp_inversion', TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT)}")
 
         # Memory Optimization
         print("\n  Memory Optimization:")
@@ -368,24 +387,26 @@ def log_experiment_config(
     # SNN-SPECIFIC CONFIGURATION SECTION (reserved for TQF-SNN extension)
     # -------------------------------------------------------------------------
     print("\nSNN-SPECIFIC CONFIGURATION (Reserved for TQF-SNN):")
-    print(f"  Timesteps           : {TIMESTEPS} (reserved for spiking implementation)")
+    print(f"  Timesteps                        : {TIMESTEPS} (reserved for spiking implementation)")
 
     # -------------------------------------------------------------------------
     # DATA AUGMENTATION & PREPROCESSING SECTION
     # -------------------------------------------------------------------------
     print("\nDATA AUGMENTATION & PREPROCESSING:")
-    print(f"  Rotation angles     : [0 deg, 60 deg, 120 deg, 180 deg, 240 deg, 300 deg] (T24-aligned)")
-    print(f"  Interpolation mode  : BICUBIC")
-    print(f"  Normalization       : mean=0.1307, std=0.3081 (MNIST standard)")
-    print(f"  Stratified sampling : Enabled (balanced classes)")
+    print(f"  Rotation angles                  : [0, 60, 120, 180, 240, 300] deg (Z6-aligned)")
+    print(f"  Interpolation mode               : BICUBIC")
+    print(f"  Normalization                    : mean=0.1307, std=0.3081 (MNIST standard)")
+    print(f"  Stratified sampling              : Enabled (balanced classes)")
+    use_z6_data_aug = getattr(args, 'tqf_z6_augmentation', True)
+    print(f"  Z6 data augmentation             : {'Enabled' if use_z6_data_aug else 'Disabled'}")
 
     # -------------------------------------------------------------------------
     # REPRODUCIBILITY CONFIGURATION SECTION
     # -------------------------------------------------------------------------
     print("\nREPRODUCIBILITY:")
-    print(f"  Fixed seeds         : {seeds}")
-    print(f"  Deterministic algos : Enabled where possible")
-    print(f"  Dropout             : {DROPOUT_DEFAULT}")
+    print(f"  Fixed seeds                      : {seeds}")
+    print(f"  Deterministic algos              : Enabled where possible")
+    print(f"  Dropout                          : {getattr(args, 'dropout', DROPOUT_DEFAULT)}")
 
     # End of configuration logging
     print_single_separator(width=92)

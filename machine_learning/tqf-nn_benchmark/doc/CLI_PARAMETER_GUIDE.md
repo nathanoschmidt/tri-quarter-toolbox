@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Date:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -26,7 +26,7 @@
    - [8.1 Core TQF Architecture](#81-core-tqf-architecture)
    - [8.2 TQF Symmetry Groups](#82-tqf-symmetry-groups)
    - [8.3 TQF Fractal Geometry](#83-tqf-fractal-geometry)
-   - [8.4 TQF Attention and Mixing](#84-tqf-attention-and-mixing)
+   - [8.4 TQF Attention](#84-tqf-attention)
    - [8.5 TQF Loss and Regularization](#85-tqf-loss-and-regularization)
    - [8.6 TQF Fibonacci Enhancements](#86-tqf-fibonacci-enhancements)
 9. [Complete Parameter Reference Table](#9-complete-parameter-reference-table)
@@ -34,6 +34,7 @@
 11. [Example Workflows](#11-example-workflows)
 12. [Performance Tuning Guide](#12-performance-tuning-guide)
 13. [Troubleshooting](#13-troubleshooting)
+14. [Result Output](#14-result-output)
 
 ---
 
@@ -145,8 +146,6 @@ python main.py --models TQF-ANN --tqf-symmetry-level T24
 # TQF with no symmetry (ablation study)
 python main.py --models TQF-ANN --tqf-symmetry-level none
 
-# TQF with orbit mixing enabled (ensemble voting over ℤ₆ rotations)
-python main.py --models TQF-ANN --tqf-use-orbit-mixing
 ```
 
 ### Fibonacci Weight Scaling Examples
@@ -411,7 +410,7 @@ python main.py --num-seeds 5 --seed-start 0
 
 **Type**: `int`
 
-**Default**: `100` (from `MAX_EPOCHS_DEFAULT` in config.py)
+**Default**: `150` (from `MAX_EPOCHS_DEFAULT` in config.py)
 
 **Valid Range**: `[1, 200]` (from `NUM_EPOCHS_MIN` to `NUM_EPOCHS_MAX`)
 
@@ -437,13 +436,13 @@ python main.py --num-epochs 200
 ```
 
 **Why This Matters**:
-- TQF-ANN typically converges in 40-70 epochs with default settings
-- Early stopping (default patience=15) usually triggers before max epochs
-- More epochs allow discovery of complex symmetry patterns
+- With 58K data, best accuracy occurs at epochs 125-135
+- Early stopping (default patience=25) terminates if validation plateaus
+- CosineAnnealingLR fine-tuning tail (LR < 3e-4) provides +0.5% accuracy gain
 - Computational cost scales linearly with epochs
 
-**Computational Impact** (RTX 4060, 30k training samples):
-- 10 epochs ~ 3 minutes
+**Computational Impact** (RTX 4060, 58k training samples):
+- 10 epochs ~ 4 minutes
 - 50 epochs ~ 15 minutes
 - 100 epochs ~ 30 minutes
 - 200 epochs ~ 60 minutes
@@ -696,7 +695,7 @@ python main.py --label-smoothing 0.5
 
 **Type**: `int`
 
-**Default**: `15` (from `PATIENCE_DEFAULT` in config.py)
+**Default**: `25` (from `PATIENCE_DEFAULT` in config.py)
 
 **Valid Range**: `[1, 50]` (from `PATIENCE_MIN` to `PATIENCE_MAX`)
 
@@ -714,14 +713,11 @@ python main.py --patience 5
 # Standard early stopping
 python main.py --patience 10
 
-# Default early stopping (patience=15)
-python main.py --patience 15
-
-# Patient early stopping
-python main.py --patience 15
+# Default early stopping (patience=25)
+python main.py --patience 25
 
 # Very patient (rarely stops early)
-python main.py --patience 25
+python main.py --patience 40
 ```
 
 **Why This Matters**:
@@ -844,11 +840,11 @@ python main.py --learning-rate-warmup-epochs 10
 
 ### `--num-train` (int)
 
-**Purpose**: Number of training samples from MNIST (60,000 available).
+**Purpose**: Number of training samples from MNIST. MNIST has 60,000 total training images; with the default validation split of 2,000, 58,000 are available for training.
 
 **Type**: `int`
 
-**Default**: `30000` (from `NUM_TRAIN_DEFAULT` in config.py)
+**Default**: `58000` (from `NUM_TRAIN_DEFAULT` in config.py)
 
 **Valid Range**: `[100, 60000]` (from `NUM_TRAIN_MIN` to `NUM_TRAIN_MAX`)
 
@@ -866,28 +862,27 @@ python main.py --num-train 5000
 # Medium training
 python main.py --num-train 10000
 
-# Standard training (default)
-python main.py --num-train 30000
-
-# Full training set
-python main.py --num-train 60000
+# Full training set (default)
+python main.py --num-train 58000
 ```
 
 **Why This Matters**:
 - Larger datasets: better generalization, longer training
 - Smaller datasets: faster experiments, risk of overfitting
 - Must be divisible by 10 to ensure equal samples per class
+- If requested size exceeds available samples (60K minus validation), it is capped automatically
 
 **Computational Impact** (RTX 4060, batch_size=64):
 - 1,000 samples: ~2 seconds/epoch
 - 5,000 samples: ~6 seconds/epoch
 - 10,000 samples: ~10 seconds/epoch
 - 30,000 samples: ~18 seconds/epoch
-- 60,000 samples: ~35 seconds/epoch
+- 58,000 samples: ~25 seconds/epoch
 
 **Validation**:
 - Must be in range `[100, 60000]`
 - **Must be divisible by 10** (triggers error otherwise)
+- Values exceeding available samples are capped with a warning
 
 ---
 
@@ -1180,65 +1175,6 @@ python main.py --models TQF-ANN --tqf-symmetry-level T24
 **Validation**:
 - Must be in `['none', 'Z6', 'D6', 'T24']`
 
-**Note on Orbit Mixing Conflict**:
-When using `--tqf-symmetry-level` other than `none`, orbit pooling is applied during the forward pass, which destroys rotation-specific information. This conflicts with `--tqf-use-orbit-mixing` at evaluation time. See the `--tqf-use-orbit-mixing` section below for details.
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-use-orbit-mixing` (flag)
-
-**Purpose**: Enable orbit mixing (ensemble voting over ℤ₆ rotations) during evaluation.
-
-**Type**: `bool` (action='store_true')
-
-**Default**: `False`
-
-**Behavior**:
-- If enabled: test samples are evaluated at all 6 rotations (0deg, 60deg, 120deg, 180deg, 240deg, 300deg)
-- Predictions are averaged (soft voting) or majority-voted (hard voting)
-- Significantly increases evaluation time (~6x slower)
-- Tests TQF-specific rotation invariance
-
-**WARNING: Conflict with Orbit Pooling**:
-Orbit mixing conflicts with orbit pooling (`--tqf-symmetry-level` != `none`). These two mechanisms are mathematically incompatible:
-- **Orbit pooling** (in forward pass): Averages features over symmetry group, destroying rotation-specific information
-- **Orbit mixing** (at evaluation): Expects rotation-aware predictions to combine via ensemble voting
-
-When both are enabled, orbit pooling destroys the rotation-specific information that orbit mixing needs, resulting in **degraded accuracy** (e.g., rotated accuracy dropping from 92% to 86%).
-
-**Recommended usage**:
-- Use `--tqf-symmetry-level none` with `--tqf-use-orbit-mixing` for best results
-- Or use `--tqf-symmetry-level D6` without orbit mixing
-
-**Examples**:
-
-```bash
-# Disable orbit mixing (default, faster)
-python main.py --models TQF-ANN
-
-# Enable orbit mixing WITH symmetry-level none (recommended)
-python main.py --models TQF-ANN --tqf-symmetry-level none --tqf-use-orbit-mixing
-
-# NOT recommended: orbit pooling + orbit mixing conflict
-# python main.py --models TQF-ANN --tqf-symmetry-level D6 --tqf-use-orbit-mixing
-```
-
-**Why This Matters**:
-- Tests rotation invariance via ensemble voting
-- Can improve accuracy on rotated test set when used correctly
-- Expensive: 6x longer evaluation time
-- Only useful for TQF-ANN (baselines don't benefit)
-
-**Computational Impact**:
-- Evaluation time: 6x slower
-- Training time: unchanged
-- Accuracy improvement: depends on configuration (see warning above)
-
-**Validation**:
-- Boolean flag, no validation needed
-
 **Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
 
 ---
@@ -1293,51 +1229,7 @@ python main.py --models TQF-ANN --tqf-fractal-iterations 15
 
 ---
 
-#### `--tqf-fractal-dim-tolerance` (float)
-
-**Purpose**: Tolerance for fractal dimension verification checks. Controls acceptable deviation between measured and theoretical fractal dimensions.
-
-**Type**: `float`
-
-**Default**: `0.08` (from `TQF_FRACTAL_DIM_TOLERANCE_DEFAULT` in config.py)
-
-**Theoretical Dimension**: `1.585` (Sierpinski triangle dimension, from `TQF_THEORETICAL_FRACTAL_DIM_DEFAULT`)
-
-**Valid Range**: `[0.0, 1.0]` (from `TQF_FRACTAL_DIM_TOLERANCE_MIN` to `TQF_FRACTAL_DIM_TOLERANCE_MAX`)
-
-**Examples**:
-
-```bash
-# Loose tolerance (fewer warnings, allows more geometric drift)
-python main.py --models TQF-ANN --tqf-fractal-dim-tolerance 0.25
-
-# Standard tolerance (default - 8% relative error)
-python main.py --models TQF-ANN --tqf-fractal-dim-tolerance 0.08
-
-# Tight tolerance (strict geometric constraints, more warnings)
-python main.py --models TQF-ANN --tqf-fractal-dim-tolerance 0.05
-```
-
-**Why This Matters**:
-- This is a DIAGNOSTIC threshold, not an optimization target
-- Compares measured fractal dimension against theoretical value (~1.585)
-- If `|measured - theoretical| > tolerance`, emits a warning (training continues)
-- Large deviations indicate:
-  1. Broken geometric structure (lattice topology corrupted)
-  2. Numerical instabilities (distance computations overflow/underflow)
-  3. Implementation bugs (incorrect dual metric formulas)
-- 8% tolerance allows natural variation while catching major issues
-
-**Behavior**:
-- Measured dimension computed via box-counting algorithm
-- Warning emitted once per training run if tolerance exceeded
-- Use `model.verify_fractal_dimension()` to check manually
-- Use `model.get_fractal_dimension_info()` for current diagnostic state
-
-**Validation**:
-- Must be in range `[0.0, 1.0]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+> **Note:** `--tqf-fractal-dim-tolerance` was consolidated as an internal constant (`TQF_FRACTAL_DIM_TOLERANCE_DEFAULT = 0.08` in config.py). It is no longer a CLI parameter. The tolerance controls acceptable deviation between measured and theoretical fractal dimensions (1.585, Sierpinski triangle dimension). Related to `--tqf-fractal-iterations` which controls whether fractal features are active.
 
 ---
 
@@ -1421,84 +1313,11 @@ python main.py --models TQF-ANN --tqf-box-counting-weight 0.01
 
 ---
 
-#### `--tqf-box-counting-scales` (int)
-
-**Purpose**: Number of box sizes for multi-scale box-counting analysis.
-
-**Type**: `int`
-
-**Default**: `10` (from `TQF_BOX_COUNTING_SCALES_DEFAULT` in config.py)
-
-**Valid Range**: `[2, 20]` (from `TQF_BOX_COUNTING_SCALES_MIN` to `TQF_BOX_COUNTING_SCALES_MAX`)
-
-**Examples**:
-
-```bash
-# Few scales (faster)
-python main.py --models TQF-ANN --tqf-box-counting-scales 4
-
-# Standard scales (default)
-python main.py --models TQF-ANN --tqf-box-counting-scales 10
-
-# Many scales (more precise)
-python main.py --models TQF-ANN --tqf-box-counting-scales 15
-```
-
-**Why This Matters**:
-- More scales: better fractal dimension estimation
-- Fewer scales: faster computation
-- Used in box-counting loss term
-
-**Validation**:
-- Must be in range `[2, 20]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+> **Note:** `--tqf-box-counting-scales` was consolidated as an internal constant (`TQF_BOX_COUNTING_SCALES_DEFAULT = 10` in config.py). It is no longer a CLI parameter. The value controls the number of scale levels for box-counting fractal dimension estimation. Related to `--tqf-box-counting-weight` which controls whether box-counting loss is active.
 
 ---
 
-### 8.4 TQF Attention and Mixing
-
-#### `--tqf-adaptive-mixing-temp` (float)
-
-**Purpose**: Temperature parameter for adaptive orbit mixing softmax.
-
-**Type**: `float`
-
-**Default**: `0.5` (from `TQF_ADAPTIVE_MIXING_TEMP_DEFAULT` in config.py)
-
-**Valid Range**: `[0.01, 2.0]` (from `TQF_ADAPTIVE_MIXING_TEMP_MIN` to `TQF_ADAPTIVE_MIXING_TEMP_MAX`)
-
-**Behavior**:
-- Lower temperature: sharper (more peaked) attention weights
-- Higher temperature: smoother (more uniform) attention weights
-
-**Examples**:
-
-```bash
-# Very sharp mixing (peaked)
-python main.py --models TQF-ANN --tqf-adaptive-mixing-temp 0.1
-
-# Standard mixing (default)
-python main.py --models TQF-ANN --tqf-adaptive-mixing-temp 0.5
-
-# Smooth mixing
-python main.py --models TQF-ANN --tqf-adaptive-mixing-temp 0.5
-
-# Very smooth mixing (nearly uniform)
-python main.py --models TQF-ANN --tqf-adaptive-mixing-temp 1.0
-```
-
-**Why This Matters**:
-- Controls how aggressively orbits are mixed
-- Lower temp: model focuses on best orbit
-- Higher temp: model averages all orbits equally
-
-**Validation**:
-- Must be in range `[0.01, 2.0]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
+### 8.4 TQF Attention
 
 #### `--tqf-hop-attention-temp` (float)
 
@@ -1547,7 +1366,106 @@ The temperature controls feature-based attention in neighbor aggregation:
 
 ---
 
-### 8.5 TQF Loss and Regularization
+### 8.5 TQF Training Augmentation
+
+#### `--no-tqf-z6-augmentation` (flag)
+
+**Purpose**: Disable Z6-aligned rotation data augmentation during training. By default, training images are randomly rotated at 60-degree intervals (with jitter) to teach rotation robustness. Disable to test TQF-ANN's architectural rotation robustness in isolation.
+
+**Type**: `flag` (store_false, sets `tqf_z6_augmentation = False`)
+
+**Default**: Augmentation enabled (`True`, from `TQF_USE_Z6_AUGMENTATION_DEFAULT` in config.py)
+
+**Examples**:
+
+```bash
+# Default: Z6 augmentation enabled (best accuracy)
+python main.py --models TQF-ANN
+
+# Disable Z6 augmentation to isolate architectural robustness
+python main.py --models TQF-ANN --no-tqf-z6-augmentation
+
+# Combine with orbit mixing for architectural demonstration
+python main.py --models TQF-ANN --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+```
+
+**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+
+---
+
+### 8.6 TQF Evaluation-Time Orbit Mixing
+
+Orbit mixing averages predictions over symmetry group operations at evaluation time, exploiting TQF-ANN's hexagonal symmetry structure. Three levels are available:
+
+- **Z6**: 6 input-space rotations (0, 60, 120, 180, 240, 300 degrees) — 6 full forward passes
+- **D6**: Feature-space reflection on cached zone features — lightweight (classification head only)
+- **T24**: Zone-swap (exchange inner/outer roles) — trivially cheap (argument reordering)
+
+Each higher level includes all lower levels. Temperature parameters control confidence weighting sharpness.
+
+#### `--tqf-use-z6-orbit-mixing` (flag)
+
+**Purpose**: Average predictions over 6 Z6 rotations at evaluation time.
+
+**Default**: `False`
+
+#### `--tqf-use-d6-orbit-mixing` (flag)
+
+**Purpose**: Add D6 reflection averaging (implies Z6 behavior).
+
+**Default**: `False`
+
+#### `--tqf-use-t24-orbit-mixing` (flag)
+
+**Purpose**: Add T24 zone-swap averaging (implies D6 and Z6 behavior).
+
+**Default**: `False`
+
+#### `--tqf-orbit-mixing-temp-rotation` (float)
+
+**Purpose**: Temperature for Z6 rotation confidence weighting. Lower = sharper (most confident rotation dominates).
+
+**Default**: `0.3` (from `TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
+
+#### `--tqf-orbit-mixing-temp-reflection` (float)
+
+**Purpose**: Temperature for D6 reflection confidence weighting.
+
+**Default**: `0.5` (from `TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
+
+#### `--tqf-orbit-mixing-temp-inversion` (float)
+
+**Purpose**: Temperature for T24 zone-swap confidence weighting. Softest because circle inversion is the most abstract symmetry.
+
+**Default**: `0.7` (from `TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
+
+**Examples**:
+
+```bash
+# Z6 orbit mixing only (6 forward passes per batch)
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
+
+# Full T24 orbit mixing
+python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
+
+# Demonstrate architectural robustness (no data aug + orbit mixing)
+python main.py --models TQF-ANN --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+
+# Compare TQF-ANN vs CNN without augmentation
+python main.py --models TQF-ANN CNN-L5 --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+
+# Custom temperatures
+python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
+  --tqf-orbit-mixing-temp-rotation 0.5 \
+  --tqf-orbit-mixing-temp-reflection 0.8 \
+  --tqf-orbit-mixing-temp-inversion 1.0
+```
+
+**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled (orbit mixing only applies to TQF models)
+
+---
+
+### 8.7 TQF Loss and Regularization
 
 #### `--tqf-verify-geometry` (flag)
 
@@ -1823,7 +1741,7 @@ python main.py --models TQF-ANN --tqf-verify-duality-interval 999 --num-epochs 5
 
 **Type**: `str`
 
-**Default**: `'fibonacci'` (from `TQF_FIBONACCI_DIMENSION_MODE_DEFAULT` in config.py)
+**Default**: `'none'` (from `TQF_FIBONACCI_DIMENSION_MODE_DEFAULT` in config.py)
 
 **Valid Options**:
 - `'none'` - Uniform weighting (standard 50/50 self/neighbor averaging)
@@ -1852,7 +1770,7 @@ python main.py --models TQF-ANN --tqf-fibonacci-mode none
 # Linear weights (ablation study baseline)
 python main.py --models TQF-ANN --tqf-fibonacci-mode linear
 
-# Fibonacci weights (default, full TQF specification)
+# Fibonacci weights (full TQF specification, opt-in)
 python main.py --models TQF-ANN --tqf-fibonacci-mode fibonacci
 ```
 
@@ -2171,26 +2089,27 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--models` | list[str] | all | TQF-ANN, FC-MLP, CNN-L5, ResNet-18-Scaled, all | Models to train |
 | `--device` | str | auto | cuda, cpu | Compute device |
 | `--compile` | flag | False | - | Enable torch.compile (Linux/Triton only) |
+| `--no-save-results` | flag | False | - | Disable saving results to disk |
+| `--results-dir` | path | data/output/ | - | Directory for result output files |
 | `--num-seeds` | int | 1 | [1, 20] | Number of random seeds |
 | `--seed-start` | int | 42 | >= 0 | Starting random seed |
-| `--num-epochs` | int | 100 | [1, 200] | Maximum training epochs |
+| `--num-epochs` | int | 150 | [1, 200] | Maximum training epochs |
 | `--batch-size` | int | 128 | [1, 1024] | Training batch size |
 | `--learning-rate` | float | 0.001 | (0.0, 1.0] | Initial learning rate |
 | `--weight-decay` | float | 0.0001 | [0.0, 1.0] | L2 regularization weight |
 | `--label-smoothing` | float | 0.1 | [0.0, 1.0] | Label smoothing factor |
-| `--patience` | int | 15 | [1, 50] | Early stopping patience |
+| `--patience` | int | 25 | [1, 50] | Early stopping patience |
 | `--min-delta` | float | 0.0005 | [0.0, 1.0] | Early stopping min improvement |
 | `--learning-rate-warmup-epochs` | int | 5 | [0, 10] | LR warmup epochs |
-| `--num-train` | int | 30000 | [100, 60000] | Training samples (divisible by 10) |
+| `--num-train` | int | 58000 | [100, 60000] | Training samples (divisible by 10) |
 | `--num-val` | int | 2000 | [10, 10000] | Validation samples |
 | `--num-test-rot` | int | 2000 | [100, 10000] | Rotated test samples |
 | `--num-test-unrot` | int | 8000 | [100, 10000] | Unrotated test samples |
 | **TQF-ONLY** ||||
-| `--tqf-R` | int | 10 | [2, 100] | Truncation radius |
+| `--tqf-R` | int | 20 | [2, 100] | Truncation radius |
 | `--tqf-hidden-dim` | int/None | None | [8, 512] | Hidden dimension (auto if None) |
 | `--tqf-symmetry-level` | str | none | none, Z6, D6, T24 | Symmetry group (opt-in) |
-| `--tqf-use-orbit-mixing` | flag | False | - | Enable orbit mixing evaluation |
-| `--tqf-fibonacci-mode` | str | fibonacci | none, linear, fibonacci | Fibonacci weight scaling mode |
+| `--tqf-fibonacci-mode` | str | none | none, linear, fibonacci | Fibonacci weight scaling mode |
 | `--tqf-z6-equivariance-weight` | float | None | [0.001, 0.05] | Z6 equivariance loss (enabled when provided) |
 | `--tqf-d6-equivariance-weight` | float | None | [0.001, 0.05] | D6 equivariance loss (enabled when provided) |
 | `--tqf-t24-orbit-invariance-weight` | float | None | [0.001, 0.02] | T24 orbit invariance loss (enabled when provided) |
@@ -2199,14 +2118,18 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-verify-geometry` | flag | False | - | Enable geometry verification |
 | `--tqf-geometry-reg-weight` | float | 0.0 | [0.0, 10.0] | Geometry regularization weight (opt-in) |
 | `--tqf-fractal-iterations` | int | 0 (disabled) | [1, 20] | Fractal estimation iterations (opt-in) |
-| `--tqf-fractal-dim-tolerance` | float | 0.08 | [0.0, 1.0] | Fractal dimension tolerance |
 | `--tqf-self-similarity-weight` | float | 0.0 | [0.0, 10.0] | Self-similarity loss weight (opt-in) |
 | `--tqf-box-counting-weight` | float | 0.0 | [0.0, 10.0] | Box-counting loss weight (opt-in) |
-| `--tqf-box-counting-scales` | int | 10 | [2, 20] | Box-counting scales |
 | `--tqf-use-phi-binning` | flag | False | - | Use phi-scaled radial binning |
 | `--tqf-use-gradient-checkpointing` | flag | False | - | Enable gradient checkpointing for memory savings |
-| `--tqf-adaptive-mixing-temp` | float | 0.5 | [0.01, 2.0] | Orbit mixing temperature |
 | `--tqf-hop-attention-temp` | float | 1.0 | [0.01, 10.0] | Hop attention temperature (1.0 = fast path) |
+| `--no-tqf-z6-augmentation` | flag | True (enabled) | - | Disable Z6 rotation data augmentation during training |
+| `--tqf-use-z6-orbit-mixing` | flag | False | - | Z6 rotation orbit mixing at evaluation |
+| `--tqf-use-d6-orbit-mixing` | flag | False | - | D6 reflection orbit mixing at evaluation |
+| `--tqf-use-t24-orbit-mixing` | flag | False | - | T24 zone-swap orbit mixing at evaluation |
+| `--tqf-orbit-mixing-temp-rotation` | float | 0.3 | [0.01, 2.0] | Z6 rotation averaging temperature |
+| `--tqf-orbit-mixing-temp-reflection` | float | 0.5 | [0.01, 2.0] | D6 reflection averaging temperature |
+| `--tqf-orbit-mixing-temp-inversion` | float | 0.7 | [0.01, 2.0] | T24 zone-swap averaging temperature |
 
 ---
 
@@ -2337,11 +2260,8 @@ python main.py --num-train 1000 --num-val 200
 # Medium dataset
 python main.py --num-train 10000 --num-val 1000
 
-# Large dataset (default)
-python main.py --num-train 30000 --num-val 2000
-
-# Full dataset
-python main.py --num-train 60000 --num-val 5000
+# Full dataset (default)
+python main.py --num-train 58000 --num-val 2000
 ```
 
 ### Workflow 6: TQF Lattice Size Ablation
@@ -2516,12 +2436,7 @@ NS = not significant
    python main.py --batch-size 128
    ```
 
-6. **Disable orbit mixing:**
-   ```bash
-   python main.py --models TQF-ANN  # (orbit mixing off by default)
-   ```
-
-7. **Enable torch.compile (Linux with Triton only):**
+6. **Enable torch.compile (Linux with Triton only):**
    ```bash
    python main.py --models TQF-ANN --compile
    # ~10-30% speedup; first epoch slower due to compilation
@@ -2567,22 +2482,17 @@ NS = not significant
    python main.py --tqf-symmetry-level T24
    ```
 
-2. **Enable orbit mixing:**
-   ```bash
-   python main.py --tqf-use-orbit-mixing
-   ```
-
-3. **Strong invariance loss:**
+2. **Strong invariance loss:**
    ```bash
    python main.py --tqf-z6-equivariance-weight 0.3
    ```
 
-4. **Label smoothing:**
+3. **Label smoothing:**
    ```bash
    python main.py --label-smoothing 0.15
    ```
 
-5. **More fractal detail:**
+4. **More fractal detail:**
    ```bash
    python main.py --tqf-fractal-iterations 10 --tqf-self-similarity-weight 0.2
    ```
@@ -2705,18 +2615,12 @@ RuntimeError: CUDA out of memory. Tried to allocate X.XX GiB
    python main.py --batch-size 128
    ```
 
-4. **Disable orbit mixing:**
-   ```bash
-   python main.py --models TQF-ANN
-   # (orbit mixing off by default)
-   ```
-
-5. **Use fewer models:**
+4. **Use fewer models:**
    ```bash
    python main.py --models TQF-ANN
    ```
 
-6. **Enable torch.compile (Linux only):**
+5. **Enable torch.compile (Linux only):**
    ```bash
    python main.py --models TQF-ANN --compile
    # Requires Triton; provides ~10-30% speedup after warmup
@@ -2876,44 +2780,50 @@ All default values are defined in `config.py`:
 
 ```python
 # Training hyperparameters
-MAX_EPOCHS_DEFAULT = 100
+MAX_EPOCHS_DEFAULT = 150
 BATCH_SIZE_DEFAULT = 128
 LEARNING_RATE_DEFAULT = 0.001
 WEIGHT_DECAY_DEFAULT = 0.0001
 LABEL_SMOOTHING_DEFAULT = 0.1
-PATIENCE_DEFAULT = 15
+PATIENCE_DEFAULT = 25
 MIN_DELTA_DEFAULT = 0.0005
 LEARNING_RATE_WARMUP_EPOCHS = 5
 
 # Dataset sizes
-NUM_TRAIN_DEFAULT = 30000
+NUM_TRAIN_DEFAULT = 58000
 NUM_VAL_DEFAULT = 2000
-NUM_TEST_ROT_DEFAULT = 1200
-NUM_TEST_UNROT_DEFAULT = 200
+NUM_TEST_ROT_DEFAULT = 2000
+NUM_TEST_UNROT_DEFAULT = 8000
 
 # TQF architecture
 TQF_TRUNCATION_R_DEFAULT = 20
 TQF_HIDDEN_DIMENSION_DEFAULT = None  # Auto-tuned to ~650k params
-TQF_SYMMETRY_LEVEL_DEFAULT = 'T24'
+TQF_SYMMETRY_LEVEL_DEFAULT = 'none'
+TQF_FIBONACCI_DIMENSION_MODE_DEFAULT = 'none'
+TQF_USE_Z6_AUGMENTATION_DEFAULT = True
 
-# TQF fractal parameters
-TQF_FRACTAL_ITERATIONS_DEFAULT = 5
-TQF_FRACTAL_DIM_TOLERANCE_DEFAULT = 0.15
+# TQF fractal parameters (all disabled/opt-in by default)
+TQF_FRACTAL_ITERATIONS_DEFAULT = 0       # Disabled; provide value via CLI to enable
+TQF_FRACTAL_DIM_TOLERANCE_DEFAULT = 0.08  # Internal constant, not CLI-tunable
 TQF_THEORETICAL_FRACTAL_DIM_DEFAULT = 1.585  # Sierpinski triangle dimension
 TQF_FRACTAL_EPSILON_DEFAULT = 1e-8
-TQF_SELF_SIMILARITY_WEIGHT_DEFAULT = 0.001
-TQF_BOX_COUNTING_WEIGHT_DEFAULT = 0.001
-TQF_BOX_COUNTING_SCALES_DEFAULT = 10
+TQF_SELF_SIMILARITY_WEIGHT_DEFAULT = 0.0  # Disabled; provide value via CLI to enable
+TQF_BOX_COUNTING_WEIGHT_DEFAULT = 0.0    # Disabled; provide value via CLI to enable
+TQF_BOX_COUNTING_SCALES_DEFAULT = 10     # Internal constant, not CLI-tunable
 
-# TQF attention/mixing parameters
-TQF_ADAPTIVE_MIXING_TEMP_DEFAULT = 0.3
+# TQF attention parameters
 TQF_HOP_ATTENTION_TEMP_DEFAULT = 1.0
 
-# TQF regularization
-TQF_GEOMETRY_REG_WEIGHT_DEFAULT = 0.1
-TQF_ROTATION_INV_LOSS_WEIGHT_DEFAULT = 0.15
-TQF_INVERSION_LOSS_WEIGHT_DEFAULT = 0.2
+# TQF regularization (all disabled/opt-in by default)
+TQF_GEOMETRY_REG_WEIGHT_DEFAULT = 0.0    # Disabled; provide value via CLI to enable
+# Note: Equivariance/invariance/duality loss weights default to None (disabled).
+# Users enable them by providing a weight value directly via CLI.
 TQF_VERIFY_DUALITY_INTERVAL_DEFAULT = 10
+
+# TQF orbit mixing temperatures
+TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT = 0.3
+TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT = 0.5
+TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT = 0.7
 
 # Reproducibility
 NUM_SEEDS_DEFAULT = 1
@@ -2921,7 +2831,7 @@ SEED_DEFAULT = 42
 
 # Parameter matching
 TARGET_PARAMS = 650000
-TARGET_PARAMS_TOLERANCE_PERCENT = 1.0
+TARGET_PARAMS_TOLERANCE_PERCENT = 1.1
 ```
 
 ---
@@ -2973,30 +2883,101 @@ python main.py --num-epochs 10 --num-train 1000 --num-val 200 --num-seeds 1
 python main.py --num-epochs 30 --num-train 5000 --num-val 500 --num-seeds 3
 ```
 
-### Standard Benchmarking (~ 15 minutes)
+### Standard Benchmarking (~ 60 minutes per seed)
 ```bash
-python main.py --num-epochs 50 --num-train 30000 --num-val 2000 --num-seeds 5
+python main.py --num-seeds 5
 ```
 
-### Publication Quality (~ 2 hours)
+### Publication Quality (~ 5 hours)
 ```bash
-python main.py --num-epochs 100 --num-train 60000 --num-val 5000 --num-seeds 10
+python main.py --num-seeds 10
 ```
 
-### Maximum Performance (~ 4 hours)
+---
+
+## 14. Result Output
+
+### Automatic Persistent Result Logging
+
+All experiment results are automatically saved to disk in the `data/output/` directory. No CLI flag is required — this happens by default on every run.
+
+### CLI Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `--no-save-results` | flag | `False` | Disable saving results to disk entirely. Console output is unaffected. |
+| `--results-dir` | path | `data/output/` | Directory for result output files. Created automatically if it does not exist. Ignored when `--no-save-results` is set. |
+
+**Examples:**
+
 ```bash
-python main.py --num-epochs 200 --num-train 60000 --num-val 5000 --num-seeds 10 \
-  --patience 20 --learning-rate 0.0003 --tqf-symmetry-level T24 \
-  --tqf-fractal-iterations 10 --tqf-z6-equivariance-weight 0.3 \
-  --tqf-inversion-loss-weight 0.3 --label-smoothing 0.15 \
-  --compile  # Linux with Triton only; skip on Windows
+# Default behavior (results saved to data/output/)
+python main.py --models TQF-ANN
+
+# Disable persistent result saving (console output only)
+python main.py --models TQF-ANN --no-save-results
+
+# Save results to a custom directory
+python main.py --models TQF-ANN --results-dir /tmp/my_results
 ```
+
+### Output Files
+
+| File | Format | Contents |
+|---|---|---|
+| `results_YYYYMMDD_HHMMSS.json` | JSON | Per-seed results + final mean/std summary |
+| `results_YYYYMMDD_HHMMSS.txt` | Plain text | Human-readable summary table |
+
+**Key features:**
+
+- **Incremental saves**: Results are written to disk after each seed completes, not just at the end. If training is interrupted (crash, Ctrl+C, session timeout), all completed seeds are preserved.
+- **Status tracking**: The JSON file has a `"status"` field that is `"in_progress"` during training and `"completed"` when finished.
+- **Timestamped filenames**: Each run creates a unique file based on the start time, so multiple experiments never overwrite each other.
+- **Output path in config banner**: The file path is displayed in the EXPERIMENT CONFIGURATION section at the start of each run.
+- **Default directory constant**: The default output directory (`data/output/`) is defined as `DEFAULT_RESULTS_DIR` in `config.py`.
+
+**JSON structure:**
+
+```json
+{
+  "status": "completed",
+  "started_at": "2026-02-11 09:32:56",
+  "completed_at": "2026-02-11 12:45:00",
+  "last_updated": "2026-02-11 12:45:00",
+  "results": {
+    "TQF-ANN": [
+      {
+        "model_name": "TQF-ANN",
+        "seed": 42,
+        "best_val_acc": 95.45,
+        "test_unrot_acc": 95.92,
+        "test_rot_acc": 95.56,
+        "params": 651233,
+        "flops": 1300000.0,
+        "inference_time_ms": 3.73,
+        "per_class_acc": {"0": 0.981, "1": 0.992, ...},
+        "best_loss_epoch": 136,
+        "train_time_total": 6372.5
+      }
+    ]
+  },
+  "summary": {
+    "TQF-ANN": {
+      "val_acc": {"mean": 95.38, "std": 0.29},
+      "test_unrot_acc": {"mean": 95.97, "std": 0.04},
+      "test_rot_acc": {"mean": 95.40, "std": 0.19}
+    }
+  }
+}
+```
+
+**Note:** The `data/output/` directory is gitignored to prevent accidentally committing large result files.
 
 ---
 **`QED`**
 
-**Last Updated:** February 7, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

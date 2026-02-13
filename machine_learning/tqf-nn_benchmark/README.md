@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Date:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -32,11 +32,11 @@
 
 ## 1. Overview
 
-This hobby project is an original set of machine learning benchmark tools in the ***Tri-Quarter Toolbox*** which implements Nathan O. Schmidt's ***Tri-Quarter Framework (TQF)*** for ***radial dual triangular lattice graph-based neural networks (TQF-NN)*** with ℤ₆, D₆, and 𝕋₂₄ symmetry group exploitation. Fueled by past and current academic science work (2007-2017 and 2025-present), guided by rigorous creativity, developed via the methods of science, mathematics, and engineering (accelerated with some modern AI assistance), and driven by passion & hard work... It is designed for researchers and practitioners exploring geometric deep learning via TQF symmetry groups (Z₆, D₆, 𝕋₂₄), symmetry-aware architectures, and first-principles neural network design, with built-in benchmarks for "apples-to-apples" comparisons on rotated MNIST datasets using PyTorch on CUDA-enabled hardware.
+This hobby project is an original set of machine learning benchmark tools in the ***Tri-Quarter Toolbox*** which implements Nathan O. Schmidt's ***Tri-Quarter Framework (TQF)*** for ***radial dual triangular lattice graph-based neural networks (TQF-NN)*** with ℤ₆, D₆, and 𝕋₂₄ symmetry group exploitation. Fueled by past and current academic science work (2007-2017 and 2025-present), guided by rigorous creativity, developed via the methods of science, mathematics, and engineering (accelerated with some modern AI assistance), and driven by passion & hard work... It is designed for researchers and practitioners exploring geometric deep learning via TQF symmetry groups (ℤ₆, D₆, 𝕋₂₄), symmetry-aware architectures, and first-principles neural network design, with built-in benchmarks for "apples-to-apples" comparisons on rotated MNIST datasets using PyTorch on CUDA-enabled hardware.
 
 The primary goals are:
 - **Design and Implement *TQF Artificial Neural Network (TQF-ANN)* Architecture**: Apply TQF radial dual triangular lattice graph (truncated) to neural networks (NN) via first principles by leveraging the ℤ₆, D₆, and 𝕋₂₄ symmetry groups for encodings and architecture where practical/useful.
-- **Conduct Rotated MNIST Benchmarks**: Train and evaluate TQF-ANN on rotated MNIST datasets (60° increments aligned with Z₆), measuring rotational invariance and inversion consistency.
+- **Conduct Rotated MNIST Benchmarks**: Train and evaluate TQF-ANN on rotated MNIST datasets (60° increments aligned with ℤ₆), measuring rotational invariance and inversion consistency.
 - **Setup "Apples-to-Apples" Comparisons**: Benchmark TQF-ANN against 3 non-TQF-ANN models (e.g., parameter-matched FC-MLP, CNN-L5, ResNet-18-Scaled) on equivalent hardware (e.g., Intel i7, PyTorch CUDA 12.6, NVIDIA GeForce RTX 4060 Laptop GPU), ensuring ~650K params tolerance for fair evaluation.
 - **Prepare for *TQF Spiking Neural Network (TQF-SNN)* Extension**: Lay groundwork for spiking neural network (SNN) architecture without implementation yet, preparing for future phases.
 - **Promote Reproducibility and Best Practices**: Use fixed seeds, stratified sampling, and modular code for deterministic results.
@@ -46,8 +46,8 @@ The primary goals are:
 ## 2. Key Features
 
 - 🧬 **First-Principles TQF-NN Architecture:** Radial dual triangular lattice graph (truncated) with explicit Eisenstein integer coordinates, true 6-neighbor hexagonal adjacency, phase-pair directional encoding, and circle inversion bijective duality between inner & outer zones.
-- 🔄 **Symmetry Group Enforcement:** Native Z₆ (rotational), D₆ (dihedral), and 𝕋₂₄ (inversive hexagonal dihedral) support with optional geometry regularization + equivariance/inversion orbit consistency losses.
-- 📊 **Rotated MNIST Benchmark Suite:** 60°-aligned augmentations for true Z₆-equivariant evaluation, including orbit mixing inference for robust rotational accuracy.
+- 🔄 **Symmetry Group Enforcement:** Native ℤ₆ (rotational), D₆ (dihedral), and 𝕋₂₄ (inversive hexagonal dihedral) support with optional geometry regularization + equivariance/inversion orbit consistency losses.
+- 📊 **Rotated MNIST Benchmark Suite:** 60°-aligned augmentations for true ℤ₆-equivariant evaluation with robust rotational accuracy.
 - ⚖️ **Apples-to-Apples Comparisons:** Parameter-matched (~650k ±1%) training & evaluation of TQF-ANN vs 3 non-TQF ANN baselines (FC-MLP, CNN-L5, ResNet-18-Scaled); groundwork laid for future non-TQF-SNN baselines.
 - 🧪 **High Test Coverage & Reproducibility:** Over 85–95% coverage on core lattice, symmetry, and training components; fixed seeds, stratified sampling, deterministic algorithms where possible.
 - 💾 **Developer-Friendly CLI & Tooling:** Rich command-line interface, automatic parameter tuning/matching, detailed logging, and VS Code + Windows/Linux/macOS + RTX 4060 Laptop GPU friendly (CUDA 12.6 / PyTorch 2.5+) or equivalent box.
@@ -101,7 +101,7 @@ Activate your virtual environment and run from the project root directory.
 ```bash
 # Activate venv (if not already)
 venv\Scripts\activate
-# Default benchmark (all 4 models, 100 epochs max, 30k train samples)
+# Default benchmark (all 4 models, 150 epochs max, 58k train samples)
 python src\main.py
 ```
 
@@ -109,7 +109,7 @@ python src\main.py
 ```bash
 # Activate venv (if not already)
 source venv/bin/activate
-# Default benchmark (all 4 models, 100 epochs max, 30k train samples)
+# Default benchmark (all 4 models, 150 epochs max, 58k train samples)
 python src/main.py
 ```
 
@@ -140,18 +140,20 @@ python src/main.py
 
 Most common flags:
 ```bash
---models                List of models to run (comma-separated; default: all)
---num-epochs            Training epochs (default: 100)
---num-train             Training set size (default: 30000)
---num-val               Validation set size (default: 2000)
---num-seeds             Number of random seeds (default: 1)
---tqf-symmetry-level    none | Z6 | D6 | T24 (default: none)
---tqf-use-orbit-mixing  Enable Z6 orbit ensemble voting for TQF models
---learning-rate         Initial LR (default: 0.001)
---batch-size            Batch size (default: 128)
---patience              Early stopping patience (default: 15)
---device                cpu | cuda (default: cuda if available)
---compile               Enable PyTorch model compilation (Linux/macOS only)
+--models                      List of models to run (comma-separated; default: all)
+--num-epochs                  Training epochs (default: 150)
+--num-train                   Training set size (default: 58000)
+--num-val                     Validation set size (default: 2000)
+--num-seeds                   Number of random seeds (default: 1)
+--learning-rate               Initial LR (default: 0.001)
+--batch-size                  Batch size (default: 128)
+--patience                    Early stopping patience (default: 25)
+--tqf-symmetry-level          none | Z6 | D6 | T24 (default: none)
+--tqf-use-z6-orbit-mixing     TQF Z6 orbit mixing (competes/conflicts with TQF Z6 augmentation)
+--no-tqf-z6-augmentation      Disable Z6 data augmentation during training
+--tqf-z6-equivariance-weight  Enable and set weight for Z6 equivariance loss (range [0.001, 0.05])
+--device                      cpu | cuda (default: cuda if available)
+--compile                     Enable PyTorch model compilation (Linux/macOS only)
 ```
 
 **Note**: Commands work on both Windows (Command Prompt/PowerShell) and Linux/macOS (terminal/bash). Use `python` (or `python3` on some Linux systems) assuming it's in your PATH.
@@ -184,9 +186,9 @@ python src/main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01 --tqf-d6-e
 Control hierarchical feature learning with Fibonacci weight scaling. All modes have identical parameter counts - only the feature aggregation weights differ:
 ```bash
 # Fibonacci weight mode options
---tqf-fibonacci-mode none           Uniform weighting (simplest baseline)
+--tqf-fibonacci-mode none           Uniform weighting (default)
 --tqf-fibonacci-mode linear         Linear weights [1,2,3,...] (ablation baseline)
---tqf-fibonacci-mode fibonacci      Fibonacci weights [1,1,2,3,5,...] (default)
+--tqf-fibonacci-mode fibonacci      Fibonacci weights [1,1,2,3,5,...] (opt-in)
 
 # Optional: Golden ratio radial binning
 --tqf-use-phi-binning              Use φ-scaled bins (faster inference)
@@ -215,7 +217,7 @@ See full documentation in [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE
 | CNN-L5           | Baseline | ~650k          | 5-layer convnet, parameter-matched           |
 | ResNet-18-Scaled | Baseline | ~650k          | Scaled-down ResNet-18, parameter-matched     |
 
-All models deliberately matched to ~650,000 trainable parameters (±1%) for fair comparison. Models are implemented in cross-platform Python code using PyTorch, ensuring full compatibility with Windows, Linux, and macOS operating systems (CPU/GPU support via CUDA or CPU fallback).
+All models deliberately matched to ~650,000 trainable parameters (±1.1%) for fair comparison. Models are implemented in cross-platform Python code using PyTorch, ensuring full compatibility with Windows, Linux, and macOS operating systems (CPU/GPU support via CUDA or CPU fallback).
 
 ---
 
@@ -225,13 +227,11 @@ Work hard, train hard!
 
 For complete dataset documentation, see [`data/DATASET_README.md`](data/DATASET_README.md).
 
-- **Training / Validation**: Stratified subsets of the standard MNIST training set (default: 55,000 train + 5,000 validation = 60,000 total images). Uses class-balanced sampling for reproducibility and fairness.
-- **Test (unrotated)**: Standard MNIST test set (10,000 images).
-- **Test (rotated)**: Rotated versions of the test set at 0°, 60°, 120°, 180°, 240°, 300° (Z₆-aligned; 10,000 × 6 = 60,000 images total). Note: The description "𝕋₂₄ orbit versions" in prior versions was a minor misnomer—evaluations use Z₆ rotations (6 actions) for orbit mixing, not the full 𝕋₂₄ group (24 actions).
+- **Training / Validation**: Stratified subsets of the standard MNIST training set (default: 58,000 train + 2,000 validation = 60,000 total images). Uses class-balanced sampling for reproducibility and fairness.
+- **Test (unrotated)**: Stratified subset of MNIST test set (default: 8,000 images).
+- **Test (rotated)**: Rotated versions of test samples at 0°, 60°, 120°, 180°, 240°, 300° (ℤ₆-aligned; default: 2,000 base × 6 = 12,000 images total).
 
 Datasets are automatically downloaded from PyTorch (if not present), organized into class-specific folders as PNG images, and rotated (if needed) during setup. This process is cross-platform compatible (Windows/Linux/macOS) using standard libraries like Pillow (PIL) for image handling and os.path for file paths—no platform-specific code required.
-
-Rotation-invariant/equivariant evaluation is performed using orbit mixing (ensemble voting over Z₆ symmetry group actions) where appropriate, particularly for TQF models to leverage their hexagonal symmetry.
 
 ---
 
@@ -309,8 +309,8 @@ See some of our future TODO items in [`FUTURE_TODO.md`](FUTURE_TODO.md).
 
 **`QED`**
 
-**Last Updated:** February 7, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Date:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -134,7 +134,7 @@
 (venv) $ python src/main.py --models TQF-ANN --num-seeds 1 --num-epochs 10 --num-train 10000
 
 # Medium run: 40 epochs on full training set (~50k samples)
-(venv) $ python src/main.py --models TQF-ANN MLP --num-seeds 2 --num-epochs 40 --num-train 50000
+(venv) $ python src/main.py --models TQF-ANN FC-MLP --num-seeds 2 --num-epochs 40 --num-train 50000
 ```
 
 **That's it—now you're cookin' with gas and benchmarkin' the TQF-ANN!**
@@ -144,7 +144,16 @@
 
 ## 3. Interpret Results
 
-After an experiment finishes, you'll see a clean summary table printed to the console as something like (example format):
+After an experiment finishes, results are available in **two places**:
+
+1. **Console output** — a summary table printed to stdout (see below)
+2. **Persistent files** — automatically saved to `data/output/results_YYYYMMDD_HHMMSS.json` (and a companion `.txt` summary)
+
+Results are saved **incrementally after each seed completes**, so even if training is interrupted (crash, session timeout, Ctrl+C), all completed seeds are preserved on disk. The output path is shown in the experiment configuration banner at startup.
+
+### Console Output
+
+You'll see a clean summary table printed to the console as something like (example format):
 
 ```
 ============================================================================================
@@ -165,10 +174,23 @@ ResNet              98.5±0.3   98.8±0.2   95.8±0.6     647.9±1.0     22.1±0
 - **Inf Time (ms)**: Average inference time per sample on your hardware
 
 **Quick interpretation tips:**
-- **TQF-ANN strength** — Look primarily at **Rot Acc** column. A main feature of TQF is rotation invariance thanks to explicit Z₆/D₆/𝕋₂₄ geometric structure and orbit mixing.
+- **TQF-ANN strength** — Look primarily at **Rot Acc** column. A main feature of TQF is rotation invariance thanks to explicit ℤ₆/D₆/𝕋₂₄ geometric structure.
 - **Greatness** — If Rot Acc is much higher than baselines while Val/Test Acc is competitive, that's success.
 - **Statistical reliability** — With `--num-seeds ≥ 3`, the ± values give you a sense of variance. Bigger spreads → need more seeds or longer training.
 - **Next steps** — Try ablations with different symmetry levels (`--tqf-symmetry-level none/Z6/D6/T24`), loss weights, or data sizes (`--num-train`, `--num-epochs`) to see what drives the rotation gains.
+
+### Persistent Result Files
+
+All results are automatically saved to `data/output/` in two formats:
+
+- **JSON** (`results_YYYYMMDD_HHMMSS.json`) — machine-readable, includes per-seed results and final summary with mean/std
+- **TXT** (`results_YYYYMMDD_HHMMSS.txt`) — human-readable summary table (same format as the console output)
+
+The JSON file is updated **incrementally after each seed** with status `"in_progress"`, then marked `"completed"` with the full summary when the experiment finishes. This means partial results survive crashes.
+
+**Controlling result output:**
+- `--no-save-results` — disable persistent result saving entirely (console output still works)
+- `--results-dir /path/to/dir` — save results to a custom directory instead of the default `data/output/`
 
 Happy experimenting and benchmarking! Enjoy the symmetries! 🚀
 
@@ -196,7 +218,7 @@ python src/main.py --num-train 4000 --num-epochs 12 --patience 8
 
 ```bash
 # Default baseline run: trains & evaluates the three baseline models (~650k params each)
-python src/main.py --models FC-MLP CNN-L5 ResNet18Scaled
+python src/main.py --models FC-MLP CNN-L5 ResNet-18-Scaled
 ```
 
 ```bash
@@ -211,12 +233,12 @@ python src/main.py --models TQF-ANN --tqf-R 15 --tqf-symmetry-level D6
 
 ```bash
 # Multi-seed for reliable statistics (recommended for serious comparisons)
-python src/main.py --models TQF-ANN ResNet18Scaled --num-seeds 5 --num-epochs 90 --patience 22
+python src/main.py --models TQF-ANN ResNet-18-Scaled --num-seeds 5 --num-epochs 90 --patience 22
 ```
 
 Most frequently used flags to remember:
 
-- `--models`              space- or comma-separated list (e.g. `TQF-ANN ResNet18Scaled`)
+- `--models`              space- or comma-separated list (e.g. `TQF-ANN ResNet-18-Scaled`)
 - `--tqf-symmetry-level`             `none` / `Z6` / `D6` / `T24`
 - `--num-seeds`                      number of independent runs
 - `--num-train`                      training set size
@@ -224,7 +246,10 @@ Most frequently used flags to remember:
 - `--tqf-z6-equivariance-weight`     Z6 rotation equivariance loss (opt-in)
 - `--tqf-d6-equivariance-weight`     D6 reflection equivariance loss (opt-in)
 - `--tqf-t24-orbit-invariance-weight`  T24 orbit invariance loss (opt-in)
-- `--verify-geometry`
+- `--no-tqf-z6-augmentation`         disable Z6 rotation data augmentation
+- `--tqf-use-z6-orbit-mixing`        Z6 evaluation-time orbit mixing
+- `--tqf-use-t24-orbit-mixing`       full T24 evaluation-time orbit mixing
+- `--tqf-verify-geometry`
 - `--compile`                        (Linux only)
 
 For the full list of command parameters (including weights, TQF lattice radius, Fibonacci modes, etc.), see [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
@@ -242,7 +267,7 @@ python src/main.py --models TQF-ANN ResNet-18-Scaled
 **What this does:**
 - Trains only TQF-ANN and ResNet-18-Scaled (~650K params each)
 - Produces clean head-to-head comparison on rotated MNIST
-- Uses Z₆ orbit mixing for fair TQF evaluation
+- Produces rotated MNIST evaluation for fair TQF comparison
 
 ### Symmetry Level Ablation Study
 
@@ -255,7 +280,7 @@ done
 
 **What this does:**
 - none:      No explicit symmetry enforcement (baseline)
-- Z₆:       Cyclic group — 60° rotations only
+- ℤ₆:       Cyclic group — 60° rotations only
 - D₆:       Dihedral group — rotations + reflections
 - 𝕋₂₄:      Full inversive hexagonal dihedral group (D₆ ⋊ ℤ₂) — rotations + reflections + circle inversion
 - Lets you directly compare how much each layer of symmetry improves rotated MNIST accuracy
@@ -265,7 +290,7 @@ done
 Features are disabled by default and enabled by providing a weight value:
 
 ```bash
-# Train with explicit Z₆ rotation equivariance enforcement
+# Train with explicit ℤ₆ rotation equivariance enforcement
 python src/main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01
 
 # Train with D₆ reflection equivariance enforcement
@@ -283,10 +308,46 @@ python src/main.py --models TQF-ANN \
 
 **What this does:**
 - Adds auxiliary loss terms that directly penalize symmetry violations during training
-- Z₆ loss:   Feature consistency under 60° rotations
+- ℤ₆ loss:   Feature consistency under 60° rotations
 - D₆ loss:   Feature consistency under reflections
 - 𝕋₂₄ loss:  Orbit consistency across the full 24-element group
 - Helps the model internalize the radial dual triangular lattice geometry
+
+### Rotation Robustness: Data Augmentation vs. Architecture
+
+TQF-ANN achieves rotation robustness from two sources: **Z6 data augmentation** (training-time rotation of images at 60-degree intervals) and **architectural symmetry** (hexagonal lattice geometry). You can isolate and compare these contributions:
+
+```bash
+# Best accuracy: Z6 data augmentation ON (default), no orbit mixing
+python src/main.py --models TQF-ANN
+
+# Isolate architectural robustness: disable augmentation, enable orbit mixing (avoid competing features)
+python src/main.py --models TQF-ANN --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+
+# Apples-to-apples comparison: TQF-ANN vs CNN without augmentation
+# Shows TQF-ANN's geometric advantage over non-symmetric architectures
+python src/main.py --models TQF-ANN CNN-L5 --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+
+# Full T24 orbit mixing (Z6 rotations + D6 reflections + zone-swap)
+python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
+```
+
+**What this does:**
+- `--no-tqf-z6-augmentation` disables training-time rotation augmentation, so the model must rely purely on its architecture for rotation robustness
+- `--tqf-use-z6-orbit-mixing` averages predictions over 6 input-space rotations (0, 60, ..., 300 degrees) at evaluation time, leveraging TQF-ANN's hexagonal symmetry
+- `--tqf-use-d6-orbit-mixing` adds feature-space reflections (lightweight, classification head only)
+- `--tqf-use-t24-orbit-mixing` adds inner/outer zone-swap variants (full T24 symmetry group)
+- Without augmentation, baseline models (CNN, MLP) lose rotation robustness while TQF-ANN retains it thanks to its geometric structure -- this is the key demonstration of TQF-ANN's architectural advantage
+
+**Temperature tuning** (optional, for advanced users):
+```bash
+# Custom confidence weighting temperatures
+python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
+  --tqf-orbit-mixing-temp-rotation 0.3 \
+  --tqf-orbit-mixing-temp-reflection 0.5 \
+  --tqf-orbit-mixing-temp-inversion 0.7
+```
+Lower temperatures produce sharper weighting (most confident variant dominates); higher temperatures approach uniform averaging.
 
 ### Fibonacci Mode Comparison
 
@@ -413,10 +474,9 @@ You're ready—get your gameface on and get to training!
 5. **Explore advanced/comprehensive/L33T documentation**
    - Full CLI reference → [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md)
    - Architecture overview → [`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md)
-   - Symmetry enforcement details → [`doc/SYMMETRY_ENFORCEMENT.md`](doc/SYMMETRY_ENFORCEMENT.md)
-   - Test suite guide & structure → [`doc/TESTS_README.md`](doc/TESTS_README.md)
    - API documentation → [`doc/API_REFERENCE.md`](doc/API_REFERENCE.md)
-   - Scientific background → TechRxiv paper (link in [`README.md`](README.md))
+   - Data set documentation → [`data/DATASET_README.md`](data/DATASET_README.md)
+   - Test suite guide & structure → [`doc/TESTS_README.md`](doc/TESTS_README.md)
 
 6. **Share results or get help**
    - See all options with descriptions:
@@ -431,8 +491,8 @@ You're ready—get your gameface on and get to training!
 
 **`QED`**
 
-**Last Updated:** February 7, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

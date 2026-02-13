@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Last Updated:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Last Updated:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -176,9 +176,9 @@ print(f"Available models: {models}")
 **Training Hyperparameters:**
 - `--num-epochs`: Maximum training epochs per seed
   - Type: `int`
-  - Default: 100
+  - Default: 150
   - Range: [1, 200]
-  - Why: Early stopping typically terminates before max epochs
+  - Why: Best accuracy occurs at epochs 125-135 with 58K data
 
 - `--batch-size`: Mini-batch size
   - Type: `int`
@@ -210,7 +210,7 @@ print(f"Available models: {models}")
 **Early Stopping:**
 - `--patience`: Epochs without improvement before stopping
   - Type: `int`
-  - Default: 15
+  - Default: 25
   - Range: [1, 50]
 
 - `--min-delta`: Minimum improvement threshold
@@ -221,7 +221,7 @@ print(f"Available models: {models}")
 **Dataset Configuration:**
 - `--num-train`: Training samples (total)
   - Type: `int`
-  - Default: 30000
+  - Default: 58000 (max usable with default 2K validation split)
   - Range: [100, 60000]
   - Note: Must be divisible by 10
 
@@ -262,10 +262,6 @@ print(f"Available models: {models}")
   - Default: `'none'`
   - Choices: `['none', 'linear', 'fibonacci']`
 
-- `--tqf-use-orbit-mixing`: Enable orbit mixing in evaluation
-  - Type: `bool` (flag)
-  - Default: `False`
-
 **TQF Equivariance Losses (TQF-ANN only):**
 Features are disabled by default and enabled by providing a weight value.
 - `--tqf-z6-equivariance-weight`: Enable and set weight for Z6 rotation equivariance loss (disabled by default)
@@ -284,15 +280,12 @@ Features are disabled by default and enabled by providing a weight value.
 
 **TQF Fractal Geometry (TQF-ANN only, opt-in):**
 - `--tqf-fractal-iterations`: Iterations for dimension estimation (default: 0, disabled; enable by providing value in range [1-20])
-- `--tqf-fractal-dim-tolerance`: Convergence tolerance (default: 0.08)
 - `--tqf-self-similarity-weight`: Self-similarity loss weight (default: 0.0, disabled)
 - `--tqf-box-counting-weight`: Box-counting loss weight (default: 0.0, disabled)
-- `--tqf-box-counting-scales`: Number of scales (default: 10)
 - `--tqf-use-phi-binning`: Use golden ratio radial binning (default: False)
 
-**TQF Attention/Mixing (TQF-ANN only):**
-- `--tqf-adaptive-mixing-temp`: Orbit mixing temperature (default: 0.5)
-- `--tqf-hop-attention-temp`: Hop attention temperature (default: 0.5)
+**TQF Attention (TQF-ANN only):**
+- `--tqf-hop-attention-temp`: Hop attention temperature (default: 1.0)
 
 **Example:**
 ```python
@@ -313,9 +306,6 @@ python src/main.py --num-seeds 10
 
 # Train only TQF-ANN with T24 symmetry
 python src/main.py --models TQF-ANN --tqf-symmetry-level T24
-
-# Train TQF-ANN with D6 symmetry and orbit mixing
-python src/main.py --models TQF-ANN --tqf-symmetry-level D6 --tqf-use-orbit-mixing
 
 # Custom dataset sizes
 python src/main.py --num-train 10000 --num-val 1000 --num-test-rot 2000
@@ -347,7 +337,7 @@ python src/main.py --num-epochs 10 --num-train 1000 --num-val 200
 ```
 ValueError: --learning-rate=2.0 outside valid range (0.0, 1.0]
 ValueError: --batch-size=0 must be >= 1
-ValueError: --tqf-symmetry-level='invalid' not in ['Z6', 'D6', 'T24']
+ValueError: --tqf-symmetry-level='invalid' not in ['none', 'Z6', 'D6', 'T24']
 ```
 
 ---
@@ -404,9 +394,9 @@ TQFANN(
     R: int = 20,
     r: float = 1.0,
     symmetry_level: str = 'none',
-    fractal_iters: int = 10,
+    fractal_iters: int = 0,
     use_dual_output: bool = True,
-    fibonacci_mode: str = 'linear',
+    fibonacci_mode: str = 'none',
     use_phi_binning: bool = False,
     use_gradient_checkpointing: bool = False,
     dropout: float = 0.2
@@ -416,7 +406,7 @@ TQFANN(
 **New Parameters (v1.1.0):**
 
 - `fibonacci_mode` (str): Fibonacci enhancement mode
-  - **Default**: `'linear'`
+  - **Default**: `'none'`
   - **Choices**: `['none', 'linear', 'fibonacci']`
   - **Purpose**: Controls how layer aggregation is performed
   - **Options**:
@@ -481,7 +471,7 @@ Each vertex connects to at most 6 neighbors, respecting the radial dual triangul
 
 - `hidden_dim` (Optional[int]): Feature dimension distributed across lattice
   - **Default**: `None` (auto-tuned to ~650K parameters based on `fibonacci_mode`)
-  - **Range**: [64, 2048]
+  - **Range**: [8, 512]
   - **Auto-tuning**: Adjusts for Fibonacci mode to maintain parameter budget
     - `fibonacci_mode='none'` → ~647K params
     - `fibonacci_mode='linear'` → ~651K params
@@ -489,7 +479,7 @@ Each vertex connects to at most 6 neighbors, respecting the radial dual triangul
 
 - `R` (int): Truncation radius for lattice construction
   - **Default**: 20 (updated from 18 for better coverage)
-  - **Range**: [2, 50], must be > inversion radius (r=1.0)
+  - **Range**: [2, 100], must be > inversion radius (r=1.0)
 
 **Example Usage:**
 
@@ -501,7 +491,7 @@ import torch
 model = TQFANN(
     hidden_dim=128,
     R=20,
-    fibonacci_mode='fibonacci',  # Default mode
+    fibonacci_mode='none',  # Default mode (uniform weighting)
     use_phi_binning=False
     # symmetry_level='none' is default (no orbit pooling)
 )
@@ -510,7 +500,7 @@ model = TQFANN(
 model_d6 = TQFANN(
     hidden_dim=128,
     R=20,
-    fibonacci_mode='fibonacci',
+    fibonacci_mode='none',  # Default: uniform weighting
     symmetry_level='D6'  # Enable D6 orbit pooling
 )
 
@@ -527,7 +517,7 @@ model_linear = TQFANN(
 model_fast = TQFANN(
     hidden_dim=128,
     R=20,
-    fibonacci_mode='fibonacci',
+    fibonacci_mode='none',  # Default: uniform weighting
     use_phi_binning=True  # Fewer bins, faster inference
     # symmetry_level='none' is default
 )
@@ -587,7 +577,7 @@ print(f"Parameters: {model.count_parameters():,}")
   - **Why**: Opt-in feature that enforces scale-invariant feature hierarchies
 
 - `fibonacci_mode` (str): Fibonacci weight scaling mode
-  - **Default**: `'fibonacci'` (from `TQF_FIBONACCI_DIMENSION_MODE_DEFAULT`)
+  - **Default**: `'none'` (from `TQF_FIBONACCI_DIMENSION_MODE_DEFAULT`)
   - **Choices**: `['none', 'linear', 'fibonacci']`
   - **Purpose**: Controls layer aggregation weighting
 
@@ -602,27 +592,26 @@ print(f"Parameters: {model.count_parameters():,}")
   - **Default**: False
 
 - `fractal_dim_tol` (float): Tolerance for fractal dimension verification
-  - **Default**: 0.15 (from `TQF_FRACTAL_DIM_TOLERANCE_DEFAULT`)
+  - **Default**: 0.08 (from `TQF_FRACTAL_DIM_TOLERANCE_DEFAULT`)
   - **Range**: [0.0, 1.0]
   - **Theoretical dimension**: 1.585 (Sierpinski triangle)
 
 **Regularization Weights:**
 
 - `geometry_reg_weight` (float): Weight for geometric regularization
-  - **Default**: 0.01 (from `TQF_GEOMETRY_REG_WEIGHT_DEFAULT`)
+  - **Default**: 0.0 (from `TQF_GEOMETRY_REG_WEIGHT_DEFAULT`, disabled; opt-in via CLI)
 
 - `inversion_loss_weight` (float): Weight for inversion duality loss
-  - **Default**: 0.001 (from `TQF_INVERSION_LOSS_WEIGHT_DEFAULT`)
+  - **Default**: 0.0 (disabled; opt-in via CLI `--tqf-inversion-loss-weight`)
 
 - `self_similarity_weight` (float): Weight for fractal self-similarity loss
-  - **Default**: 0.001 (from `TQF_SELF_SIMILARITY_WEIGHT_DEFAULT`)
+  - **Default**: 0.0 (from `TQF_SELF_SIMILARITY_WEIGHT_DEFAULT`, disabled; opt-in via CLI)
 
 - `box_counting_weight` (float): Weight for box counting dimension loss
-  - **Default**: 0.001 (from `TQF_BOX_COUNTING_WEIGHT_DEFAULT`)
+  - **Default**: 0.0 (from `TQF_BOX_COUNTING_WEIGHT_DEFAULT`, disabled; opt-in via CLI)
 
 - `box_counting_scales` (int): Number of scales for box-counting
-  - **Default**: 10 (from `TQF_BOX_COUNTING_SCALES_DEFAULT`)
-  - **Range**: [2, 20]
+  - **Default**: 10 (from `TQF_BOX_COUNTING_SCALES_DEFAULT`, internal constant, not CLI-tunable)
 
 **Attention Parameters:**
 
@@ -986,60 +975,6 @@ aggregated = attention(layer_features)  # (32, 128)
 
 ---
 
-##### `adaptive_orbit_mixing(logits_per_rotation: List[torch.Tensor], temperature: float = 0.3) -> torch.Tensor`
-
-**Description:** Combines logits from multiple Z6 orbit rotations using temperature-scaled softmax weighting.
-
-**Purpose:** Enables ensemble inference by evaluating inputs at all 6 rotation angles (0-deg, 60-deg, 120-deg, 180-deg, 240-deg, 300-deg) and combining predictions based on confidence.
-
-**Parameters:**
-- `logits_per_rotation` (List[torch.Tensor]): List of logit tensors, one per rotation
-  - Each tensor has shape `(batch_size, num_classes)`
-  - Expected length: 6 for full Z6 orbit
-- `temperature` (float): Softmax temperature for mixing weights
-  - Default: 0.3 (slightly sharper than uniform)
-  - Range: (0, 2.0]
-  - Lower values (0.1-0.3): Sharper mixing, emphasizes most confident rotation
-  - Higher values (0.8-1.0): Smoother mixing, approaches uniform averaging
-
-**Returns:**
-- `torch.Tensor`: Ensemble logits of shape `(batch_size, num_classes)`
-
-**Scientific Rationale:**
-- Low temperature (0.1-0.3): Emphasizes rotation with highest confidence
-  - Benefits: Handles partially-visible digits, leverages TQF equivariance
-  - Expected gain: +1-2% accuracy vs uniform averaging
-- High temperature (0.8-1.0): Uniform averaging (ensemble voting)
-  - Benefits: Robust to individual rotation errors
-  - Risk: Dilutes signal from correct rotation
-
-**Usage:**
-```python
-from models_tqf import adaptive_orbit_mixing
-
-# Collect logits from 6 rotations
-logits_0 = model(rotate_image(x, 0))
-logits_60 = model(rotate_image(x, 60))
-logits_120 = model(rotate_image(x, 120))
-logits_180 = model(rotate_image(x, 180))
-logits_240 = model(rotate_image(x, 240))
-logits_300 = model(rotate_image(x, 300))
-
-all_logits = [logits_0, logits_60, logits_120, logits_180, logits_240, logits_300]
-
-# Sharp mixing (emphasize best rotation)
-ensemble = adaptive_orbit_mixing(all_logits, temperature=0.1)
-
-# Smooth mixing (near-uniform averaging)
-ensemble = adaptive_orbit_mixing(all_logits, temperature=1.0)
-```
-
-**CLI Integration:**
-- `--tqf-use-orbit-mixing`: Enable orbit mixing evaluation
-- `--tqf-adaptive-mixing-temp FLOAT`: Set temperature (default: 0.3)
-
----
-
 ##### `class StochasticDepth(nn.Module)`
 
 **Description:** Randomly drops layers during training (ResNet regularization).
@@ -1195,32 +1130,32 @@ Orchestrates training loops, multi-seed experiments, and statistical comparisons
 TrainingEngine(
     model: nn.Module,
     device: torch.device,
-    learning_rate: float = 0.0003,
+    learning_rate: float = 0.001,
     weight_decay: float = 0.0001,
     label_smoothing: float = 0.1,
     use_geometry_reg: bool = False,
-    geometry_weight: float = 0.1,
+    geometry_weight: float = 0.0,
     self_similarity_weight: float = 0.0,
     box_counting_weight: float = 0.0,
     use_amp: bool = True,
     warmup_epochs: int = 5,
-    num_epochs: int = 100
+    num_epochs: int = 150
 )
 ```
 
 **Parameters:**
 - `model` (nn.Module): Neural network to train
 - `device` (torch.device): Computation device (CPU or CUDA)
-- `learning_rate` (float): Learning rate for Adam optimizer. Default: 0.0003
+- `learning_rate` (float): Learning rate for Adam optimizer. Default: 0.001
 - `weight_decay` (float): L2 regularization coefficient for Adam optimizer. Adds penalty term `weight_decay * ||W||^2` to loss, encouraging smaller weights to prevent overfitting. Default: 0.0001 (1e-4). Use lower values (e.g., 5e-5) when TQF regularizations are active.
 - `label_smoothing` (float): Label smoothing factor for CrossEntropyLoss (0=hard labels, 0.1=standard). Default: 0.1
 - `use_geometry_reg` (bool): Enable geometric preservation loss (TQF-ANN only). Default: False
-- `geometry_weight` (float): Weight for geometric regularization loss. Default: 0.1
+- `geometry_weight` (float): Weight for geometric regularization loss. Default: 0.0
 - `self_similarity_weight` (float): Weight for fractal self-similarity loss (TQF-ANN only). Default: 0.0
 - `box_counting_weight` (float): Weight for box-counting dimension loss (TQF-ANN only). Default: 0.0
 - `use_amp` (bool): Enable automatic mixed precision for faster training on RTX GPUs. Default: True
 - `warmup_epochs` (int): Number of epochs for linear LR warmup (0 disables). Default: 5
-- `num_epochs` (int): Total training epochs for scheduler T_max calculation. Default: 200
+- `num_epochs` (int): Total training epochs for scheduler T_max calculation. Default: 150
 
 **Internal Components (created automatically):**
 - Adam optimizer with specified `learning_rate` and `weight_decay`
@@ -1685,6 +1620,69 @@ print(f"Rotation invariance score: {1.0 - inv_error:.4f}")
 
 ---
 
+#### `adaptive_orbit_mixing(logits_per_variant: List[torch.Tensor], temperature: float = 0.3) -> torch.Tensor`
+
+**Description:** Combines multiple prediction variants using max-logit confidence weighting. Each variant's contribution is weighted by the confidence of its most certain prediction (max logit).
+
+**Args:**
+- `logits_per_variant`: List of logit tensors, each `(batch, num_classes)`
+- `temperature`: Softmax temperature for confidence weighting (lower = sharper)
+
+**Returns:**
+- `torch.Tensor`: Weighted average logits `(batch, num_classes)`
+
+---
+
+#### `classify_from_sector_features(model: nn.Module, outer_sector_feats: torch.Tensor, inner_sector_feats: torch.Tensor) -> torch.Tensor`
+
+**Description:** Runs the TQF-ANN classification pipeline on pre-computed zone features. Mirrors the classification steps in `TQFANN.forward()` — shared classification head, sector weight einsum, and confidence-weighted ensemble.
+
+**Args:**
+- `model`: TQFANN model instance (must have `dual_output` attribute)
+- `outer_sector_feats`: Outer zone features `(batch, 6, hidden_dim)`
+- `inner_sector_feats`: Inner zone features `(batch, 6, hidden_dim)`
+
+**Returns:**
+- `torch.Tensor`: Ensemble logits `(batch, num_classes)`
+
+---
+
+#### `evaluate_with_orbit_mixing(model, loader, device, use_z6, use_d6, use_t24, temp_rotation, temp_reflection, temp_inversion, use_amp, verbose) -> Tuple[float, float]`
+
+**Description:** Evaluates TQF-ANN with hierarchical orbit mixing preserving inner/outer mirroring. Three levels: Z6 input-space rotation, D6 feature-space reflection, T24 zone-swap.
+
+**Args:**
+- `model`: TQFANN model instance
+- `loader`: DataLoader for evaluation
+- `device`: Torch device
+- `use_z6/use_d6/use_t24`: Enable each symmetry level
+- `temp_rotation/temp_reflection/temp_inversion`: Per-level temperatures
+- `use_amp`: Enable automatic mixed precision
+- `verbose`: Log per-batch progress
+
+**Returns:**
+- `Tuple[float, float]`: `(average_loss, accuracy_percent)`
+
+**Example:**
+```python
+from evaluation import evaluate_with_orbit_mixing
+
+loss, acc = evaluate_with_orbit_mixing(
+    model=model,
+    loader=test_loader_rot,
+    device=device,
+    use_z6=True,
+    use_d6=True,
+    use_t24=True,
+    temp_rotation=0.3,
+    temp_reflection=0.5,
+    temp_inversion=0.7
+)
+print(f"T24 orbit mixing: {acc:.2f}%")
+```
+
+---
+
 #### `measure_inference_time(model: nn.Module, data_loader: DataLoader, device: torch.device, num_batches: int = 10) -> float`
 
 **Description:** Measures average inference time per sample.
@@ -1774,31 +1772,6 @@ print(f"p-value: {sig_test['p_value']:.4f}")
 print(f"Significant: {sig_test['significant']}")
 print(f"Effect size (Cohen's d): {sig_test['cohens_d']:.3f}")
 ```
-
----
-
-### Advanced Evaluation Functions
-
-#### `evaluate_with_z6_orbit_mixing(model: nn.Module, data_loader: DataLoader, device: torch.device, temperature: float = 0.3) -> Dict[str, float]`
-
-**Description:** Evaluates model using ℤ₆ orbit mixing for rotation robustness.
-
-**Args:**
-- `model`: Trained model
-- `data_loader`: Test data
-- `device`: Computation device
-- `temperature`: Mixing temperature (lower -> more selective)
-
-**Returns:**
-- `Dict[str, float]`:
-  - `'accuracy'`: Accuracy with orbit mixing
-  - `'improvement_over_baseline'`: Accuracy gain vs. no mixing
-
-**Method:**
-- For each sample, generate 6 rotated versions (0-deg, 60-deg, 120-deg, 180-deg, 240-deg, 300-deg)
-- Compute predictions for all rotations
-- Mix predictions using temperature-scaled softmax
-- Final prediction = argmax of mixed logits
 
 ---
 
@@ -1964,24 +1937,24 @@ Centralized constants and hyperparameter defaults.
 ```python
 # Default training settings
 NUM_SEEDS_DEFAULT: int = 1
-MAX_EPOCHS_DEFAULT: int = 100
+MAX_EPOCHS_DEFAULT: int = 150
 BATCH_SIZE_DEFAULT: int = 128
 LEARNING_RATE_DEFAULT: float = 0.001
-NUM_WORKERS_DEFAULT: int = 4
+NUM_WORKERS_DEFAULT: int = 0
 PIN_MEMORY_DEFAULT: bool = True
 
 # Optimizer settings
-OPTIMIZER_TYPE: str = 'adam'
-WEIGHT_DECAY: float = 1e-5
-MOMENTUM: float = 0.9  # For SGD
+WEIGHT_DECAY_DEFAULT: float = 0.0001  # 1e-4
+LABEL_SMOOTHING_DEFAULT: float = 0.1
+DROPOUT_DEFAULT: float = 0.2
 
 # Learning rate schedule
-LR_SCHEDULER_TYPE: str = 'cosine'
-LR_WARMUP_EPOCHS: int = 5
-LR_MIN: float = 1e-6
+LEARNING_RATE_WARMUP_EPOCHS: int = 5
+SCHEDULER_T_MAX_DEFAULT: int = 145  # MAX_EPOCHS - WARMUP
 
 # Early stopping
-EARLY_STOPPING_PATIENCE: int = 10
+PATIENCE_DEFAULT: int = 25
+MIN_DELTA_DEFAULT: float = 0.0005
 ```
 
 ---
@@ -1990,37 +1963,41 @@ EARLY_STOPPING_PATIENCE: int = 10
 
 ```python
 # Lattice structure
-TQF_TRUNCATION_R_DEFAULT: int = 18
-TQF_INVERSION_RADIUS: int = 1  # Fixed
+TQF_TRUNCATION_R_DEFAULT: int = 20
+TQF_RADIUS_R_FIXED: float = 1.0  # Fixed inversion radius
 
 # Model capacity
-TQF_HIDDEN_DIM_DEFAULT: int = 512
-TQF_NUM_LAYERS_DEFAULT: int = 3
+TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 
 # Symmetry
-TQF_SYMMETRY_LEVEL_DEFAULT: str = 'D6'
-TQF_SYMMETRY_CHOICES: List[str] = ['Z6', 'D6', 'T24']
+TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'
+TQF_SYMMETRY_CHOICES: List[str] = ['none', 'Z6', 'D6', 'T24']
 
-# Fractal properties
-TQF_FRACTAL_ITERATIONS_DEFAULT: int = 5
-TQF_FRACTAL_DIM_TOLERANCE_DEFAULT: float = 0.15
+# Fractal properties (opt-in, disabled by default)
+TQF_FRACTAL_ITERATIONS_DEFAULT: int = 0  # 0 = disabled
+TQF_FRACTAL_DIM_TOLERANCE_DEFAULT: float = 0.08
 TQF_THEORETICAL_FRACTAL_DIM_DEFAULT: float = 1.585  # Sierpinski triangle dimension
 TQF_FRACTAL_EPSILON_DEFAULT: float = 1e-8
+TQF_BOX_COUNTING_SCALES_DEFAULT: int = 10
 
 # Fibonacci features
-TQF_FIBONACCI_MODE_DEFAULT: str = 'linear'
+TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
 TQF_FIBONACCI_MODE_CHOICES: List[str] = ['none', 'linear', 'fibonacci']
 TQF_USE_PHI_BINNING_DEFAULT: bool = False
 
-# Regularization weights
-TQF_GEOMETRY_REG_WEIGHT: float = 0.1
-TQF_INV_LOSS_WEIGHT: float = 0.2
-TQF_SELF_SIMILARITY_WEIGHT: float = 0.2
-TQF_BOX_COUNTING_WEIGHT: float = 0.1
+# Z6 augmentation
+TQF_USE_Z6_AUGMENTATION_DEFAULT: bool = True
+
+# Regularization weights (all opt-in, disabled by default)
+TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
+TQF_SELF_SIMILARITY_WEIGHT_DEFAULT: float = 0.0
+TQF_BOX_COUNTING_WEIGHT_DEFAULT: float = 0.0
+
+# Attention
+TQF_HOP_ATTENTION_TEMP_DEFAULT: float = 1.0
 
 # Verification
-TQF_VERIFY_DUALITY_INTERVAL: int = 5
-TQF_VERIFY_GEOMETRY: bool = True
+TQF_VERIFY_DUALITY_INTERVAL_DEFAULT: int = 10
 ```
 
 ---
@@ -2029,7 +2006,7 @@ TQF_VERIFY_GEOMETRY: bool = True
 
 ```python
 # MNIST dataset sizes
-NUM_TRAIN_DEFAULT: int = 30000
+NUM_TRAIN_DEFAULT: int = 58000
 NUM_VAL_DEFAULT: int = 2000
 NUM_TEST_ROT_DEFAULT: int = 2000
 NUM_TEST_UNROT_DEFAULT: int = 8000
@@ -2074,10 +2051,10 @@ BATCH_SIZE_MAX: int = 1024
 LEARNING_RATE_MIN: float = 0.0
 LEARNING_RATE_MAX: float = 1.0
 
-TQF_HIDDEN_DIM_MIN: int = 64
-TQF_HIDDEN_DIM_MAX: int = 2048
+TQF_HIDDEN_DIM_MIN: int = 8
+TQF_HIDDEN_DIM_MAX: int = 512
 TQF_TRUNCATION_R_MIN: int = 2
-TQF_TRUNCATION_R_MAX: int = 50
+TQF_TRUNCATION_R_MAX: int = 100
 ```
 
 **Usage:**
@@ -2865,8 +2842,8 @@ PHI = (1 + sqrt(5)) / 2 ≈ 1.618033988749...
 
 **`QED`**
 
-**Last Updated:** February 7, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

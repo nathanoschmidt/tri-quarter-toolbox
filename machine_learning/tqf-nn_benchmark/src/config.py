@@ -47,7 +47,31 @@ Date: February 2026
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import os
 from typing import List
+
+###################################################################################
+# OUTPUT CONFIGURATION ###########################################################
+###################################################################################
+
+# DEFAULT_RESULTS_DIR
+# -------------------
+# WHAT: Default directory for persistent experiment result files (JSON + TXT).
+#
+# HOW: Results are saved incrementally after each seed completes, so partial
+#      results survive crashes or interruptions. The directory is relative to the
+#      project root (parent of src/).
+#      - Default: "data/output" (resolved to absolute path at runtime)
+#      - CLI override: --results-dir PATH
+#      - Disable saving: --no-save-results
+#
+# WHY: Persistent result logging ensures long-running experiments are never lost.
+#      The data/output/ directory is gitignored (except for .gitkeep) so results
+#      don't pollute version control.
+DEFAULT_RESULTS_DIR: str = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    'data', 'output'
+)
 
 ###################################################################################
 # REPRODUCIBILITY CONSTANTS #######################################################
@@ -131,12 +155,14 @@ SEEDS_DEFAULT: List[int] = list(range(SEED_DEFAULT, SEED_DEFAULT + NUM_SEEDS_DEF
 #         more efficiently than baselines - but still needs sufficient samples to
 #         discover these patterns
 #      2. With 6x rotation augmentation (0deg, 60deg, 120deg, 180deg, 240deg, 300deg),
-#         30K samples provide ~180K augmented views per epoch
-#      3. RTX 4060 GPU (8GB VRAM) handles 30K efficiently without memory pressure
-#      4. Smaller datasets (10K) risk underfitting; larger (60K) increase training
-#         time without proportional accuracy gains in this controlled experiment
-#      Balance: 30K provides robust convergence while maintaining rapid iteration.
-NUM_TRAIN_DEFAULT: int = 30000
+#         58K samples provide ~348K augmented views per epoch
+#      3. RTX 4060 GPU (8GB VRAM) handles 58K efficiently without memory pressure
+#      4. Smaller datasets (10K) risk underfitting; 30K works but 58K yields +1.15%
+#         test accuracy improvement by reducing data-limited underfitting
+#      Note: MNIST has 60K total training images; 2K are reserved for validation
+#      (NUM_VAL_DEFAULT), so 58K is the maximum usable training set.
+#      Balance: 58K maximizes available data for 651K-parameter model generalization.
+NUM_TRAIN_DEFAULT: int = 58000
 
 # NUM_VAL_DEFAULT
 # ---------------
@@ -365,11 +391,12 @@ DROPOUT_DEFAULT: float = 0.2
 #      2. 100 epochs ensure we never prematurely stop due to hard limit
 #      3. Prevents wasting compute if early stopping fails (e.g., due to bugs)
 #      Empirical observations:
-#      - MNIST converges in 40-60 epochs with proper hyperparameters
-#      - Validation accuracy plateaus by epoch 80 in most cases
-#      - Training beyond 100 epochs rarely improves test accuracy (overfitting)
-#      Decision: 100 provides ample headroom for convergence while bounding compute cost.
-MAX_EPOCHS_DEFAULT: int = 100
+#      - With 58K data, best accuracy epochs are 125-135 (vs 50-80 with 30K)
+#      - CosineAnnealingLR fine-tuning tail (epochs 100-150, LR < 3e-4) yields
+#        an additional ~0.5% accuracy gain over stopping at 100 epochs
+#      - 150 epochs with patience=25 adds +0.22% test acc over 100 epochs
+#      Decision: 150 provides headroom for the cosine annealing tail to refine.
+MAX_EPOCHS_DEFAULT: int = 150
 
 # PATIENCE_DEFAULT
 # ----------------
@@ -392,10 +419,11 @@ MAX_EPOCHS_DEFAULT: int = 100
 #      - Large patience (30): Patient, but wastes compute on plateaued models
 #      Empirical tuning:
 #      - 10 epochs: Sometimes stops prematurely during learning rate transitions
-#      - 15 epochs: Balanced, allows recovery from plateaus while stopping overfitting
-#      - 25 epochs: Too patient, trains 20-30% longer with no accuracy improvement
-#      Decision: 15 epochs is standard in deep learning (e.g., Keras default is 10-15).
-PATIENCE_DEFAULT: int = 15
+#      - 15 epochs: Stops too early with 58K data (best epochs at 125-135)
+#      - 25 epochs: Allows the CosineAnnealingLR tail to fully converge, yielding
+#        +0.22% test accuracy and +0.25% rotated accuracy over patience=15
+#      Decision: 25 epochs matches the longer training schedule needed for 58K data.
+PATIENCE_DEFAULT: int = 25
 
 # MIN_DELTA_DEFAULT
 # -----------------
@@ -573,6 +601,9 @@ TQF_FRACTAL_ITERATIONS_DEFAULT: int = 0
 # TQF_FRACTAL_DIM_TOLERANCE_DEFAULT
 # ---------------------------------
 # WHAT: Tolerance for fractal dimension verification checks.
+#       Internal constant — not exposed as a CLI parameter.
+#       (Formerly --tqf-fractal-dim-tolerance; consolidated to reduce CLI surface area.
+#        Related to --tqf-fractal-iterations which controls whether fractal features are active.)
 #
 # HOW: Acceptable deviation between measured and theoretical fractal dimensions.
 #      If |measured - theoretical| > tolerance, emit warning (but don't halt training).
@@ -636,11 +667,13 @@ TQF_FRACTAL_EPSILON_DEFAULT: float = 1e-8
 # TQF_BOX_COUNTING_SCALES_DEFAULT
 # -------------------------------
 # WHAT: Number of scale levels for box-counting fractal dimension estimation.
+#       Internal constant — not exposed as a CLI parameter.
+#       (Formerly --tqf-box-counting-scales; consolidated to reduce CLI surface area.
+#        Related to --tqf-box-counting-weight which controls whether box-counting loss is active.)
 #
 # HOW: Box sizes range from coarse (large boxes) to fine (small boxes) over this
 #      many logarithmically-spaced levels. More scales = more accurate dimension.
 #      - Default: 10 scales
-#      - CLI override: --tqf-box-counting-scales N
 #      - Typical range: 5-15 (5 = coarse, 15 = fine)
 #      - Computation: O(scales * num_vertices) per iteration
 #
@@ -656,30 +689,6 @@ TQF_FRACTAL_EPSILON_DEFAULT: float = 1e-8
 #      - 15 scales: Negligible improvement over 10, 50% slower
 #      Decision: 10 scales provides reliable dimension estimates without excessive cost.
 TQF_BOX_COUNTING_SCALES_DEFAULT: int = 10
-
-# TQF_ADAPTIVE_MIXING_TEMP_DEFAULT
-# --------------------------------
-# WHAT: Temperature parameter for adaptive mixing of dual metrics.
-#
-# HOW: Controls softmax temperature when combining multiple dual metric distances.
-#      Higher temp = more uniform mixing, lower temp = more selective (winner-take-all).
-#      - Default: 0.5
-#      - CLI override: --tqf-adaptive-mixing-temp F
-#      - Range: (0, 1] where 0.1 = very selective, 1.0 = uniform
-#      - Used in: Attention-weighted aggregation of dual lattice distances
-#
-# WHY: TQF uses multiple dual metrics (Euclidean, hyperbolic, inverted). Adaptive
-#      mixing learns to weight these metrics based on context. Temperature controls
-#      the sharpness of this weighting. Scientific rationale:
-#      1. Low temp (0.1): Hard selection (picks single best metric), less flexible
-#      2. Medium temp (0.5): Soft selection (weighted average), balanced
-#      3. High temp (1.0): Uniform mixing (ignores learned preferences), less discriminative
-#      Empirical tuning:
-#      - 0.1: Too aggressive, unstable training (gradients spike)
-#      - 0.5: Balanced, stable training with good metric selection
-#      - 1.0: Too smooth, doesn't exploit metric diversity
-#      Decision: 0.5 is standard for attention mechanisms (similar to Transformer temp = sqrt(d_k)).
-TQF_ADAPTIVE_MIXING_TEMP_DEFAULT: float = 0.5
 
 ###################################################################################
 # TQF REGULARIZATION WEIGHTS ######################################################
@@ -838,9 +847,9 @@ TQF_VERIFY_DUALITY_INTERVAL_DEFAULT: int = 10
 #      Modes:
 #      - 'none': Standard uniform weighting (simplest)
 #      - 'linear': Linear weight increase (ablation baseline for comparison)
-#      - 'fibonacci': Fibonacci sequence weights (full TQF specification, default)
+#      - 'fibonacci': Fibonacci sequence weights (full TQF specification)
 #      Inner zone uses inverse (mirrored) weights for bijective duality.
-TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'fibonacci'
+TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
 
 # TQF_USE_PHI_BINNING_DEFAULT
 # ---------------------------
@@ -863,6 +872,149 @@ TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'fibonacci'
 #      - True: More uniform geometry, negligible accuracy difference (~0.1%)
 #      Decision: False by default (simpler and faster). Enable for advanced studies.
 TQF_USE_PHI_BINNING_DEFAULT: bool = False
+
+# TQF_USE_Z6_AUGMENTATION_DEFAULT
+# --------------------------------
+# WHAT: Whether to apply Z6-aligned rotation augmentation during training.
+#
+# HOW: When True, training images are randomly rotated at 60-degree intervals
+#      (with +/-15 degree jitter) to teach rotation robustness.
+#      - Default: True
+#      - CLI override: --no-tqf-z6-augmentation (sets to False)
+#      - When True: Standard training with rotation augmentation (best accuracy)
+#      - When False: No rotation augmentation (isolates architectural robustness)
+#
+# WHY: Z6 rotation augmentation is the primary source of rotation robustness.
+#      Disabling it allows comparison of TQF-ANN's inherent geometric robustness
+#      vs. baseline models, demonstrating the architectural advantage of hexagonal
+#      symmetry without data augmentation.
+#      Decision: True by default for best accuracy. Disable for architecture studies.
+TQF_USE_Z6_AUGMENTATION_DEFAULT: bool = True
+
+# TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT
+# ---------------------------------------
+# WHAT: Temperature for Z6 rotation confidence weighting in orbit mixing.
+#
+# HOW: Controls sharpness of max-logit weighting across 6 rotation variants.
+#      - Default: 0.3 (sharp — most confident rotation dominates)
+#      - CLI override: --tqf-orbit-mixing-temp-rotation
+#      - Range: [0.01, 2.0]
+#      - Lower = sharper (best rotation dominates), Higher = more uniform averaging
+#
+# WHY: Z6 rotations are input-space transformations that produce the most diverse
+#      predictions. Sharp weighting (low temperature) lets the best-aligned rotation
+#      dominate, avoiding dilution from poorly-aligned rotations.
+#      Decision: 0.3 balances diversity benefit vs. noise suppression.
+TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT: float = 0.3
+
+# TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT
+# -----------------------------------------
+# WHAT: Temperature for D6 reflection confidence weighting in orbit mixing.
+#
+# HOW: Controls sharpness of weighting between base and reflected feature variants.
+#      - Default: 0.5 (moderate — some digits are asymmetric under reflection)
+#      - CLI override: --tqf-orbit-mixing-temp-reflection
+#      - Range: [0.01, 2.0]
+#
+# WHY: Reflections are a weaker symmetry for digit recognition because some digits
+#      (e.g., 6/9, 2/5) are not reflection-symmetric. Softer weighting than rotation
+#      prevents reflected variants from overriding correct base predictions.
+#      Decision: 0.5 provides moderate contribution without overwhelming base.
+TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT: float = 0.5
+
+# TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+# ----------------------------------------
+# WHAT: Temperature for T24 zone-swap confidence weighting in orbit mixing.
+#
+# HOW: Controls sharpness of weighting between normal and zone-swapped variants.
+#      - Default: 0.7 (soft — circle inversion is the most abstract symmetry)
+#      - CLI override: --tqf-orbit-mixing-temp-inversion
+#      - Range: [0.01, 2.0]
+#
+# WHY: Zone-swap (exchanging inner/outer roles) is the most abstract T24 operation.
+#      The model learns specific roles for each zone during training, so swapping
+#      them produces less reliable predictions. Soft weighting (high temperature)
+#      prevents the zone-swap variant from dominating.
+#      Decision: 0.7 gives gentle contribution without diluting primary predictions.
+TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT: float = 0.7
+
+###################################################################################
+# NUMERIC RANGE CONSTANTS #########################################################
+###################################################################################
+# Why: Single source of truth for all numeric validation ranges.
+#      Used by config.py assertions and cli.py validation/help text.
+#      Centralizes all min/max constraints to prevent inconsistencies.
+
+# Training hyperparameter ranges
+NUM_SEEDS_MIN: int = 1
+NUM_SEEDS_MAX: int = 20
+SEED_START_MIN: int = 0
+NUM_EPOCHS_MIN: int = 1
+NUM_EPOCHS_MAX: int = 200
+BATCH_SIZE_MIN: int = 1
+BATCH_SIZE_MAX: int = 1024
+LEARNING_RATE_MIN: float = 0.0
+LEARNING_RATE_MAX: float = 1.0
+WEIGHT_DECAY_MIN: float = 0.0
+WEIGHT_DECAY_MAX: float = 1.0
+LABEL_SMOOTHING_MIN: float = 0.0
+LABEL_SMOOTHING_MAX: float = 1.0
+PATIENCE_MIN: int = 1
+PATIENCE_MAX: int = 50
+MIN_DELTA_MIN: float = 0.0
+MIN_DELTA_MAX: float = 1.0
+LEARNING_RATE_WARMUP_EPOCHS_MIN: int = 0
+LEARNING_RATE_WARMUP_EPOCHS_MAX: int = 10
+
+# Dataset size ranges
+NUM_TRAIN_MIN: int = 100
+NUM_TRAIN_MAX: int = 60000
+NUM_VAL_MIN: int = 10
+NUM_VAL_MAX: int = 10000
+NUM_TEST_ROT_MIN: int = 100
+NUM_TEST_ROT_MAX: int = 10000
+NUM_TEST_UNROT_MIN: int = 100
+NUM_TEST_UNROT_MAX: int = 10000
+
+# TQF architecture ranges
+TQF_R_MIN: int = 2  # Must be > inversion radius (r=1)
+TQF_R_MAX: int = 100
+TQF_HIDDEN_DIM_MIN: int = 8
+TQF_HIDDEN_DIM_MAX: int = 512
+TQF_FRACTAL_ITERATIONS_MIN: int = 1
+TQF_FRACTAL_ITERATIONS_MAX: int = 20
+# TQF_FRACTAL_DIM_TOLERANCE range constants removed — no longer CLI-tunable
+# (consolidated as internal constant TQF_FRACTAL_DIM_TOLERANCE_DEFAULT=0.08)
+TQF_SELF_SIMILARITY_WEIGHT_MIN: float = 0.0
+TQF_SELF_SIMILARITY_WEIGHT_MAX: float = 10.0
+TQF_BOX_COUNTING_WEIGHT_MIN: float = 0.0
+TQF_BOX_COUNTING_WEIGHT_MAX: float = 10.0
+# TQF_BOX_COUNTING_SCALES range constants removed — no longer CLI-tunable
+# (consolidated as internal constant TQF_BOX_COUNTING_SCALES_DEFAULT=10)
+
+# TQF attention ranges
+TQF_HOP_ATTENTION_TEMP_MIN: float = 0.01
+TQF_HOP_ATTENTION_TEMP_MAX: float = 10.0
+
+# TQF orbit mixing temperature ranges
+TQF_ORBIT_MIXING_TEMP_MIN: float = 0.01
+TQF_ORBIT_MIXING_TEMP_MAX: float = 2.0
+
+# TQF loss weight ranges
+TQF_GEOMETRY_REG_WEIGHT_MIN: float = 0.0
+TQF_GEOMETRY_REG_WEIGHT_MAX: float = 10.0
+TQF_INVERSION_LOSS_WEIGHT_MIN: float = 0.0
+TQF_INVERSION_LOSS_WEIGHT_MAX: float = 10.0
+TQF_Z6_EQUIVARIANCE_WEIGHT_MIN: float = 0.001
+TQF_Z6_EQUIVARIANCE_WEIGHT_MAX: float = 0.05
+TQF_D6_EQUIVARIANCE_WEIGHT_MIN: float = 0.001
+TQF_D6_EQUIVARIANCE_WEIGHT_MAX: float = 0.05
+TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN: float = 0.001
+TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX: float = 0.02
+
+# TQF verification ranges
+TQF_VERIFY_DUALITY_INTERVAL_MIN: int = 1
+TQF_VERIFY_DUALITY_INTERVAL_MAX: int = 100
 
 ###################################################################################
 # PARAMETER MATCHING CONFIGURATION ################################################
@@ -947,11 +1099,11 @@ TARGET_PARAMS_TOLERANCE_ABSOLUTE: int = int(TARGET_PARAMS * TARGET_PARAMS_TOLERA
 #      Scientific rationale for 0 on Windows:
 #      1. Windows multiprocessing has issues with PyTorch (CUDA initialization errors)
 #      2. MNIST is small (28x28 images), preprocessing is fast (<1ms/image)
-#      3. Data loading is NOT a bottleneck (even with num_workers=0, loading takes
-#         ~0.5 sec/epoch vs 18 sec training time)
-#      4. Using workers=0 ensures stable, reproducible training on Windows systems
+#      3. Using workers=0 ensures stable, reproducible training on Windows systems
+#      Note: With 58K samples, disk I/O was a severe bottleneck without caching.
+#      CustomMNIST now uses lazy in-memory caching (~47 MB for 60K images) so
+#      each image is loaded from disk only once, then served from RAM.
 #      Recommendation for Linux/Mac: Set to 4-8 if data loading becomes bottleneck.
-#      For MNIST, gains are minimal (<5% speedup).
 NUM_WORKERS_DEFAULT: int = 0
 
 # PIN_MEMORY_DEFAULT
@@ -1012,33 +1164,70 @@ TIMESTEPS: int = 100
 ###################################################################################
 
 # Dataset size assertions
-assert NUM_TRAIN_DEFAULT > 0, "NUM_TRAIN_DEFAULT must be positive"
-assert NUM_VAL_DEFAULT > 0, "NUM_VAL_DEFAULT must be positive"
-assert NUM_TEST_ROT_DEFAULT > 0, "NUM_TEST_ROT_DEFAULT must be positive"
-assert NUM_TEST_UNROT_DEFAULT > 0, "NUM_TEST_UNROT_DEFAULT must be positive"
+assert NUM_TRAIN_MIN <= NUM_TRAIN_DEFAULT <= NUM_TRAIN_MAX, \
+    f"NUM_TRAIN_DEFAULT must be in [{NUM_TRAIN_MIN}, {NUM_TRAIN_MAX}]"
+assert NUM_VAL_MIN <= NUM_VAL_DEFAULT <= NUM_VAL_MAX, \
+    f"NUM_VAL_DEFAULT must be in [{NUM_VAL_MIN}, {NUM_VAL_MAX}]"
+assert NUM_TEST_ROT_MIN <= NUM_TEST_ROT_DEFAULT <= NUM_TEST_ROT_MAX, \
+    f"NUM_TEST_ROT_DEFAULT must be in [{NUM_TEST_ROT_MIN}, {NUM_TEST_ROT_MAX}]"
+assert NUM_TEST_UNROT_MIN <= NUM_TEST_UNROT_DEFAULT <= NUM_TEST_UNROT_MAX, \
+    f"NUM_TEST_UNROT_DEFAULT must be in [{NUM_TEST_UNROT_MIN}, {NUM_TEST_UNROT_MAX}]"
 
-# Hyperparameter range assertions
-assert 0 < LEARNING_RATE_DEFAULT < 1, "Learning rate must be in (0, 1)"
+# Training hyperparameter assertions
+assert LEARNING_RATE_MIN < LEARNING_RATE_DEFAULT <= LEARNING_RATE_MAX, \
+    f"Learning rate must be in ({LEARNING_RATE_MIN}, {LEARNING_RATE_MAX}]"
 assert 0 <= DROPOUT_DEFAULT < 1, "Dropout must be in [0, 1)"
-assert 0 <= LABEL_SMOOTHING_DEFAULT < 1, "Label smoothing must be in [0, 1)"
-
-assert PATIENCE_DEFAULT > 0, "Patience must be positive"
-assert MIN_DELTA_DEFAULT >= 0, "Min delta must be non-negative"
-assert LEARNING_RATE_WARMUP_EPOCHS >= 0, "Warmup epochs must be non-negative"
+assert LABEL_SMOOTHING_MIN <= LABEL_SMOOTHING_DEFAULT <= LABEL_SMOOTHING_MAX, \
+    f"Label smoothing must be in [{LABEL_SMOOTHING_MIN}, {LABEL_SMOOTHING_MAX}]"
+assert PATIENCE_MIN <= PATIENCE_DEFAULT <= PATIENCE_MAX, \
+    f"Patience must be in [{PATIENCE_MIN}, {PATIENCE_MAX}]"
+assert MIN_DELTA_MIN <= MIN_DELTA_DEFAULT <= MIN_DELTA_MAX, \
+    f"Min delta must be in [{MIN_DELTA_MIN}, {MIN_DELTA_MAX}]"
+assert LEARNING_RATE_WARMUP_EPOCHS_MIN <= LEARNING_RATE_WARMUP_EPOCHS <= LEARNING_RATE_WARMUP_EPOCHS_MAX, \
+    f"Warmup epochs must be in [{LEARNING_RATE_WARMUP_EPOCHS_MIN}, {LEARNING_RATE_WARMUP_EPOCHS_MAX}]"
+assert NUM_EPOCHS_MIN <= MAX_EPOCHS_DEFAULT <= NUM_EPOCHS_MAX, \
+    f"Max epochs must be in [{NUM_EPOCHS_MIN}, {NUM_EPOCHS_MAX}]"
+assert BATCH_SIZE_MIN <= BATCH_SIZE_DEFAULT <= BATCH_SIZE_MAX, \
+    f"Batch size must be in [{BATCH_SIZE_MIN}, {BATCH_SIZE_MAX}]"
+assert WEIGHT_DECAY_MIN <= WEIGHT_DECAY_DEFAULT <= WEIGHT_DECAY_MAX, \
+    f"Weight decay must be in [{WEIGHT_DECAY_MIN}, {WEIGHT_DECAY_MAX}]"
 
 # TQF parameter assertions
-assert TQF_TRUNCATION_R_DEFAULT > TQF_RADIUS_R_FIXED, "Truncation radius must exceed inversion radius"
-assert TQF_HIDDEN_DIMENSION_DEFAULT > 0, "Hidden dimension must be positive"
-assert TQF_SYMMETRY_LEVEL_DEFAULT in ['none', 'Z6', 'D6', 'T24'], "Invalid symmetry level"
-assert TQF_FIBONACCI_DIMENSION_MODE_DEFAULT in ['none', 'linear', 'fibonacci'], "Invalid Fibonacci dimension mode"
-assert TQF_FRACTAL_ITERATIONS_DEFAULT >= 0, "Fractal iterations must be non-negative (0 = disabled)"
-assert TQF_BOX_COUNTING_SCALES_DEFAULT > 0, "Box-counting scales must be positive"
-assert 0 < TQF_ADAPTIVE_MIXING_TEMP_DEFAULT <= 1, "Adaptive mixing temp default must be in (0, 1]"
+assert TQF_R_MIN <= TQF_TRUNCATION_R_DEFAULT <= TQF_R_MAX, \
+    f"Truncation radius must be in [{TQF_R_MIN}, {TQF_R_MAX}]"
+assert TQF_TRUNCATION_R_DEFAULT > TQF_RADIUS_R_FIXED, \
+    "Truncation radius must exceed inversion radius"
+assert TQF_HIDDEN_DIM_MIN <= TQF_HIDDEN_DIMENSION_DEFAULT <= TQF_HIDDEN_DIM_MAX, \
+    f"Hidden dimension must be in [{TQF_HIDDEN_DIM_MIN}, {TQF_HIDDEN_DIM_MAX}]"
+assert TQF_SYMMETRY_LEVEL_DEFAULT in ['none', 'Z6', 'D6', 'T24'], \
+    "Invalid symmetry level"
+assert TQF_FIBONACCI_DIMENSION_MODE_DEFAULT in ['none', 'linear', 'fibonacci'], \
+    "Invalid Fibonacci dimension mode"
+assert TQF_FRACTAL_ITERATIONS_DEFAULT >= 0, \
+    "Fractal iterations must be non-negative (0 = disabled)"
+assert 2 <= TQF_BOX_COUNTING_SCALES_DEFAULT <= 20, \
+    "Box-counting scales must be in [2, 20] (internal constant, not CLI-tunable)"
+
+# TQF attention assertions
+assert TQF_HOP_ATTENTION_TEMP_MIN <= TQF_HOP_ATTENTION_TEMP_DEFAULT <= TQF_HOP_ATTENTION_TEMP_MAX, \
+    f"Hop attention temp must be in [{TQF_HOP_ATTENTION_TEMP_MIN}, {TQF_HOP_ATTENTION_TEMP_MAX}]"
 
 # Regularization weight assertions
-assert TQF_GEOMETRY_REG_WEIGHT_DEFAULT >= 0, "Geometry weight must be non-negative"
-assert TQF_SELF_SIMILARITY_WEIGHT_DEFAULT >= 0, "Self-similarity weight must be non-negative"
-assert TQF_BOX_COUNTING_WEIGHT_DEFAULT >= 0, "Box-counting weight must be non-negative"
+assert TQF_GEOMETRY_REG_WEIGHT_MIN <= TQF_GEOMETRY_REG_WEIGHT_DEFAULT <= TQF_GEOMETRY_REG_WEIGHT_MAX, \
+    f"Geometry reg weight must be in [{TQF_GEOMETRY_REG_WEIGHT_MIN}, {TQF_GEOMETRY_REG_WEIGHT_MAX}]"
+assert TQF_SELF_SIMILARITY_WEIGHT_MIN <= TQF_SELF_SIMILARITY_WEIGHT_DEFAULT <= TQF_SELF_SIMILARITY_WEIGHT_MAX, \
+    f"Self-similarity weight must be in [{TQF_SELF_SIMILARITY_WEIGHT_MIN}, {TQF_SELF_SIMILARITY_WEIGHT_MAX}]"
+assert TQF_BOX_COUNTING_WEIGHT_MIN <= TQF_BOX_COUNTING_WEIGHT_DEFAULT <= TQF_BOX_COUNTING_WEIGHT_MAX, \
+    f"Box-counting weight must be in [{TQF_BOX_COUNTING_WEIGHT_MIN}, {TQF_BOX_COUNTING_WEIGHT_MAX}]"
+
+# Orbit mixing temperature assertions
+assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
+    f"Rotation temperature must be in [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]"
+assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
+    f"Reflection temperature must be in [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]"
+assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
+    f"Inversion temperature must be in [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]"
+
 # Note: Equivariance/invariance/duality loss weight assertions removed - these features
 # are disabled by default and weights are validated in cli.py when provided.
 

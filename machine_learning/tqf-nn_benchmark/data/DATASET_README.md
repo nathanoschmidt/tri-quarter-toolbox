@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Date:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -197,10 +197,10 @@ Rotated test set created in <path>/data/mnist/organized/rotated_test
 ================================================================================
 DATALOADERS READY AND FULLY REPRODUCIBLE
 ================================================================================
-  Train samples: 30000
+  Train samples: 58000
   Validation samples: 2000
-  Rotated test samples: 6000
-  Unrotated test samples: 10000
+  Rotated test samples: 12000
+  Unrotated test samples: 8000
 ================================================================================
 ```
 
@@ -321,8 +321,8 @@ python src/prepare_datasets.py
 
 **`QED`**
 
-**Last Updated:** February 7, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

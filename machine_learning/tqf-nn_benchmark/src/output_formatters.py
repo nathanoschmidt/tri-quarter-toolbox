@@ -59,9 +59,13 @@ Date: February 2026
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import os
+import json
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 import time
 from datetime import datetime, timedelta
+import numpy as np
 
 # =============================================================================
 # SECTION 1: Typography Constants (ASCII-Only)
@@ -939,3 +943,164 @@ def compute_percentage_difference(value: float, baseline: float) -> str:
     """
     diff_pct: float = ((value - baseline) / baseline) * 100
     return f"{diff_pct:+.2f}%"
+
+
+# =============================================================================
+# SECTION 7: Persistent Result Logging (Disk I/O)
+# =============================================================================
+
+def _make_result_serializable(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert a single seed result dict to JSON-serializable form.
+
+    Handles numpy types (float64, int64, ndarray) and per_class_acc dict
+    keys that may be integer types.
+
+    Args:
+        result: Raw result dict from run_single_seed_experiment()
+    Returns:
+        Dict with all values converted to native Python types
+    """
+    out: Dict[str, Any] = {}
+    for k, v in result.items():
+        if k == 'per_class_acc':
+            out[k] = {str(cls): float(acc) for cls, acc in v.items()}
+        elif isinstance(v, (np.floating, np.integer)):
+            out[k] = float(v)
+        elif isinstance(v, np.ndarray):
+            out[k] = v.tolist()
+        else:
+            out[k] = v
+    return out
+
+
+def save_seed_result_to_disk(
+    result: Dict[str, Any],
+    output_path: str,
+    experiment_config: Optional[Dict[str, Any]] = None
+) -> None:
+    """
+    Incrementally save a seed result to a JSON file on disk.
+
+    Called after each seed completes so partial results survive crashes
+    or session expiry. The file accumulates results across seeds and models.
+
+    Output format (data/output/results_YYYYMMDD_HHMMSS.json):
+        {
+            "status": "in_progress" | "completed",
+            "started_at": "YYYY-MM-DD HH:MM:SS",
+            "last_updated": "YYYY-MM-DD HH:MM:SS",
+            "config": { ... },           // experiment configuration (first call only)
+            "results": {
+                "TQF-ANN": [ {seed_result}, ... ],
+                "FC-MLP": [ ... ]
+            },
+            "summary": { ... }           // populated by save_final_summary_to_disk()
+        }
+
+    Args:
+        result: Single seed result dict from run_single_seed_experiment()
+        output_path: Path to the JSON results file
+        experiment_config: Optional experiment configuration to store once
+    """
+    # Load existing data or initialize
+    data: Dict[str, Any]
+    if os.path.exists(output_path):
+        with open(output_path, 'r') as f:
+            data = json.load(f)
+    else:
+        data = {
+            'status': 'in_progress',
+            'started_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'results': {},
+            'summary': {}
+        }
+        if experiment_config:
+            data['config'] = experiment_config
+
+    model_name: str = result['model_name']
+    if model_name not in data['results']:
+        data['results'][model_name] = []
+
+    data['results'][model_name].append(_make_result_serializable(result))
+    data['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    logging.info(f"Saved seed {result['seed']} results to {output_path}")
+
+
+def save_final_summary_to_disk(
+    summary: Dict[str, Dict[str, Tuple[float, float]]],
+    output_path: str
+) -> None:
+    """
+    Save final aggregated summary (mean +/- std) to the results JSON file.
+
+    Also writes a human-readable .txt companion file with the same basename.
+
+    Args:
+        summary: Aggregated statistics from compare_models_statistical()
+                 Format: {model_name: {metric: (mean, std), ...}, ...}
+        output_path: Path to the JSON results file
+    """
+    data: Dict[str, Any]
+    if os.path.exists(output_path):
+        with open(output_path, 'r') as f:
+            data = json.load(f)
+    else:
+        data = {'results': {}, 'summary': {}}
+
+    # Convert summary tuples to serializable dicts
+    serializable_summary: Dict[str, Dict[str, Dict[str, float]]] = {}
+    for model_name, stats in summary.items():
+        serializable_summary[model_name] = {}
+        for metric, (mean, std) in stats.items():
+            serializable_summary[model_name][metric] = {
+                'mean': float(mean),
+                'std': float(std)
+            }
+
+    data['summary'] = serializable_summary
+    data['status'] = 'completed'
+    data['completed_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    with open(output_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    # Also write a human-readable text summary
+    txt_path: str = output_path.replace('.json', '.txt')
+    with open(txt_path, 'w') as f:
+        f.write("FINAL MODEL COMPARISON (Mean +/- Std)\n")
+        f.write("=" * 120 + "\n")
+        f.write(
+            f"{'Model':<20}  "
+            f"{'Val Acc (%)':<15} "
+            f"{'Test Acc (%)':<15} "
+            f"{'Rot Acc (%)':<15}  "
+            f"{'Params (k)':<15}   "
+            f"{'FLOPs (M)':<15}"
+            f"{'Inf Time (ms)':<15}\n"
+        )
+        f.write("-" * 120 + "\n")
+        for model_name, stats in summary.items():
+            val_mean, val_std = stats['val_acc']
+            test_mean, test_std = stats['test_unrot_acc']
+            rot_mean, rot_std = stats['test_rot_acc']
+            params_mean, params_std = stats['params']
+            flops_mean, flops_std = stats['flops']
+            time_mean, time_std = stats['inference_time_ms']
+            f.write(
+                f"{model_name:<20} "
+                f"{val_mean:6.2f}+/-{val_std:4.2f}   "
+                f"{test_mean:6.2f}+/-{test_std:4.2f}   "
+                f"{rot_mean:6.2f}+/-{rot_std:4.2f}   "
+                f"{params_mean/1e3:7.1f}+/-{params_std/1e3:4.1f}   "
+                f"{flops_mean/1e6:7.1f}+/-{flops_std/1e6:4.1f}   "
+                f"{time_mean:6.2f}+/-{time_std:4.2f}\n"
+            )
+        f.write("=" * 120 + "\n")
+
+    logging.info(f"Final summary saved to {output_path} and {txt_path}")

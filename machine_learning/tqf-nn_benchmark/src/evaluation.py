@@ -7,7 +7,6 @@ both standard classification metrics and TQF-specific geometric verification mea
 
 Key Features:
 - Basic Metrics: Accuracy, loss, per-class accuracy, trainable parameter counting
-- Rotational Robustness: Z6 orbit mixing (averaging predictions over 60-degree rotations)
 - Rotation Invariance Error: Measure of prediction consistency across Z6 orbit
 - Statistical Tests: Paired t-tests with p-values and confidence intervals
 - TQF Verification: Inversion consistency metrics, self-duality compliance checks
@@ -19,8 +18,7 @@ Scientific Rationale:
 The rotation invariance error quantifies how much a model's predictions change under
 rotations from the Z6 symmetry group (0, 60, 120, 180, 240, 300 degrees). For TQF-ANN,
 which has inherent hexagonal symmetry, lower rotation invariance error indicates better
-exploitation of the geometric structure. Z6 orbit mixing aggregates predictions across
-all 6 rotations to leverage symmetry for improved robustness.
+exploitation of the geometric structure.
 
 Usage:
     from evaluation import (
@@ -70,6 +68,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from scipy import stats
+from config import (
+    TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+)
 
 # Try to import ptflops for FLOPs measurement (graceful fallback)
 try:
@@ -156,197 +159,6 @@ def custom_scatter_mean(src: torch.Tensor, index: torch.Tensor, dim_size: int) -
     out.scatter_add_(0, index.unsqueeze(1).repeat(1, src.size(1)), src)
     count.scatter_add_(0, index, torch.ones_like(index, dtype=src.dtype))
     return out / count.clamp(min=1.0).unsqueeze(1)
-
-def rotate_image_tensor(
-    x: torch.Tensor,
-    angle_deg: float,
-    mode: str = 'bilinear'
-) -> torch.Tensor:
-    """
-    Rotate image tensor by specified angle in degrees.
-
-    Why: Essential for Z6 orbit mixing during TQF-ANN inference. Applies
-         rotation to input images at 60-degree increments (0, 60, 120, 180,
-         240, 300) to leverage hexagonal symmetry for improved rotation
-         invariance.
-
-    Scientific rationale: TQF's hexagonal lattice has natural 60-degree
-    rotational symmetry (Z6 group). Evaluating at all 6 orientations and
-    combining predictions exploits this symmetry for robust classification.
-
-    Args:
-        x: Input tensor of shape (B, C, H, W) or (B, H, W) or (B, 784)
-        angle_deg: Rotation angle in degrees (positive = counter-clockwise)
-        mode: Interpolation mode ('bilinear' or 'nearest')
-    Returns:
-        Rotated tensor with same shape as input
-    """
-    original_shape: Tuple[int, ...] = x.shape
-    needs_reshape: bool = False
-
-    # Handle flattened input (B, 784)
-    if x.dim() == 2 and x.size(1) == 784:
-        batch_size: int = x.size(0)
-        x = x.view(batch_size, 1, 28, 28)
-        needs_reshape = True
-    # Handle (B, H, W)
-    elif x.dim() == 3:
-        x = x.unsqueeze(1)  # Add channel dimension
-
-    # Now x is (B, C, H, W)
-    batch_size: int = x.size(0)
-    num_channels: int = x.size(1)
-    height: int = x.size(2)
-    width: int = x.size(3)
-
-    # Convert angle to radians
-    angle_rad: float = angle_deg * np.pi / 180.0
-
-    # Create rotation matrix
-    cos_theta: float = np.cos(angle_rad)
-    sin_theta: float = np.sin(angle_rad)
-
-    # Affine transformation matrix for rotation around center
-    # [cos -sin tx]
-    # [sin  cos ty]
-    theta: torch.Tensor = torch.tensor([
-        [cos_theta, -sin_theta, 0],
-        [sin_theta, cos_theta, 0]
-    ], dtype=x.dtype, device=x.device).unsqueeze(0).repeat(batch_size, 1, 1)
-
-    # Generate affine grid
-    grid: torch.Tensor = F.affine_grid(
-        theta,
-        x.size(),
-        align_corners=False
-    )
-
-    # Apply rotation
-    rotated: torch.Tensor = F.grid_sample(
-        x,
-        grid,
-        mode=mode,
-        padding_mode='zeros',
-        align_corners=False
-    )
-
-    # Reshape back if needed
-    if needs_reshape:
-        rotated = rotated.view(batch_size, 784)
-
-    return rotated
-
-def evaluate_with_z6_orbit_mixing(
-    model: nn.Module,
-    loader: DataLoader,
-    device: torch.device,
-    temperature: float = 0.3,
-    use_amp: bool = True,
-    verbose: bool = False
-) -> Tuple[float, float]:
-    """
-    Evaluate model using Z6 orbit mixing with adaptive temperature weighting.
-
-    Why: Implements TQF-ANN's full inference pipeline by evaluating input at
-         all 6 rotations (Z6 orbit: 0deg, 60deg, 120deg, 180deg, 240deg, 300deg) and
-         combining predictions using confidence-weighted mixing. This exploits
-         hexagonal symmetry for superior rotation invariance.
-
-    Scientific rationale (per TQF spec):
-    - Low temperature (0.1-0.3): Sharp mixing, emphasizes most confident rotation
-      Benefits: Handles partially-visible digits, leverages TQF equivariance
-      Expected gain: +1-2% accuracy vs uniform averaging
-    - High temperature (0.8-1.0): Uniform averaging (ensemble voting)
-      Benefits: Robust to individual rotation errors
-      Risk: Dilutes signal from correct rotation
-
-    Computational cost: 6x forward passes per sample (unavoidable for orbit mixing)
-    Memory: Batch size should be reduced 6x to maintain same VRAM usage
-
-    Args:
-        model: Neural network model (should be TQF-ANN for best results)
-        loader: Data loader
-        device: Computation device
-        temperature: Temperature for softmax weighting (default: 0.3)
-                    Lower = sharper (emphasize best), higher = uniform
-        use_amp: Whether to use automatic mixed precision
-        verbose: Whether to print progress
-    Returns:
-        Tuple of (average_loss, accuracy_percent)
-    """
-    model.eval()
-
-    # Import adaptive_orbit_mixing from models_tqf
-    try:
-        from models_tqf import adaptive_orbit_mixing
-    except ImportError:
-        logging.error("Could not import adaptive_orbit_mixing from models_tqf")
-        raise
-
-    total_loss: float = 0.0
-    correct: int = 0
-    total: int = 0
-
-    # Z6 rotation angles (60-degree increments)
-    z6_angles: List[float] = [0.0, 60.0, 120.0, 180.0, 240.0, 300.0]
-
-    # For loss computation, we'll use the ensemble logits
-    from models_tqf import LabelSmoothingCrossEntropy
-    criterion: LabelSmoothingCrossEntropy = LabelSmoothingCrossEntropy(smoothing=0.0)
-
-    with torch.no_grad():
-        batch_count: int = 0
-        for inputs, labels in loader:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-
-            # Collect logits from all 6 rotations
-            logits_per_rotation: List[torch.Tensor] = []
-
-            for angle in z6_angles:
-                # Rotate input
-                rotated_input: torch.Tensor = rotate_image_tensor(inputs, angle)
-
-                # Forward pass with AMP
-                with torch.amp.autocast('cuda', enabled=use_amp):
-                    # Handle different model signatures
-                    if hasattr(model, 'forward') and 'return_inv_loss' in model.forward.__code__.co_varnames:
-                        logits = model(rotated_input, return_inv_loss=False)
-                    else:
-                        logits = model(rotated_input)
-
-                logits_per_rotation.append(logits)
-
-            # Apply adaptive orbit mixing with temperature
-            ensemble_logits: torch.Tensor = adaptive_orbit_mixing(
-                logits_per_rotation,
-                temperature=temperature
-            )
-
-            # Compute loss on ensemble
-            loss: torch.Tensor = criterion(ensemble_logits, labels)
-            total_loss += loss.item()
-
-            # Compute accuracy
-            _, predicted = torch.max(ensemble_logits.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-            batch_count += 1
-            if verbose and batch_count % 10 == 0:
-                logging.info(f"  Processed {batch_count} batches with Z6 orbit mixing...")
-
-    avg_loss: float = total_loss / len(loader) if len(loader) > 0 else 0.0
-    accuracy: float = 100.0 * correct / total if total > 0 else 0.0
-
-    if verbose:
-        logging.info(
-            f"Z6 Orbit Mixing Evaluation: "
-            f"Loss={avg_loss:.4f}, Accuracy={accuracy:.2f}%, "
-            f"Temperature={temperature:.2f}"
-        )
-
-    return avg_loss, accuracy
 
 # =============================================================================
 # SECTION 2: Performance Metrics
@@ -1009,3 +821,241 @@ def print_comprehensive_metrics(
             print(f"{key:<30} {str(val):>15}")
 
     print("=" * 70)
+
+
+# =============================================================================
+# SECTION 6: Orbit Mixing Evaluation
+# =============================================================================
+
+def adaptive_orbit_mixing(
+    logits_per_variant: List[torch.Tensor],
+    temperature: float = 0.3
+) -> torch.Tensor:
+    """
+    Combine multiple prediction variants using max-logit confidence weighting.
+
+    Each variant's contribution is weighted by the confidence of its most
+    certain prediction (max logit). Lower temperatures sharpen the weights
+    toward the most confident variant; higher temperatures approach uniform
+    averaging.
+
+    Args:
+        logits_per_variant: List of logit tensors, each (batch, num_classes)
+        temperature: Softmax temperature for confidence weighting.
+            Lower = sharper (most confident variant dominates).
+            Higher = more uniform averaging.
+
+    Returns:
+        Weighted average logits (batch, num_classes)
+    """
+    if len(logits_per_variant) == 1:
+        return logits_per_variant[0]
+
+    stacked: torch.Tensor = torch.stack(logits_per_variant, dim=0)  # (N, B, C)
+    max_logits: torch.Tensor = stacked.max(dim=2).values             # (N, B)
+    weights: torch.Tensor = F.softmax(max_logits / temperature, dim=0)  # (N, B)
+    return (stacked * weights.unsqueeze(2)).sum(dim=0)                # (B, C)
+
+
+def classify_from_sector_features(
+    model: nn.Module,
+    outer_sector_feats: torch.Tensor,
+    inner_sector_feats: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Run the TQF-ANN classification pipeline on pre-computed zone features.
+
+    This mirrors the classification steps in TQFANN.forward() — applying the
+    shared classification_head per sector, weighting by learned sector_weights,
+    and combining zones via confidence_weighted_ensemble. No gradient tracking.
+
+    Args:
+        model: TQFANN model instance (must have dual_output attribute)
+        outer_sector_feats: Outer zone features (batch, 6, hidden_dim)
+        inner_sector_feats: Inner zone features (batch, 6, hidden_dim)
+
+    Returns:
+        Ensemble logits (batch, num_classes)
+    """
+    sector_weights: torch.Tensor = F.softmax(model.dual_output.sector_weights, dim=0)
+
+    outer_logits_per_sector: torch.Tensor = model.dual_output.classification_head(outer_sector_feats)
+    outer_logits: torch.Tensor = torch.einsum('bsc,s->bc', outer_logits_per_sector, sector_weights)
+
+    inner_logits_per_sector: torch.Tensor = model.dual_output.classification_head(inner_sector_feats)
+    inner_logits: torch.Tensor = torch.einsum('bsc,s->bc', inner_logits_per_sector, sector_weights)
+
+    return model.dual_output.confidence_weighted_ensemble(outer_logits, inner_logits)
+
+
+def evaluate_with_orbit_mixing(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    use_z6: bool = False,
+    use_d6: bool = False,
+    use_t24: bool = False,
+    temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    use_amp: bool = True,
+    verbose: bool = False
+) -> Tuple[float, float]:
+    """
+    Evaluate TQF-ANN with hierarchical orbit mixing preserving inner/outer mirroring.
+
+    Three levels of symmetry exploitation:
+    - Level 1 (Z6): Input-space rotation — 6 full forward passes (0-300 deg, step 60)
+    - Level 2 (D6): Feature-space reflection — sector permutation on both zones
+    - Level 3 (T24): Zone-swap — exchange inner/outer roles in dual ensemble
+
+    The hierarchical structure mirrors the group decomposition T24 = Z6 x Z2 x Z2:
+    - Outer loop: Z6 rotation averaging (temp_rotation, sharpest)
+    - Middle: Z2 inversion averaging (temp_inversion, softest)
+    - Inner: Z2 reflection averaging (temp_reflection, moderate)
+
+    Args:
+        model: TQFANN model instance
+        loader: DataLoader for evaluation
+        device: Torch device
+        use_z6: Enable Z6 rotation orbit mixing
+        use_d6: Enable D6 reflection orbit mixing (implies Z6)
+        use_t24: Enable T24 zone-swap orbit mixing (implies D6)
+        temp_rotation: Temperature for Z6 rotation averaging
+        temp_reflection: Temperature for D6 reflection averaging
+        temp_inversion: Temperature for T24 zone-swap averaging
+        use_amp: Enable automatic mixed precision
+        verbose: Log per-batch progress
+
+    Returns:
+        Tuple of (average_loss, accuracy_percent)
+    """
+    # Lazy imports to avoid circular dependency (engine.py imports evaluation)
+    from engine import rotate_batch_images
+    from symmetry_ops import apply_d6_reflection_to_sectors
+
+    model.eval()
+
+    total_loss: float = 0.0
+    correct: int = 0
+    total: int = 0
+
+    z6_angles: List[int] = [0, 60, 120, 180, 240, 300]
+
+    # Determine which levels are active
+    do_reflections: bool = use_d6 or use_t24
+    do_inversions: bool = use_t24
+
+    if verbose:
+        level_str: str = "Z6"
+        if use_t24:
+            level_str = "T24 (Z6+D6+zone-swap)"
+        elif use_d6:
+            level_str = "D6 (Z6+reflections)"
+        logging.info(f"Orbit mixing evaluation: {level_str}")
+
+    with torch.no_grad():
+        for batch_idx, (inputs, labels) in enumerate(loader):
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            # ── Level 1: Z6 input-space rotations ──
+            rotation_logits: List[torch.Tensor] = []
+
+            for angle in z6_angles:
+                rotated_input: torch.Tensor = rotate_batch_images(inputs, angle)
+
+                with torch.amp.autocast('cuda', enabled=use_amp and device.type == 'cuda'):
+                    logits = model(rotated_input, return_inv_loss=False)
+
+                # Collect base logits from this rotation
+                base_logits: torch.Tensor = logits
+                variant_logits: List[torch.Tensor] = [base_logits]
+
+                if do_reflections or do_inversions:
+                    # Retrieve cached zone features from this forward pass
+                    outer_feats: torch.Tensor = model.get_cached_sector_features()
+                    inner_feats: torch.Tensor = model.get_cached_inner_sector_features()
+
+                    # ── Level 2: D6 feature-space reflection ──
+                    if do_reflections:
+                        # Apply reflection across axis 0 to BOTH zones (preserves mirroring)
+                        reflected_outer: torch.Tensor = apply_d6_reflection_to_sectors(
+                            outer_feats, reflection_axis=0
+                        )
+                        reflected_inner: torch.Tensor = apply_d6_reflection_to_sectors(
+                            inner_feats, reflection_axis=0
+                        )
+                        reflected_logits: torch.Tensor = classify_from_sector_features(
+                            model, reflected_outer, reflected_inner
+                        )
+                        variant_logits.append(reflected_logits)
+
+                    # ── Level 3: T24 zone-swap (inner <-> outer) ──
+                    if do_inversions:
+                        # Zone-swap: inner becomes "outer", outer becomes "inner"
+                        swapped_logits: torch.Tensor = classify_from_sector_features(
+                            model, inner_feats, outer_feats  # swapped roles
+                        )
+                        variant_logits.append(swapped_logits)
+
+                        if do_reflections:
+                            # Zone-swap on reflected features
+                            swapped_reflected_logits: torch.Tensor = classify_from_sector_features(
+                                model, reflected_inner, reflected_outer  # reflected + swapped
+                            )
+                            variant_logits.append(swapped_reflected_logits)
+
+                # ── Hierarchical averaging within this rotation ──
+                if len(variant_logits) == 1:
+                    # Z6 only: no inner averaging needed
+                    rotation_logits.append(variant_logits[0])
+                elif len(variant_logits) == 2:
+                    # D6: average base + reflected with reflection temperature
+                    stacked = torch.stack(variant_logits, dim=0)
+                    max_conf = stacked.max(dim=2).values
+                    weights = F.softmax(max_conf / temp_reflection, dim=0)
+                    averaged = (stacked * weights.unsqueeze(2)).sum(dim=0)
+                    rotation_logits.append(averaged)
+                else:
+                    # T24: hierarchical — first average reflection pairs, then inversion pairs
+
+                    # Non-inverted pair: variant_logits[0] (base), variant_logits[1] (reflected)
+                    non_inv_stack = torch.stack([variant_logits[0], variant_logits[1]], dim=0)
+                    non_inv_conf = non_inv_stack.max(dim=2).values
+                    non_inv_w = F.softmax(non_inv_conf / temp_reflection, dim=0)
+                    non_inv_avg = (non_inv_stack * non_inv_w.unsqueeze(2)).sum(dim=0)
+
+                    # Inverted pair: variant_logits[2] (swapped), variant_logits[3] (swapped+reflected)
+                    inv_stack = torch.stack([variant_logits[2], variant_logits[3]], dim=0)
+                    inv_conf = inv_stack.max(dim=2).values
+                    inv_w = F.softmax(inv_conf / temp_reflection, dim=0)
+                    inv_avg = (inv_stack * inv_w.unsqueeze(2)).sum(dim=0)
+
+                    # Inversion averaging (non-inverted vs inverted)
+                    zone_stack = torch.stack([non_inv_avg, inv_avg], dim=0)
+                    zone_conf = zone_stack.max(dim=2).values
+                    zone_w = F.softmax(zone_conf / temp_inversion, dim=0)
+                    rotation_result = (zone_stack * zone_w.unsqueeze(2)).sum(dim=0)
+
+                    rotation_logits.append(rotation_result)
+
+            # ── Final Z6 rotation averaging ──
+            ensemble_logits: torch.Tensor = adaptive_orbit_mixing(
+                rotation_logits, temperature=temp_rotation
+            )
+
+            # Standard evaluation metrics
+            loss = F.cross_entropy(ensemble_logits, labels)
+            total_loss += loss.item()
+            _, predicted = torch.max(ensemble_logits.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+            if verbose and batch_idx % 10 == 0:
+                logging.info(f"  Batch {batch_idx}/{len(loader)}: "
+                             f"acc={100.0 * correct / total:.2f}%")
+
+    avg_loss: float = total_loss / len(loader) if len(loader) > 0 else 0.0
+    accuracy: float = 100.0 * correct / total if total > 0 else 0.0
+
+    return avg_loss, accuracy

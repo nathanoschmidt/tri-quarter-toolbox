@@ -55,7 +55,7 @@ from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from torchvision import datasets, transforms
 from PIL import Image
 from collections import defaultdict
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import configuration constants
 from config import (
@@ -304,9 +304,15 @@ class CustomMNIST(Dataset):
     and create_rotated_test. This provides more flexibility than the standard torchvision
     MNIST dataset, allowing custom sampling strategies and transformations.
 
+    Uses lazy caching: images are loaded from disk on first access and cached in memory
+    for subsequent accesses. For MNIST (28x28 grayscale), the full cache costs ~47 MB
+    for 60K images — negligible for modern systems, but eliminates per-epoch disk reads
+    that become a bottleneck at scale (especially on Windows with antivirus scanning).
+
     Attributes:
         transform: Optional transform to apply to images
         samples: List of (filepath, label) tuples for all images in the dataset
+        _cache: Dict mapping index to cached PIL Image (populated lazily)
     """
 
     def __init__(self, root_dir: str, transform: Optional[Any] = None) -> None:
@@ -319,6 +325,7 @@ class CustomMNIST(Dataset):
         """
         self.transform: Optional[Any] = transform
         self.samples: List[Tuple[str, int]] = []
+        self._cache: Dict[int, Image.Image] = {}
 
         # Scan all class directories and collect image paths
         for class_id in range(10):
@@ -331,13 +338,29 @@ class CustomMNIST(Dataset):
                 if filename.lower().endswith('.png'):
                     self.samples.append((os.path.join(class_dir, filename), class_id))
 
+    def _load_image(self, idx: int) -> Image.Image:
+        """Load image from disk or return cached version."""
+        if idx not in self._cache:
+            img_path: str = self.samples[idx][0]
+            self._cache[idx] = Image.open(img_path).convert('L')
+        return self._cache[idx]
+
+    def warmup_cache(self) -> None:
+        """Preload all images into memory cache.
+
+        Call this before training to avoid disk I/O during the first epoch.
+        For 60K MNIST images this takes ~3-5 seconds and uses ~47 MB RAM.
+        """
+        for idx in range(len(self.samples)):
+            self._load_image(idx)
+
     def __len__(self) -> int:
         """Return total number of samples in dataset."""
         return len(self.samples)
 
     def __getitem__(self, idx: int) -> Tuple[Any, int]:
         """
-        Load and return a single sample.
+        Load and return a single sample, using cache when available.
 
         Args:
             idx: Index of sample to load
@@ -345,10 +368,10 @@ class CustomMNIST(Dataset):
         Returns:
             (image, label): Image tensor (after transform) and integer label
         """
-        img_path, label = self.samples[idx]
+        label: int = self.samples[idx][1]
 
-        # Load image and ensure it's grayscale (MNIST is 1-channel)
-        img: Image.Image = Image.open(img_path).convert('L')
+        # Return a copy so transforms don't mutate the cached original
+        img: Image.Image = self._load_image(idx).copy()
 
         # Apply transform if provided
         if self.transform:
@@ -390,7 +413,7 @@ class TransformedSubset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[Any, int]:
         """
-        Load and return a single sample from the subset.
+        Load and return a single sample from the subset using the base dataset's cache.
 
         Args:
             idx: Index within the subset (not the base dataset)
@@ -401,11 +424,9 @@ class TransformedSubset(Dataset):
         # Map subset index to base dataset index
         original_idx: int = self.indices[idx]
 
-        # Get image path and label from base dataset
-        img_path, label = self.dataset.samples[original_idx]
-
-        # Load image as grayscale
-        img: Image.Image = Image.open(img_path).convert('L')
+        # Get label and cached image from base dataset
+        label: int = self.dataset.samples[original_idx][1]
+        img: Image.Image = self.dataset._load_image(original_idx).copy()
 
         # Apply transform
         if self.transform:

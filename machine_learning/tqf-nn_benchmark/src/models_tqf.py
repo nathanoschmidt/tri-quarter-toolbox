@@ -286,91 +286,6 @@ def compute_radial_position_encoding(
     return position_enc
 
 
-def adaptive_orbit_mixing(
-    logits_per_rotation: List[torch.Tensor],
-    temperature: float = 0.3
-) -> torch.Tensor:
-    """
-    Combine logits from multiple Z6 orbit rotations using temperature-scaled softmax.
-
-    WHY: TQF-ANN exploits hexagonal Z6 symmetry by evaluating inputs at all 6 rotations
-         (0deg, 60deg, 120deg, 180deg, 240deg, 300deg) and combining predictions.
-         Temperature controls the sharpness of this ensemble weighting.
-
-    HOW: Stack logits from all rotations, compute confidence weights via softmax over
-         max-logit values (scaled by temperature), then return weighted sum.
-
-    WHAT: Given a list of logit tensors (one per rotation), returns ensemble logits
-          that combine rotation-specific predictions based on their confidence.
-
-    Scientific Rationale:
-    - Low temperature (0.1-0.3): Sharp mixing, emphasizes most confident rotation.
-      Benefits: Handles partially-visible digits, leverages TQF equivariance.
-      Expected gain: +1-2% accuracy vs uniform averaging.
-    - High temperature (0.8-1.0): Uniform averaging (ensemble voting).
-      Benefits: Robust to individual rotation errors.
-      Risk: Dilutes signal from correct rotation.
-
-    Args:
-        logits_per_rotation: List of logit tensors, one per Z6 rotation.
-                            Each tensor has shape (batch_size, num_classes).
-                            Expected length: 6 (for 0deg, 60deg, 120deg, 180deg, 240deg, 300deg).
-        temperature: Softmax temperature for mixing weights.
-                    Lower = sharper (emphasize best rotation).
-                    Higher = smoother (uniform averaging).
-                    Default: 0.3 for evaluation (slightly sharper than training default).
-                    Valid range: (0, 2.0].
-
-    Returns:
-        Ensemble logits of shape (batch_size, num_classes), weighted combination
-        of all rotation-specific predictions based on confidence.
-
-    Example:
-        >>> logits_0 = torch.randn(8, 10)  # batch=8, classes=10
-        >>> logits_60 = torch.randn(8, 10)
-        >>> logits_120 = torch.randn(8, 10)
-        >>> logits_180 = torch.randn(8, 10)
-        >>> logits_240 = torch.randn(8, 10)
-        >>> logits_300 = torch.randn(8, 10)
-        >>> all_logits = [logits_0, logits_60, logits_120, logits_180, logits_240, logits_300]
-        >>> ensemble = adaptive_orbit_mixing(all_logits, temperature=0.5)
-        >>> print(ensemble.shape)
-        torch.Size([8, 10])
-    """
-    # Validate inputs
-    if len(logits_per_rotation) == 0:
-        raise ValueError("logits_per_rotation cannot be empty")
-
-    if temperature <= 0:
-        raise ValueError(f"Temperature must be positive, got {temperature}")
-
-    # Stack logits: (num_rotations, batch_size, num_classes)
-    stacked_logits: torch.Tensor = torch.stack(logits_per_rotation, dim=0)
-    num_rotations: int = stacked_logits.size(0)
-    batch_size: int = stacked_logits.size(1)
-    num_classes: int = stacked_logits.size(2)
-
-    # Compute confidence for each rotation as max logit value
-    # This measures how "certain" the model is for each rotation
-    # Shape: (num_rotations, batch_size)
-    max_logits: torch.Tensor = stacked_logits.max(dim=2).values
-
-    # Apply temperature-scaled softmax to get mixing weights
-    # Lower temperature = sharper weights (winner-take-all)
-    # Higher temperature = smoother weights (uniform)
-    # Shape: (num_rotations, batch_size)
-    mixing_weights: torch.Tensor = F.softmax(max_logits / temperature, dim=0)
-
-    # Expand weights for broadcasting: (num_rotations, batch_size, 1)
-    mixing_weights_expanded: torch.Tensor = mixing_weights.unsqueeze(2)
-
-    # Compute weighted sum of logits across rotations
-    # Shape: (batch_size, num_classes)
-    ensemble_logits: torch.Tensor = (stacked_logits * mixing_weights_expanded).sum(dim=0)
-
-    return ensemble_logits
-
-
 class LabelSmoothingCrossEntropy(nn.Module):
     """
     Cross-entropy loss with label smoothing for regularization.
@@ -1963,7 +1878,7 @@ class TQFANN(nn.Module):
     fractal_iters : int
         Number of fractal self-similarity iterations (default: 5)
     fibonacci_mode : str
-        Fibonacci dimension scaling mode: 'none', 'linear', or 'fibonacci' (default: 'fibonacci')
+        Fibonacci dimension scaling mode: 'none', 'linear', or 'fibonacci' (default: 'none')
     use_phi_binning : bool
         Use golden ratio for radial binning (default: False)
     dropout : float
@@ -2773,8 +2688,9 @@ class TQFANN(nn.Module):
         # Combined dual output via confidence-weighted ensemble
         logits: torch.Tensor = self.dual_output.confidence_weighted_ensemble(outer_logits, inner_logits)
 
-        # Cache sector features for equivariance loss computation
+        # Cache sector features for equivariance loss computation and orbit mixing
         self.dual_output._cached_sector_feats = outer_sector_feats.detach()
+        self.dual_output._cached_inner_sector_feats = inner_sector_feats.detach()
 
         # Handle optional losses
         inv_loss: Optional[torch.Tensor] = None
@@ -2876,10 +2792,22 @@ class TQFANN(nn.Module):
             return self.dual_output._cached_sector_feats
         return None
 
+    def get_cached_inner_sector_features(self) -> Optional[torch.Tensor]:
+        """
+        Get cached inner zone sector features from last forward pass.
+
+        Returns:
+            Cached inner sector features of shape (batch, 6, hidden_dim), or None if
+            no forward pass has been executed yet.
+        """
+        if hasattr(self.dual_output, '_cached_inner_sector_feats'):
+            return self.dual_output._cached_inner_sector_feats
+        return None
+
 
 if __name__ == "__main__":
     print("TQF-ANN Module - Full T24 Symmetry Implementation")
-    model: TQFANN = TQFANN(R=20, hidden_dim=80, fractal_iters=10, fibonacci_mode='fibonacci')
+    model: TQFANN = TQFANN(R=20, hidden_dim=80, fractal_iters=10, fibonacci_mode='none')
     print(f"Parameters: {model.count_parameters():,}")
     x = torch.randn(1, 784)
     out = model(x)

@@ -1960,3 +1960,119 @@ class TestGradientCheckpointing(unittest.TestCase):
             self.assertEqual(output.shape, (1, 10),
                             f"Output shape incorrect for R={R}")
 
+
+class TestInnerSectorFeatureCaching(unittest.TestCase):
+    """
+    Test inner zone sector feature caching for orbit mixing.
+
+    These tests verify that both inner and outer zone features are cached
+    after a forward pass, enabling feature-space orbit mixing operations.
+    """
+
+    def test_inner_sector_features_cached_after_forward(self):
+        """
+        WHY: Inner zone features must be cached for D6/T24 orbit mixing
+        HOW: Run forward pass, check that inner features are accessible
+        WHAT: Expect non-None tensor of correct shape
+        """
+        if not TORCH_AVAILABLE:
+            self.skipTest("PyTorch not available")
+
+        from models_tqf import TQFANN
+
+        model = TQFANN(R=2)
+        model.eval()
+
+        x = torch.randn(4, 784)
+        with torch.no_grad():
+            model(x)
+
+        inner_feats = model.get_cached_inner_sector_features()
+        self.assertIsNotNone(inner_feats, "Inner sector features should be cached after forward pass")
+        self.assertEqual(inner_feats.shape[0], 4, "Batch dimension should be 4")
+        self.assertEqual(inner_feats.shape[1], 6, "Should have 6 sectors")
+
+    def test_outer_sector_features_still_cached(self):
+        """
+        WHY: Outer zone caching should still work (regression test)
+        HOW: Run forward pass, check that outer features are accessible
+        WHAT: Expect non-None tensor of correct shape
+        """
+        if not TORCH_AVAILABLE:
+            self.skipTest("PyTorch not available")
+
+        from models_tqf import TQFANN
+
+        model = TQFANN(R=2)
+        model.eval()
+
+        x = torch.randn(4, 784)
+        with torch.no_grad():
+            model(x)
+
+        outer_feats = model.get_cached_sector_features()
+        self.assertIsNotNone(outer_feats, "Outer sector features should be cached after forward pass")
+        self.assertEqual(outer_feats.shape[0], 4, "Batch dimension should be 4")
+        self.assertEqual(outer_feats.shape[1], 6, "Should have 6 sectors")
+
+    def test_inner_and_outer_have_same_hidden_dim(self):
+        """
+        WHY: Both zones use shared weights, so hidden_dim must match
+        HOW: Compare hidden_dim of cached inner and outer features
+        WHAT: Expect identical hidden_dim
+        """
+        if not TORCH_AVAILABLE:
+            self.skipTest("PyTorch not available")
+
+        from models_tqf import TQFANN
+
+        model = TQFANN(R=2)
+        model.eval()
+
+        x = torch.randn(4, 784)
+        with torch.no_grad():
+            model(x)
+
+        outer_feats = model.get_cached_sector_features()
+        inner_feats = model.get_cached_inner_sector_features()
+        self.assertEqual(outer_feats.shape[2], inner_feats.shape[2],
+                        "Inner and outer features should have same hidden_dim")
+
+    def test_cached_features_are_detached(self):
+        """
+        WHY: Cached features should be detached to prevent gradient leaks
+        HOW: Check requires_grad on cached features
+        WHAT: Expect requires_grad = False
+        """
+        if not TORCH_AVAILABLE:
+            self.skipTest("PyTorch not available")
+
+        from models_tqf import TQFANN
+
+        model = TQFANN(R=2)
+        model.eval()
+
+        x = torch.randn(4, 784)
+        with torch.no_grad():
+            model(x)
+
+        inner_feats = model.get_cached_inner_sector_features()
+        self.assertFalse(inner_feats.requires_grad,
+                        "Cached inner features should be detached (no grad)")
+
+    def test_get_cached_inner_before_forward_returns_none(self):
+        """
+        WHY: Before any forward pass, there are no cached features
+        HOW: Call get_cached_inner_sector_features on fresh model
+        WHAT: Expect None
+        """
+        if not TORCH_AVAILABLE:
+            self.skipTest("PyTorch not available")
+
+        from models_tqf import TQFANN
+
+        model = TQFANN(R=2)
+        inner_feats = model.get_cached_inner_sector_features()
+        self.assertIsNone(inner_feats,
+                         "Should return None before any forward pass")
+

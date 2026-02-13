@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Date:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -280,14 +280,14 @@ NUM_SEEDS_DEFAULT: int = 1
 
 # ===== TRAINING HYPERPARAMETERS =====
 BATCH_SIZE_DEFAULT: int = 128
-MAX_EPOCHS_DEFAULT: int = 100
+MAX_EPOCHS_DEFAULT: int = 150
 LEARNING_RATE_DEFAULT: float = 0.001
 WEIGHT_DECAY_DEFAULT: float = 0.0001
-PATIENCE_DEFAULT: int = 15
+PATIENCE_DEFAULT: int = 25
 LEARNING_RATE_WARMUP_EPOCHS: int = 5
 
 # ===== DATASET SIZES =====
-NUM_TRAIN_DEFAULT: int = 30000
+NUM_TRAIN_DEFAULT: int = 58000
 NUM_VAL_DEFAULT: int = 2000
 NUM_TEST_ROT_DEFAULT: int = 2000
 NUM_TEST_UNROT_DEFAULT: int = 8000
@@ -297,7 +297,7 @@ TQF_TRUNCATION_R_DEFAULT: int = 20
 TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'  # Orbit pooling disabled by default
 TQF_FRACTAL_ITERATIONS_DEFAULT: int = 0  # Disabled, opt-in via CLI
-TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'fibonacci'
+TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
 
 # ===== TQF LOSS WEIGHTS (opt-in, all default to 0.0) =====
 TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
@@ -344,9 +344,9 @@ class TQFANN(nn.Module):
         self,
         in_features: int = 784,
         hidden_dim: Optional[int] = None,  # Auto-tuned to ~650K params
-        R: int = 3,                          # Truncation radius
+        R: int = 20,                         # Truncation radius
         symmetry_level: str = 'none',        # Symmetry group (opt-in)
-        fractal_iters: int = 5,              # Fractal iterations
+        fractal_iters: int = 0,              # Fractal iterations (disabled by default)
         fibonacci_mode: str = 'none'         # Fibonacci weighting
     ):
         # Initialize layers...
@@ -510,9 +510,9 @@ class TrainingEngine:
         device: torch.device,
         learning_rate: float = 0.001,
         weight_decay: float = 0.0001,
-        label_smoothing: float = 0.0,
+        label_smoothing: float = 0.1,
         use_geometry_reg: bool = False,
-        geometry_weight: float = 0.1
+        geometry_weight: float = 0.0
     ):
         self.model = model
         self.device = device
@@ -1245,7 +1245,7 @@ Input: (B, 784) MNIST images
 +------------------------------------------------+
 |  SIMPLIFIED LATTICE ENCODER (~5K params)       |
 |  +-- Fourier Basis (6 boundary vertices)       |
-|  +-- Fractal Mixing (5 iterations, capped 3)   |
+|  +-- Fractal Mixing (0 iterations by default)   |
 |  +-- Residual Refinement                       |
 +---------------------+--------------------------+
                       | (B, 6, hidden_dim)
@@ -1264,7 +1264,7 @@ Input: (B, 784) MNIST images
 |  │ Mode: 'none' (legacy)                   │  |
 |  │   → Uniform averaging (~647K params)    │  |
 |  ├─────────────────────────────────────────┤  |
-|  │ Mode: 'linear' (default, RECOMMENDED)   │  |
+|  │ Mode: 'linear'                          │  |
 |  │   → FibonacciLinearAggregator           │  |
 |  │   → Weights: [F₁, F₂, ..., Fₗ]         │  |
 |  │   → Learnable scaling via softmax       │  |
@@ -1444,7 +1444,7 @@ Total bins: L ≈ log_φ(R) ≈ 7 bins
 
 ### 5.4 Parameter Budget Allocation (v1.1.0)
 
-**Mode: `fibonacci_mode='linear'` (Default)**
+**Mode: `fibonacci_mode='none'` (Default)**
 
 | Component | Parameters | % of Total | Notes |
 |-----------|-----------|------------|-------|
@@ -2185,7 +2185,7 @@ if fibonacci_mode == 'lucas':  # Your new mode
 In `config.py`:
 ```python
 # Update choices
-TQF_FIBONACCI_MODE_DEFAULT: str = 'linear'
+TQF_FIBONACCI_MODE_DEFAULT: str = 'none'
 # Document new 'lucas' mode in comments
 ```
 
@@ -2372,8 +2372,8 @@ A: All code works on CPU. Add `--device cpu` to CLI or remove CUDA checks in cod
 
 **`QED`**
 
-**Last Updated:** February 7, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

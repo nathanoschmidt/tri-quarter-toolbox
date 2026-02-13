@@ -17,7 +17,6 @@ Key Test Coverage:
   - Symmetry Levels: Z6, D6, T24, none (group theory validation)
   - Fibonacci Modes: none, linear, fibonacci (golden ratio scaling)
   - Binning Schemes: --tqf-use-phi-binning (phi vs dyadic)
-  - Orbit Mixing: --tqf-use-orbit-mixing flag, --tqf-adaptive-mixing-temp range validation
 - Loss Function Weights (Opt-In Features):
   - Equivariance: --tqf-z6-equivariance-weight, --tqf-d6-equivariance-weight
   - Invariance: --tqf-t24-orbit-invariance-weight
@@ -92,8 +91,6 @@ from cli import (
     TQF_R_MIN, TQF_R_MAX,
     TQF_HIDDEN_DIM_MIN, TQF_HIDDEN_DIM_MAX,
     TQF_BOX_COUNTING_WEIGHT_MIN, TQF_BOX_COUNTING_WEIGHT_MAX,
-    TQF_BOX_COUNTING_SCALES_MIN, TQF_BOX_COUNTING_SCALES_MAX,
-    TQF_ADAPTIVE_MIXING_TEMP_MIN, TQF_ADAPTIVE_MIXING_TEMP_MAX
 )
 import config
 
@@ -499,26 +496,6 @@ class TestParseArgsTQFSpecific:
             with pytest.raises(SystemExit):
                 parse_args()
 
-    def test_tqf_use_orbit_mixing_default_false(self) -> None:
-        """
-        WHY: Orbit mixing should be opt-in
-        HOW: Parse without --tqf-use-orbit-mixing
-        WHAT: Expect False
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_use_orbit_mixing == False
-
-    def test_tqf_use_orbit_mixing_enabled(self) -> None:
-        """
-        WHY: User can enable orbit mixing evaluation
-        HOW: Parse with --tqf-use-orbit-mixing
-        WHAT: Expect True
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-use-orbit-mixing']):
-            args = parse_args()
-            assert args.tqf_use_orbit_mixing == True
-
     def test_tqf_R_within_range(self) -> None:
         """
         WHY: Truncation radius must be valid
@@ -778,141 +755,9 @@ class TestParseArgsTQFSpecific:
             with pytest.raises(SystemExit):
                 parse_args()
 
-    def test_tqf_box_counting_scales_default(self) -> None:
-        """
-        WHY: Box-counting scales has a sensible default for dimension estimation
-        HOW: Parse without --tqf-box-counting-scales
-        WHAT: Expect config.TQF_BOX_COUNTING_SCALES_DEFAULT
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_box_counting_scales == config.TQF_BOX_COUNTING_SCALES_DEFAULT
+    # NOTE: --tqf-box-counting-scales tests removed — parameter consolidated as
+    # internal constant TQF_BOX_COUNTING_SCALES_DEFAULT=10 in config.py
 
-    def test_tqf_box_counting_scales_custom_value(self) -> None:
-        """
-        WHY: User can specify custom number of scales
-        HOW: Parse with --tqf-box-counting-scales 12
-        WHAT: Expect 12 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-scales', '12']):
-            args = parse_args()
-            assert args.tqf_box_counting_scales == 12
-
-    def test_tqf_box_counting_scales_within_range(self) -> None:
-        """
-        WHY: Scales must be within valid range for accurate estimation
-        HOW: Parse with valid value
-        WHAT: Expect value within [TQF_BOX_COUNTING_SCALES_MIN, TQF_BOX_COUNTING_SCALES_MAX]
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-scales', '8']):
-            args = parse_args()
-            assert TQF_BOX_COUNTING_SCALES_MIN <= args.tqf_box_counting_scales <= TQF_BOX_COUNTING_SCALES_MAX
-
-    def test_tqf_box_counting_scales_below_min_fails(self) -> None:
-        """
-        WHY: Too few scales gives unreliable dimension estimates
-        HOW: Parse with --tqf-box-counting-scales 1 (below min of 2)
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-scales', '1']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
-    def test_tqf_box_counting_scales_above_max_fails(self) -> None:
-        """
-        WHY: Too many scales wastes computation with negligible improvement
-        HOW: Parse with --tqf-box-counting-scales 25 (above max of 20)
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-scales', '25']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
-    # =========================================================================
-    # Adaptive Mixing Temperature Tests
-    # =========================================================================
-
-    def test_tqf_adaptive_mixing_temp_default(self) -> None:
-        """
-        WHY: Adaptive mixing temperature has a sensible default for orbit mixing
-        HOW: Parse without --tqf-adaptive-mixing-temp
-        WHAT: Expect config.TQF_ADAPTIVE_MIXING_TEMP_DEFAULT
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_adaptive_mixing_temp == config.TQF_ADAPTIVE_MIXING_TEMP_DEFAULT
-
-    def test_tqf_adaptive_mixing_temp_custom_value(self) -> None:
-        """
-        WHY: User can specify custom temperature for orbit mixing
-        HOW: Parse with --tqf-adaptive-mixing-temp 0.3
-        WHAT: Expect 0.3 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-adaptive-mixing-temp', '0.3']):
-            args = parse_args()
-            assert args.tqf_adaptive_mixing_temp == 0.3
-
-    def test_tqf_adaptive_mixing_temp_low_value(self) -> None:
-        """
-        WHY: Low temperature (sharp mixing) is valid use case
-        HOW: Parse with --tqf-adaptive-mixing-temp 0.1
-        WHAT: Expect 0.1 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-adaptive-mixing-temp', '0.1']):
-            args = parse_args()
-            assert args.tqf_adaptive_mixing_temp == 0.1
-
-    def test_tqf_adaptive_mixing_temp_high_value(self) -> None:
-        """
-        WHY: High temperature (uniform mixing) is valid use case
-        HOW: Parse with --tqf-adaptive-mixing-temp 1.0
-        WHAT: Expect 1.0 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-adaptive-mixing-temp', '1.0']):
-            args = parse_args()
-            assert args.tqf_adaptive_mixing_temp == 1.0
-
-    def test_tqf_adaptive_mixing_temp_within_range(self) -> None:
-        """
-        WHY: Temperature must be within valid range for stable softmax
-        HOW: Parse with valid value
-        WHAT: Expect value within [TQF_ADAPTIVE_MIXING_TEMP_MIN, TQF_ADAPTIVE_MIXING_TEMP_MAX]
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-adaptive-mixing-temp', '0.5']):
-            args = parse_args()
-            assert TQF_ADAPTIVE_MIXING_TEMP_MIN <= args.tqf_adaptive_mixing_temp <= TQF_ADAPTIVE_MIXING_TEMP_MAX
-
-    def test_tqf_adaptive_mixing_temp_below_min_fails(self) -> None:
-        """
-        WHY: Too low temperature causes numerical instability in softmax
-        HOW: Parse with --tqf-adaptive-mixing-temp 0.001 (below min of 0.01)
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-adaptive-mixing-temp', '0.001']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
-    def test_tqf_adaptive_mixing_temp_above_max_fails(self) -> None:
-        """
-        WHY: Too high temperature provides no meaningful discrimination
-        HOW: Parse with --tqf-adaptive-mixing-temp 3.0 (above max of 2.0)
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-adaptive-mixing-temp', '3.0']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
-    def test_tqf_adaptive_mixing_temp_with_orbit_mixing(self) -> None:
-        """
-        WHY: Temperature parameter is used with orbit mixing enabled
-        HOW: Parse with both --tqf-use-orbit-mixing and --tqf-adaptive-mixing-temp
-        WHAT: Expect both args correctly set
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-use-orbit-mixing',
-                                '--tqf-adaptive-mixing-temp', '0.2']):
-            args = parse_args()
-            assert args.tqf_use_orbit_mixing == True
-            assert args.tqf_adaptive_mixing_temp == 0.2
 
 
 class TestSetupLogging:
@@ -1053,7 +898,6 @@ class TestComplexArgumentCombinations:
             '--models', 'TQF-ANN',
             '--tqf-R', '20',
             '--tqf-symmetry-level', 'D6',
-            '--tqf-use-orbit-mixing',
             '--tqf-fractal-iterations', '10',
             '--tqf-geometry-reg-weight', '0.5'
         ]
@@ -1062,7 +906,6 @@ class TestComplexArgumentCombinations:
             assert args.models == ['TQF-ANN']
             assert args.tqf_R == 20
             assert args.tqf_symmetry_level == 'D6'
-            assert args.tqf_use_orbit_mixing == True
             assert args.tqf_fractal_iterations == 10
             assert args.tqf_geometry_reg_weight == 0.5
 
@@ -1237,6 +1080,250 @@ class TestCombinedLossFlags:
             args = parse_args()
             assert args.tqf_z6_equivariance_weight == 0.01
             assert args.tqf_t24_orbit_invariance_weight == 0.005
+
+
+class TestZ6AugmentationFlag:
+    """Test suite for --no-tqf-z6-augmentation flag (store_false, default True)."""
+
+    def test_z6_augmentation_enabled_by_default(self) -> None:
+        """
+        WHY: Z6 augmentation should be enabled by default for best accuracy
+        HOW: Parse without specifying the flag
+        WHAT: Expect tqf_z6_augmentation = True
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_augmentation is True
+
+    def test_z6_augmentation_disabled(self) -> None:
+        """
+        WHY: User should be able to disable Z6 augmentation to isolate architectural robustness
+        HOW: Parse with --no-tqf-z6-augmentation
+        WHAT: Expect tqf_z6_augmentation = False
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--no-tqf-z6-augmentation']):
+            args = parse_args()
+            assert args.tqf_z6_augmentation is False
+
+
+class TestOrbitMixingFlags:
+    """Test suite for orbit mixing CLI flags."""
+
+    def test_orbit_mixing_disabled_by_default(self) -> None:
+        """
+        WHY: All orbit mixing modes should be disabled by default
+        HOW: Parse without specifying orbit mixing flags
+        WHAT: Expect all orbit mixing booleans = False
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_use_z6_orbit_mixing is False
+            assert args.tqf_use_d6_orbit_mixing is False
+            assert args.tqf_use_t24_orbit_mixing is False
+
+    def test_z6_orbit_mixing_enabled(self) -> None:
+        """
+        WHY: User should be able to enable Z6 orbit mixing
+        HOW: Parse with --tqf-use-z6-orbit-mixing
+        WHAT: Expect tqf_use_z6_orbit_mixing = True
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-use-z6-orbit-mixing']):
+            args = parse_args()
+            assert args.tqf_use_z6_orbit_mixing is True
+
+    def test_d6_orbit_mixing_enabled(self) -> None:
+        """
+        WHY: User should be able to enable D6 orbit mixing
+        HOW: Parse with --tqf-use-d6-orbit-mixing
+        WHAT: Expect tqf_use_d6_orbit_mixing = True
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-use-d6-orbit-mixing']):
+            args = parse_args()
+            assert args.tqf_use_d6_orbit_mixing is True
+
+    def test_t24_orbit_mixing_enabled(self) -> None:
+        """
+        WHY: User should be able to enable T24 orbit mixing
+        HOW: Parse with --tqf-use-t24-orbit-mixing
+        WHAT: Expect tqf_use_t24_orbit_mixing = True
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-use-t24-orbit-mixing']):
+            args = parse_args()
+            assert args.tqf_use_t24_orbit_mixing is True
+
+    def test_default_temperatures(self) -> None:
+        """
+        WHY: Default temperatures should match spec (rotation=0.3, reflection=0.5, inversion=0.7)
+        HOW: Parse without specifying temperatures
+        WHAT: Expect correct default values
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_orbit_mixing_temp_rotation == 0.3
+            assert args.tqf_orbit_mixing_temp_reflection == 0.5
+            assert args.tqf_orbit_mixing_temp_inversion == 0.7
+
+    def test_custom_temperatures(self) -> None:
+        """
+        WHY: User should be able to set custom temperatures
+        HOW: Parse with explicit temperature values
+        WHAT: Expect values match what was provided
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-orbit-mixing-temp-rotation', '0.5',
+                               '--tqf-orbit-mixing-temp-reflection', '0.8',
+                               '--tqf-orbit-mixing-temp-inversion', '1.0']):
+            args = parse_args()
+            assert args.tqf_orbit_mixing_temp_rotation == 0.5
+            assert args.tqf_orbit_mixing_temp_reflection == 0.8
+            assert args.tqf_orbit_mixing_temp_inversion == 1.0
+
+    def test_temperature_validation_too_low(self) -> None:
+        """
+        WHY: Temperature below 0.01 should be rejected
+        HOW: Parse with temperature = 0.001
+        WHAT: Expect SystemExit from validation
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-orbit-mixing-temp-rotation', '0.001']):
+            with pytest.raises(SystemExit):
+                parse_args()
+
+    def test_temperature_validation_too_high(self) -> None:
+        """
+        WHY: Temperature above 2.0 should be rejected
+        HOW: Parse with temperature = 3.0
+        WHAT: Expect SystemExit from validation
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-orbit-mixing-temp-inversion', '3.0']):
+            with pytest.raises(SystemExit):
+                parse_args()
+
+
+class TestCLIConfigRangeConstantConsistency:
+    """Test that CLI range constants are the same objects as config.py constants.
+
+    WHY: Range constants were moved from cli.py to config.py as the single
+         source of truth. cli.py now imports them. If someone accidentally
+         redefines a constant locally in cli.py, the CLI validation and
+         config.py assertions could use different values silently.
+    HOW: Import the same names from both modules and verify identity.
+    WHAT: Every range constant imported by cli.py must equal config.py's value.
+    """
+
+    def test_training_range_constants_match(self) -> None:
+        """Test training hyperparameter ranges match between CLI and config."""
+        import cli
+        pairs = [
+            'NUM_SEEDS_MIN', 'NUM_SEEDS_MAX',
+            'NUM_EPOCHS_MIN', 'NUM_EPOCHS_MAX',
+            'BATCH_SIZE_MIN', 'BATCH_SIZE_MAX',
+            'LEARNING_RATE_MIN', 'LEARNING_RATE_MAX',
+            'WEIGHT_DECAY_MIN', 'WEIGHT_DECAY_MAX',
+            'LABEL_SMOOTHING_MIN', 'LABEL_SMOOTHING_MAX',
+            'PATIENCE_MIN', 'PATIENCE_MAX',
+            'MIN_DELTA_MIN', 'MIN_DELTA_MAX',
+            'LEARNING_RATE_WARMUP_EPOCHS_MIN', 'LEARNING_RATE_WARMUP_EPOCHS_MAX',
+        ]
+        for name in pairs:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
+
+    def test_dataset_range_constants_match(self) -> None:
+        """Test dataset size ranges match between CLI and config."""
+        import cli
+        pairs = [
+            'NUM_TRAIN_MIN', 'NUM_TRAIN_MAX',
+            'NUM_VAL_MIN', 'NUM_VAL_MAX',
+            'NUM_TEST_ROT_MIN', 'NUM_TEST_ROT_MAX',
+            'NUM_TEST_UNROT_MIN', 'NUM_TEST_UNROT_MAX',
+        ]
+        for name in pairs:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
+
+    def test_tqf_architecture_range_constants_match(self) -> None:
+        """Test TQF architecture ranges match between CLI and config."""
+        import cli
+        pairs = [
+            'TQF_R_MIN', 'TQF_R_MAX',
+            'TQF_HIDDEN_DIM_MIN', 'TQF_HIDDEN_DIM_MAX',
+            'TQF_FRACTAL_ITERATIONS_MIN', 'TQF_FRACTAL_ITERATIONS_MAX',
+            # TQF_FRACTAL_DIM_TOLERANCE range constants removed (internal, not CLI-tunable)
+            'TQF_SELF_SIMILARITY_WEIGHT_MIN', 'TQF_SELF_SIMILARITY_WEIGHT_MAX',
+            'TQF_BOX_COUNTING_WEIGHT_MIN', 'TQF_BOX_COUNTING_WEIGHT_MAX',
+            # TQF_BOX_COUNTING_SCALES range constants removed (internal, not CLI-tunable)
+            'TQF_HOP_ATTENTION_TEMP_MIN', 'TQF_HOP_ATTENTION_TEMP_MAX',
+        ]
+        for name in pairs:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
+
+    def test_orbit_mixing_range_constants_match(self) -> None:
+        """Test orbit mixing temperature ranges match between CLI and config."""
+        import cli
+        pairs = [
+            'TQF_ORBIT_MIXING_TEMP_MIN', 'TQF_ORBIT_MIXING_TEMP_MAX',
+        ]
+        for name in pairs:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
+
+    def test_loss_weight_range_constants_match(self) -> None:
+        """Test loss weight ranges match between CLI and config."""
+        import cli
+        pairs = [
+            'TQF_GEOMETRY_REG_WEIGHT_MIN', 'TQF_GEOMETRY_REG_WEIGHT_MAX',
+            'TQF_INVERSION_LOSS_WEIGHT_MIN', 'TQF_INVERSION_LOSS_WEIGHT_MAX',
+            'TQF_Z6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_Z6_EQUIVARIANCE_WEIGHT_MAX',
+            'TQF_D6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_D6_EQUIVARIANCE_WEIGHT_MAX',
+            'TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN', 'TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX',
+        ]
+        for name in pairs:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
+
+    def test_verification_range_constants_match(self) -> None:
+        """Test verification ranges match between CLI and config."""
+        import cli
+        pairs = [
+            'TQF_VERIFY_DUALITY_INTERVAL_MIN', 'TQF_VERIFY_DUALITY_INTERVAL_MAX',
+        ]
+        for name in pairs:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
+
+    def test_default_constants_match(self) -> None:
+        """Test that CLI default values match config.py defaults."""
+        import cli
+        defaults = [
+            'TQF_USE_Z6_AUGMENTATION_DEFAULT',
+            'TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT',
+            'TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT',
+            'TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT',
+        ]
+        for name in defaults:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
 
 
 def run_tests(verbosity: int = 2):

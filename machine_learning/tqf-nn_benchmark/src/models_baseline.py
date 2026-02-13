@@ -494,7 +494,7 @@ def get_model(name: str, **kwargs) -> nn.Module:
     Example:
         >>> model = get_model('FC-MLP')
         >>> model = get_model('CNN-L5', conv_channels=[32, 64, 128])
-        >>> model = get_model('TQF-ANN', R=20, hidden_dim=80, fibonacci_mode='fibonacci')
+        >>> model = get_model('TQF-ANN', R=20, hidden_dim=80, fibonacci_mode='none')
     """
     # Handle TQF-ANN with lazy import (avoid slow startup)
     if name == 'TQF-ANN':

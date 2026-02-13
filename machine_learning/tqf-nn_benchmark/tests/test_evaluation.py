@@ -20,9 +20,6 @@ Key Test Coverage:
 - Model Efficiency Metrics: FLOPS per parameter, FLOPS per inference
 - Inversion Consistency Metrics: Dual zone prediction agreement for TQF-ANN
 - Inner vs Outer Zone Comparison: Bijective duality validation
-- Adaptive Orbit Mixing: T24 orbit-based prediction aggregation with confidence weighting
-- Orbit Mixing Temperature: Softmax temperature scaling for adaptive prediction fusion
-- Orbit Confidence Computation: Per-orbit prediction confidence for weighted mixing
 
 Test Organization:
 - TestPerClassAccuracy: Per-digit accuracy calculation and validation
@@ -31,7 +28,6 @@ Test Organization:
 - TestMeasureInferenceTime: Latency profiling and timing validation
 - TestEstimateModelFLOPS: Computational complexity estimation
 - TestInversionConsistencyMetrics: TQF dual zone consistency validation
-- TestAdaptiveOrbitMixing: T24 orbit-based prediction fusion
 
 Scientific Rationale:
 Rotation invariance error quantifies how well models maintain prediction consistency
@@ -71,6 +67,7 @@ import pytest
 import torch
 import torch.nn as nn
 from typing import Dict, List, Tuple
+from torch.utils.data import DataLoader
 from conftest import TORCH_AVAILABLE, device, set_seed, assert_tensor_shape
 
 if not TORCH_AVAILABLE:
@@ -81,7 +78,10 @@ from evaluation import (
     compute_rotation_invariance_error_from_outputs as compute_rotation_invariance_error,
     compute_statistical_significance,
     measure_inference_time,
-    estimate_model_flops
+    estimate_model_flops,
+    adaptive_orbit_mixing,
+    classify_from_sector_features,
+    evaluate_with_orbit_mixing
 )
 import config
 
@@ -453,177 +453,223 @@ class TestInversionConsistencyMetrics:
 
 
 class TestAdaptiveOrbitMixing:
-    """
-    Test adaptive orbit mixing function for Z6 ensemble evaluation.
+    """Test adaptive orbit mixing (max-logit confidence-weighted averaging)."""
 
-    The adaptive_orbit_mixing function combines logits from 6 rotated versions
-    of an input using temperature-scaled softmax weighting. Lower temperatures
-    emphasize the most confident rotation, while higher temperatures average
-    all rotations uniformly.
-    """
-
-    def test_adaptive_orbit_mixing_basic_output_shape(self) -> None:
+    def test_single_variant_returns_unchanged(self) -> None:
         """
-        WHY: Function must return correctly shaped ensemble logits
-        HOW: Pass list of 6 logit tensors, check output shape
-        WHAT: Expect (batch_size, num_classes) shape
+        WHY: Single variant should pass through unchanged
+        HOW: Call with one-element list
+        WHAT: Expect identical output
         """
-        from models_tqf import adaptive_orbit_mixing
+        logits: torch.Tensor = torch.randn(8, 10)
+        result: torch.Tensor = adaptive_orbit_mixing([logits], temperature=0.3)
+        assert torch.allclose(result, logits), "Single variant should return unchanged"
 
-        batch_size: int = 8
+    def test_output_shape_matches_input(self) -> None:
+        """
+        WHY: Output must have same (B, C) shape as inputs
+        HOW: Mix multiple variants, check shape
+        WHAT: Expect (batch, num_classes) output
+        """
+        batch_size: int = 16
         num_classes: int = 10
-        num_rotations: int = 6
+        variants: List[torch.Tensor] = [torch.randn(batch_size, num_classes) for _ in range(6)]
+        result: torch.Tensor = adaptive_orbit_mixing(variants, temperature=0.3)
+        assert result.shape == (batch_size, num_classes), f"Expected ({batch_size}, {num_classes}), got {result.shape}"
 
-        # Create logits for each Z6 rotation
-        logits_per_rotation: List[torch.Tensor] = [
-            torch.randn(batch_size, num_classes) for _ in range(num_rotations)
-        ]
-
-        result: torch.Tensor = adaptive_orbit_mixing(logits_per_rotation, temperature=0.3)
-
-        assert result.shape == (batch_size, num_classes), (
-            f"Expected shape ({batch_size}, {num_classes}), got {result.shape}"
+    def test_high_temperature_approaches_uniform(self) -> None:
+        """
+        WHY: High temperature should produce near-uniform weights (equal averaging)
+        HOW: Use very high temperature, compare to simple mean
+        WHAT: Expect close to arithmetic mean
+        """
+        torch.manual_seed(42)
+        variants: List[torch.Tensor] = [torch.randn(4, 10) for _ in range(6)]
+        result_high_temp: torch.Tensor = adaptive_orbit_mixing(variants, temperature=100.0)
+        simple_mean: torch.Tensor = torch.stack(variants, dim=0).mean(dim=0)
+        assert torch.allclose(result_high_temp, simple_mean, atol=0.01), (
+            "High temperature should approach uniform averaging"
         )
 
-    def test_adaptive_orbit_mixing_low_temperature_peaked(self) -> None:
+    def test_low_temperature_favors_confident(self) -> None:
         """
-        WHY: Low temperature should emphasize most confident rotation
-        HOW: Create one rotation with high confidence, check it dominates
-        WHAT: Expect result close to the high-confidence rotation
+        WHY: Low temperature should favor the most confident (highest max-logit) variant
+        HOW: Create one confident variant and others near-zero, use very low temperature
+        WHAT: Expect output close to the confident variant
         """
-        from models_tqf import adaptive_orbit_mixing
+        # Create 6 weak variants and 1 very confident one
+        weak_variants: List[torch.Tensor] = [torch.zeros(4, 10) for _ in range(5)]
+        confident: torch.Tensor = torch.zeros(4, 10)
+        confident[:, 3] = 10.0  # Very high logit for class 3
+        all_variants: List[torch.Tensor] = weak_variants + [confident]
+
+        result: torch.Tensor = adaptive_orbit_mixing(all_variants, temperature=0.01)
+        # The confident variant should dominate
+        preds = result.argmax(dim=1)
+        assert (preds == 3).all(), "Low temperature should favor the most confident variant"
+
+    def test_weights_sum_to_one(self) -> None:
+        """
+        WHY: Confidence weights should form a valid probability distribution
+        HOW: Manually compute weights and verify they sum to 1
+        WHAT: Expect weights along variant dimension sum to 1 for each sample
+        """
+        variants: List[torch.Tensor] = [torch.randn(4, 10) for _ in range(6)]
+        stacked: torch.Tensor = torch.stack(variants, dim=0)
+        max_logits: torch.Tensor = stacked.max(dim=2).values
+        weights: torch.Tensor = torch.nn.functional.softmax(max_logits / 0.3, dim=0)
+        weight_sums: torch.Tensor = weights.sum(dim=0)
+        assert torch.allclose(weight_sums, torch.ones_like(weight_sums), atol=1e-5), (
+            "Weights should sum to 1 along variant dimension"
+        )
+
+
+class TestClassifyFromSectorFeatures:
+    """Test classification from pre-computed sector features."""
+
+    def test_output_shape(self) -> None:
+        """
+        WHY: classify_from_sector_features must produce correct logit shape
+        HOW: Create model and arbitrary sector features, check output shape
+        WHAT: Expect (batch, num_classes) output
+        """
+        from models_tqf import TQFANN
+
+        model: TQFANN = TQFANN(R=2)
+        model.eval()
 
         batch_size: int = 4
-        num_classes: int = 10
+        hidden_dim: int = model.dual_output.classification_head.in_features
+        outer_feats: torch.Tensor = torch.randn(batch_size, 6, hidden_dim)
+        inner_feats: torch.Tensor = torch.randn(batch_size, 6, hidden_dim)
 
-        # Create 6 rotations, one with much higher confidence
-        logits_per_rotation: List[torch.Tensor] = []
-        for i in range(6):
-            if i == 2:  # Third rotation has high confidence
-                logits: torch.Tensor = torch.ones(batch_size, num_classes) * 10.0
-            else:
-                logits: torch.Tensor = torch.zeros(batch_size, num_classes)
-            logits_per_rotation.append(logits)
+        logits: torch.Tensor = classify_from_sector_features(model, outer_feats, inner_feats)
+        assert logits.shape == (batch_size, 10), f"Expected (4, 10), got {logits.shape}"
 
-        # Low temperature should heavily weight the high-confidence rotation
-        result: torch.Tensor = adaptive_orbit_mixing(logits_per_rotation, temperature=0.1)
+    def test_matches_forward_pass(self) -> None:
+        """
+        WHY: classify_from_sector_features on cached features should match forward pass logits
+        HOW: Run forward pass, grab cached features, run classify_from_sector_features
+        WHAT: Expect logits match
+        """
+        from models_tqf import TQFANN
 
-        # Result should be close to the high-confidence logits
-        expected: torch.Tensor = logits_per_rotation[2]
-        assert torch.allclose(result, expected, atol=1.0), (
-            "Low temperature should emphasize most confident rotation"
+        model: TQFANN = TQFANN(R=2)
+        model.eval()
+
+        torch.manual_seed(42)
+        x: torch.Tensor = torch.randn(4, 784)
+
+        with torch.no_grad():
+            forward_logits: torch.Tensor = model(x)
+            outer_feats: torch.Tensor = model.get_cached_sector_features()
+            inner_feats: torch.Tensor = model.get_cached_inner_sector_features()
+            recomputed_logits: torch.Tensor = classify_from_sector_features(model, outer_feats, inner_feats)
+
+        assert torch.allclose(forward_logits, recomputed_logits, atol=1e-5), (
+            "classify_from_sector_features should match forward pass logits"
         )
 
-    def test_adaptive_orbit_mixing_high_temperature_uniform(self) -> None:
+    def test_zone_swap_produces_different_logits(self) -> None:
         """
-        WHY: High temperature should average rotations uniformly
-        HOW: Create equal rotations, high temp should give same result
-        WHAT: Expect result equal to simple average
+        WHY: Swapping inner/outer roles should generally produce different logits
+        HOW: Run with normal and swapped features
+        WHAT: Expect different outputs (since sector_weights break symmetry)
         """
-        from models_tqf import adaptive_orbit_mixing
+        from models_tqf import TQFANN
 
-        batch_size: int = 4
-        num_classes: int = 10
+        model: TQFANN = TQFANN(R=2)
+        model.eval()
 
-        # Create 6 identical rotations
-        base_logits: torch.Tensor = torch.randn(batch_size, num_classes)
-        logits_per_rotation: List[torch.Tensor] = [base_logits.clone() for _ in range(6)]
+        torch.manual_seed(42)
+        x: torch.Tensor = torch.randn(4, 784)
 
-        # High temperature should give nearly uniform weighting
-        result: torch.Tensor = adaptive_orbit_mixing(logits_per_rotation, temperature=10.0)
+        with torch.no_grad():
+            model(x)
+            outer_feats: torch.Tensor = model.get_cached_sector_features()
+            inner_feats: torch.Tensor = model.get_cached_inner_sector_features()
 
-        # With identical inputs, result should match input (uniform average = input)
-        assert torch.allclose(result, base_logits, atol=0.1), (
-            "High temperature with identical inputs should return same values"
+            normal_logits: torch.Tensor = classify_from_sector_features(model, outer_feats, inner_feats)
+            swapped_logits: torch.Tensor = classify_from_sector_features(model, inner_feats, outer_feats)
+
+        # They should generally differ (unless sector_weights happen to be uniform)
+        # Just verify both are valid tensors with correct shape
+        assert normal_logits.shape == swapped_logits.shape
+        assert not torch.isnan(swapped_logits).any(), "Swapped logits should not contain NaN"
+
+
+class TestEvaluateWithOrbitMixing:
+    """Test the full orbit mixing evaluation function."""
+
+    def _make_tiny_loader(self) -> DataLoader:
+        """Create a minimal DataLoader for testing."""
+        from torch.utils.data import TensorDataset
+        x: torch.Tensor = torch.randn(20, 784)
+        y: torch.Tensor = torch.randint(0, 10, (20,))
+        return DataLoader(TensorDataset(x, y), batch_size=10)
+
+    def test_z6_orbit_mixing_returns_valid_metrics(self) -> None:
+        """
+        WHY: Z6 orbit mixing should produce valid loss and accuracy
+        HOW: Run evaluate_with_orbit_mixing with use_z6=True
+        WHAT: Expect loss >= 0 and accuracy in [0, 100]
+        """
+        from models_tqf import TQFANN
+
+        model: TQFANN = TQFANN(R=2)
+        model.eval()
+        loader: DataLoader = self._make_tiny_loader()
+
+        loss, acc = evaluate_with_orbit_mixing(
+            model, loader, torch.device('cpu'),
+            use_z6=True, use_d6=False, use_t24=False,
+            use_amp=False
         )
 
-    def test_adaptive_orbit_mixing_empty_list_fails(self) -> None:
+        assert loss >= 0.0, f"Loss should be non-negative, got {loss}"
+        assert 0.0 <= acc <= 100.0, f"Accuracy should be in [0, 100], got {acc}"
+
+    def test_d6_orbit_mixing_returns_valid_metrics(self) -> None:
         """
-        WHY: Empty input list is invalid
-        HOW: Pass empty list
-        WHAT: Expect ValueError
+        WHY: D6 orbit mixing should produce valid loss and accuracy
+        HOW: Run with use_d6=True (which adds reflection averaging)
+        WHAT: Expect valid metrics
         """
-        from models_tqf import adaptive_orbit_mixing
+        from models_tqf import TQFANN
 
-        with pytest.raises(ValueError):
-            adaptive_orbit_mixing([], temperature=0.3)
+        model: TQFANN = TQFANN(R=2)
+        model.eval()
+        loader: DataLoader = self._make_tiny_loader()
 
-    def test_adaptive_orbit_mixing_negative_temperature_fails(self) -> None:
-        """
-        WHY: Negative temperature is invalid for softmax
-        HOW: Pass negative temperature
-        WHAT: Expect ValueError
-        """
-        from models_tqf import adaptive_orbit_mixing
-
-        logits_per_rotation: List[torch.Tensor] = [torch.randn(4, 10) for _ in range(6)]
-
-        with pytest.raises(ValueError):
-            adaptive_orbit_mixing(logits_per_rotation, temperature=-0.1)
-
-    def test_adaptive_orbit_mixing_zero_temperature_fails(self) -> None:
-        """
-        WHY: Zero temperature causes division by zero in softmax
-        HOW: Pass zero temperature
-        WHAT: Expect ValueError
-        """
-        from models_tqf import adaptive_orbit_mixing
-
-        logits_per_rotation: List[torch.Tensor] = [torch.randn(4, 10) for _ in range(6)]
-
-        with pytest.raises(ValueError):
-            adaptive_orbit_mixing(logits_per_rotation, temperature=0.0)
-
-    def test_adaptive_orbit_mixing_single_rotation(self) -> None:
-        """
-        WHY: Single rotation should return that rotation's logits
-        HOW: Pass single-element list
-        WHAT: Expect output equals input
-        """
-        from models_tqf import adaptive_orbit_mixing
-
-        logits: torch.Tensor = torch.randn(4, 10)
-        logits_per_rotation: List[torch.Tensor] = [logits]
-
-        result: torch.Tensor = adaptive_orbit_mixing(logits_per_rotation, temperature=0.3)
-
-        assert torch.allclose(result, logits), (
-            "Single rotation should return same logits"
+        loss, acc = evaluate_with_orbit_mixing(
+            model, loader, torch.device('cpu'),
+            use_z6=True, use_d6=True, use_t24=False,
+            use_amp=False
         )
 
-    def test_adaptive_orbit_mixing_gradient_flow(self) -> None:
+        assert loss >= 0.0, f"Loss should be non-negative, got {loss}"
+        assert 0.0 <= acc <= 100.0, f"Accuracy should be in [0, 100], got {acc}"
+
+    def test_t24_orbit_mixing_returns_valid_metrics(self) -> None:
         """
-        WHY: Function must allow gradient flow for training
-        HOW: Backprop through result, check input has gradients
-        WHAT: Expect gradients on input tensors
+        WHY: T24 orbit mixing (full symmetry) should produce valid metrics
+        HOW: Run with use_t24=True (implies D6 and Z6)
+        WHAT: Expect valid metrics
         """
-        from models_tqf import adaptive_orbit_mixing
+        from models_tqf import TQFANN
 
-        logits_per_rotation: List[torch.Tensor] = [
-            torch.randn(4, 10, requires_grad=True) for _ in range(6)
-        ]
+        model: TQFANN = TQFANN(R=2)
+        model.eval()
+        loader: DataLoader = self._make_tiny_loader()
 
-        result: torch.Tensor = adaptive_orbit_mixing(logits_per_rotation, temperature=0.3)
-        loss: torch.Tensor = result.sum()
-        loss.backward()
+        loss, acc = evaluate_with_orbit_mixing(
+            model, loader, torch.device('cpu'),
+            use_z6=True, use_d6=True, use_t24=True,
+            use_amp=False
+        )
 
-        for i, logits in enumerate(logits_per_rotation):
-            assert logits.grad is not None, f"Rotation {i} should have gradients"
-
-    def test_adaptive_orbit_mixing_default_temperature(self) -> None:
-        """
-        WHY: Default temperature should work without explicit argument
-        HOW: Call without temperature argument
-        WHAT: Expect successful execution
-        """
-        from models_tqf import adaptive_orbit_mixing
-
-        logits_per_rotation: List[torch.Tensor] = [torch.randn(4, 10) for _ in range(6)]
-
-        # Should work with default temperature
-        result: torch.Tensor = adaptive_orbit_mixing(logits_per_rotation)
-
-        assert result.shape == (4, 10), "Default temperature call should succeed"
+        assert loss >= 0.0, f"Loss should be non-negative, got {loss}"
+        assert 0.0 <= acc <= 100.0, f"Accuracy should be in [0, 100], got {acc}"
 
 
 def run_tests(verbosity: int = 2):

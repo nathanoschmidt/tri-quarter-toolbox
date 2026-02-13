@@ -64,6 +64,8 @@ Date: February 2026
 
 import logging
 import os
+import time
+from datetime import datetime
 from typing import Any, Dict, List
 import torch
 
@@ -73,6 +75,7 @@ from engine import (
     compare_models_statistical,
     print_final_comparison_table
 )
+from output_formatters import format_time_seconds, save_final_summary_to_disk
 from logging_utils import log_experiment_config, print_separator, print_single_separator
 import config
 from config import (
@@ -152,8 +155,15 @@ def main():
     # Always generate from range to respect args.num_seeds
     seeds: List[int] = list(range(args.seed_start, args.seed_start + args.num_seeds))
 
+    # Generate timestamped output path for persistent result logging
+    output_path: str = ""
+    if not args.no_save_results:
+        timestamp: str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_path = os.path.join(args.results_dir, f'results_{timestamp}.json')
+        os.makedirs(args.results_dir, exist_ok=True)
+
     # Log comprehensive experiment configuration (replaces separate log_reproducibility_info call)
-    log_experiment_config(args, seeds, device)
+    log_experiment_config(args, seeds, device, output_path=output_path)
 
     # Model configurations with argument-driven TQF params
     # Note: TQF hidden_dim=None triggers auto-tuning in TQFANN.__init__()
@@ -183,10 +193,10 @@ def main():
             # Fractal Geometry
             # fractal_iters: None (disabled by default) -> 0 (no fractal layers)
             'fractal_iters': args.tqf_fractal_iterations if args.tqf_fractal_iterations is not None else 0,
-            'fractal_dim_tol': args.tqf_fractal_dim_tolerance,
+            # fractal_dim_tol: uses TQF_FRACTAL_DIM_TOLERANCE_DEFAULT from config.py (internal, not CLI-exposed)
+            # box_counting_scales: uses TQF_BOX_COUNTING_SCALES_DEFAULT from config.py (internal, not CLI-exposed)
             'self_similarity_weight': tqf_self_sim_weight,
             'box_counting_weight': tqf_box_count_weight,
-            'box_counting_scales': args.tqf_box_counting_scales,
 
             # Fibonacci Enhancement
             'fibonacci_mode': args.tqf_fibonacci_mode,
@@ -222,13 +232,38 @@ def main():
     print()
     logging.info(f"Loading datasets (num_train={args.num_train}, num_val={args.num_val}, "
                  f"num_test_rot={args.num_test_rot}, num_test_unrot={args.num_test_unrot})...")
+    any_orbit_mixing: bool = (
+        args.tqf_use_z6_orbit_mixing or args.tqf_use_d6_orbit_mixing or args.tqf_use_t24_orbit_mixing
+    )
+    if any_orbit_mixing:
+        logging.info(
+            f"Orbit mixing: Z6={args.tqf_use_z6_orbit_mixing}, "
+            f"D6={args.tqf_use_d6_orbit_mixing}, T24={args.tqf_use_t24_orbit_mixing} "
+            f"(temps: rot={args.tqf_orbit_mixing_temp_rotation:.2f}, "
+            f"refl={args.tqf_orbit_mixing_temp_reflection:.2f}, "
+            f"inv={args.tqf_orbit_mixing_temp_inversion:.2f})"
+        )
     train_loader, val_loader, test_loader_rot, test_loader_unrot = get_dataloaders(
         batch_size=args.batch_size,
         num_train=args.num_train,
         num_val=args.num_val,
         num_test_rot=args.num_test_rot,
-        num_test_unrot=args.num_test_unrot
+        num_test_unrot=args.num_test_unrot,
+        augment_train=args.tqf_z6_augmentation
     )
+
+    # Warm up image caches so first training epoch isn't penalized by disk I/O
+    print("Getting fired up! Loading dataset! Let's cache these puppies...", end=" ", flush=True)
+    warmup_start: float = time.time()
+    for loader in [train_loader, val_loader, test_loader_rot, test_loader_unrot]:
+        ds = loader.dataset
+        if hasattr(ds, 'warmup_cache'):
+            ds.warmup_cache()
+        elif hasattr(ds, 'dataset') and hasattr(ds.dataset, 'warmup_cache'):
+            ds.dataset.warmup_cache()
+    warmup_sec: float = time.time() - warmup_start
+    print(f"done ({format_time_seconds(warmup_sec)})")
+
     dataloaders: Dict[str, Any] = {
         'train': train_loader,
         'val': val_loader,
@@ -258,19 +293,31 @@ def main():
         z6_equivariance_weight=args.tqf_z6_equivariance_weight,
         d6_equivariance_weight=args.tqf_d6_equivariance_weight,
         t24_orbit_invariance_weight=args.tqf_t24_orbit_invariance_weight,
-        adaptive_mixing_temp=args.tqf_adaptive_mixing_temp,
-        use_orbit_mixing=args.tqf_use_orbit_mixing,
-        use_compile=args.compile
+        use_compile=args.compile,
+        output_path=output_path,
+        use_z6_orbit_mixing=args.tqf_use_z6_orbit_mixing,
+        use_d6_orbit_mixing=args.tqf_use_d6_orbit_mixing,
+        use_t24_orbit_mixing=args.tqf_use_t24_orbit_mixing,
+        orbit_mixing_temp_rotation=args.tqf_orbit_mixing_temp_rotation,
+        orbit_mixing_temp_reflection=args.tqf_orbit_mixing_temp_reflection,
+        orbit_mixing_temp_inversion=args.tqf_orbit_mixing_temp_inversion
     )
 
     # Statistical comparison
     logging.info("Computing statistical comparisons...")
     summary = compare_models_statistical(results)
 
-    # Print results
-    print_final_comparison_table(summary, use_orbit_mixing=args.tqf_use_orbit_mixing)
+    # Save final summary to disk (JSON + human-readable .txt)
+    if output_path:
+        save_final_summary_to_disk(summary, output_path)
 
-    logging.info("Experiment complete!")
+    # Print results
+    print_final_comparison_table(summary)
+
+    if output_path:
+        logging.info(f"Experiment complete! Results saved to {output_path}")
+    else:
+        logging.info("Experiment complete! (result saving disabled)")
 
 if __name__ == "__main__":
     main()

@@ -699,5 +699,510 @@ class TestSymmetryLossGradientFlow(unittest.TestCase):
         self.assertLess(grad_norm, 1e6, "Gradients should not explode")
 
 
+class TestZ6GroupProperties(unittest.TestCase):
+    """
+    Test Z6 group-theoretic properties beyond basic rotation.
+
+    WHY: Z6 must satisfy all cyclic group axioms for mathematical correctness.
+    HOW: Verify inverse elements, associativity, and all rotation angles.
+    WHAT: Tests group axioms for the 6-element cyclic group.
+    """
+
+    def test_z6_inverse_elements(self) -> None:
+        """
+        Test that each Z6 element has correct inverse: R_k o R_{6-k} = e.
+
+        WHY: Every group element must have an inverse
+        HOW: For each k, apply R_k then R_{6-k}, verify identity
+        WHAT: Verifies r^k o r^{6-k} = r^0 = e
+        """
+        sector_feats: torch.Tensor = torch.randn(2, 6, 32)
+
+        for k in range(6):
+            inverse_k: int = (6 - k) % 6
+            rotated: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=k)
+            restored: torch.Tensor = apply_z6_rotation_to_sectors(rotated, rotation_index=inverse_k)
+
+            self.assertTrue(
+                torch.allclose(restored, sector_feats, atol=1e-6),
+                f"R_{k} o R_{inverse_k} should equal identity"
+            )
+
+    def test_z6_associativity(self) -> None:
+        """
+        Test associativity: (R_a o R_b) o R_c = R_a o (R_b o R_c).
+
+        WHY: Group operation must be associative
+        HOW: Apply in both orderings, verify equal results
+        WHAT: Tests (r^a o r^b) o r^c = r^a o (r^b o r^c) for several triples
+        """
+        sector_feats: torch.Tensor = torch.randn(2, 6, 32)
+
+        test_triples: list = [(1, 2, 3), (2, 4, 5), (3, 3, 3), (0, 5, 1)]
+        for a, b, c in test_triples:
+            # (R_a o R_b) o R_c
+            temp1: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=b)
+            temp1 = apply_z6_rotation_to_sectors(temp1, rotation_index=a)
+            result_left: torch.Tensor = apply_z6_rotation_to_sectors(temp1, rotation_index=c)
+
+            # Wait, associativity means: (a*b)*c = a*(b*c)
+            # Let's be more precise: apply c first, then b, then a
+            # vs apply c first, then (b then a combined = (a+b) mod 6)
+            # Actually for composition: (R_a o R_b) o R_c means apply R_c first, then R_b, then R_a
+            # vs R_a o (R_b o R_c) means apply R_c first, then R_b, then R_a - same thing
+            # For cyclic groups this is trivially satisfied since it reduces to modular addition
+            # But let's test it explicitly
+            result_1: torch.Tensor = apply_z6_rotation_to_sectors(
+                apply_z6_rotation_to_sectors(
+                    apply_z6_rotation_to_sectors(sector_feats, rotation_index=c),
+                    rotation_index=b
+                ),
+                rotation_index=a
+            )
+
+            # Equivalent: R_{(a+b+c) mod 6}
+            combined: int = (a + b + c) % 6
+            result_2: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=combined)
+
+            self.assertTrue(
+                torch.allclose(result_1, result_2, atol=1e-6),
+                f"Associativity failed for ({a}, {b}, {c})"
+            )
+
+    def test_z6_all_rotation_angles(self) -> None:
+        """
+        Test that all 6 rotation angles produce distinct permutations.
+
+        WHY: Z6 has exactly 6 distinct elements (no duplicates)
+        HOW: Apply all 6 rotations to labeled sectors, verify all results are different
+        WHAT: Tests that |Z6| = 6 with no degenerate rotations
+        """
+        sector_feats: torch.Tensor = torch.zeros(1, 6, 1)
+        for i in range(6):
+            sector_feats[0, i, 0] = float(i)
+
+        results: list = []
+        for k in range(6):
+            rotated: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=k)
+            results.append(tuple(rotated[0, :, 0].tolist()))
+
+        # All 6 permutations should be distinct
+        self.assertEqual(len(set(results)), 6, "All 6 Z6 rotations should produce distinct permutations")
+
+
+class TestD6ReflectionsComplete(unittest.TestCase):
+    """
+    Test D6 reflections for all 6 axes.
+
+    WHY: All 6 reflection axes must be verified for complete D6 coverage.
+    HOW: Test remaining axes 3, 4, 5 that weren't tested in TestD6Reflections.
+    WHAT: Tests for apply_d6_reflection_to_sectors() on axes 3-5.
+    """
+
+    def test_d6_reflection_axis_3_permutation(self) -> None:
+        """
+        Test reflection across axis 3 (ray at 90 deg).
+
+        WHY: Complete coverage of all reflection axes
+        WHAT: Tests formula: sector i -> sector (2*3 - i) mod 6 = (6-i) mod 6
+        """
+        sector_feats: torch.Tensor = torch.zeros(1, 6, 1)
+        for i in range(6):
+            sector_feats[0, i, 0] = float(i)
+
+        reflected: torch.Tensor = apply_d6_reflection_to_sectors(sector_feats, reflection_axis=3)
+
+        # (2*3 - i) mod 6: [0,5,4,3,2,1]
+        expected_values: list = [0.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+        for i, expected in enumerate(expected_values):
+            self.assertAlmostEqual(reflected[0, i, 0].item(), expected, places=5,
+                                   msg=f"Axis 3, sector {i}")
+
+    def test_d6_reflection_axis_4_permutation(self) -> None:
+        """
+        Test reflection across axis 4 (ray at 120 deg).
+
+        WHAT: Tests formula: sector i -> sector (2*4 - i) mod 6 = (8-i) mod 6
+        """
+        sector_feats: torch.Tensor = torch.zeros(1, 6, 1)
+        for i in range(6):
+            sector_feats[0, i, 0] = float(i)
+
+        reflected: torch.Tensor = apply_d6_reflection_to_sectors(sector_feats, reflection_axis=4)
+
+        # (2*4 - i) mod 6 = (8-i) mod 6: [2,1,0,5,4,3]
+        expected_values: list = [2.0, 1.0, 0.0, 5.0, 4.0, 3.0]
+        for i, expected in enumerate(expected_values):
+            self.assertAlmostEqual(reflected[0, i, 0].item(), expected, places=5,
+                                   msg=f"Axis 4, sector {i}")
+
+    def test_d6_reflection_axis_5_permutation(self) -> None:
+        """
+        Test reflection across axis 5 (ray at 150 deg).
+
+        WHAT: Tests formula: sector i -> sector (2*5 - i) mod 6 = (10-i) mod 6
+        """
+        sector_feats: torch.Tensor = torch.zeros(1, 6, 1)
+        for i in range(6):
+            sector_feats[0, i, 0] = float(i)
+
+        reflected: torch.Tensor = apply_d6_reflection_to_sectors(sector_feats, reflection_axis=5)
+
+        # (2*5 - i) mod 6 = (10-i) mod 6: [4,3,2,1,0,5]
+        expected_values: list = [4.0, 3.0, 2.0, 1.0, 0.0, 5.0]
+        for i, expected in enumerate(expected_values):
+            self.assertAlmostEqual(reflected[0, i, 0].item(), expected, places=5,
+                                   msg=f"Axis 5, sector {i}")
+
+    def test_d6_all_reflections_involutive(self) -> None:
+        """
+        Test that ALL 6 reflection axes are involutions.
+
+        WHY: s_k^2 = e for all k in {0,1,2,3,4,5}
+        HOW: Apply each reflection twice, verify identity for all axes
+        """
+        sector_feats: torch.Tensor = torch.randn(2, 6, 32)
+
+        for k in range(6):
+            reflected_once: torch.Tensor = apply_d6_reflection_to_sectors(sector_feats, reflection_axis=k)
+            reflected_twice: torch.Tensor = apply_d6_reflection_to_sectors(reflected_once, reflection_axis=k)
+
+            self.assertTrue(
+                torch.allclose(reflected_twice, sector_feats, atol=1e-6),
+                f"Reflection axis {k} should be an involution (s_k^2 = e)"
+            )
+
+
+class TestD6NonCommutativity(unittest.TestCase):
+    """
+    Test D6 non-commutativity properties.
+
+    WHY: D6 is non-abelian: reflections and rotations don't commute.
+    HOW: Show specific cases where order matters.
+    WHAT: Verifies D6 is NOT commutative.
+    """
+
+    def test_rotation_reflection_dont_commute(self) -> None:
+        """
+        Test that R_1 o S_0 != S_0 o R_1 in general.
+
+        WHY: D6 is non-abelian; rotation-reflection order matters
+        HOW: Apply in both orders to non-symmetric features, verify different results
+        WHAT: Tests non-commutativity
+        """
+        # Use distinguishable sector features
+        sector_feats: torch.Tensor = torch.zeros(1, 6, 1)
+        for i in range(6):
+            sector_feats[0, i, 0] = float(i)
+
+        # R_1 o S_0: reflect first, then rotate
+        reflected: torch.Tensor = apply_d6_reflection_to_sectors(sector_feats, reflection_axis=0)
+        result1: torch.Tensor = apply_z6_rotation_to_sectors(reflected, rotation_index=1)
+
+        # S_0 o R_1: rotate first, then reflect
+        rotated: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=1)
+        result2: torch.Tensor = apply_d6_reflection_to_sectors(rotated, reflection_axis=0)
+
+        self.assertFalse(
+            torch.allclose(result1, result2, atol=1e-6),
+            "R_1 o S_0 should NOT equal S_0 o R_1 (D6 is non-abelian)"
+        )
+
+    def test_d6_has_12_distinct_elements(self) -> None:
+        """
+        Test that all 12 D6 operations produce distinct permutations.
+
+        WHY: |D6| = 12 with no duplicate elements
+        HOW: Apply all 12 operations, verify all results are unique
+        """
+        sector_feats: torch.Tensor = torch.zeros(1, 6, 1)
+        for i in range(6):
+            sector_feats[0, i, 0] = float(i)
+
+        results: set = set()
+        for is_reflected in [False, True]:
+            for rotation_index in range(6):
+                result: torch.Tensor = apply_d6_operation_to_sectors(
+                    sector_feats, rotation_index=rotation_index, is_reflected=is_reflected
+                )
+                results.add(tuple(result[0, :, 0].tolist()))
+
+        self.assertEqual(len(results), 12, "D6 should have exactly 12 distinct elements")
+
+
+class TestT24WithInversion(unittest.TestCase):
+    """
+    Test T24 operations with mock inversion function.
+
+    WHY: T24 includes circle inversion; must test with inversion_fn provided.
+    HOW: Provide a simple mock inversion function and verify composition.
+    WHAT: Tests apply_t24_operation() with inversion path.
+    """
+
+    def test_t24_with_identity_inversion(self) -> None:
+        """
+        Test T24 operation with inversion function that is identity.
+
+        WHY: Simplest case: inversion that does nothing
+        HOW: Provide lambda x: x as inversion_fn, verify same as D6-only
+        """
+        sector_feats: torch.Tensor = torch.randn(2, 6, 32)
+        identity_inv = lambda x: x
+
+        # Inverted operation with identity inversion = same as D6 operation
+        operation: T24Operation = T24Operation(
+            rotation_index=2, is_reflected=False, is_inverted=True, operation_id=14
+        )
+
+        result_with_inv: torch.Tensor = apply_t24_operation(
+            sector_feats, operation, inversion_fn=identity_inv
+        )
+
+        # Compare with pure D6 operation (since inversion is identity)
+        result_d6: torch.Tensor = apply_d6_operation_to_sectors(
+            sector_feats, rotation_index=2, is_reflected=False
+        )
+
+        self.assertTrue(torch.allclose(result_with_inv, result_d6, atol=1e-6))
+
+    def test_t24_with_negation_inversion(self) -> None:
+        """
+        Test T24 operation with inversion function that negates features.
+
+        WHY: Tests that inversion is applied AFTER D6 operation
+        HOW: Use negation as inversion, verify result = -D6(input)
+        """
+        sector_feats: torch.Tensor = torch.randn(2, 6, 32)
+        negate_fn = lambda x: -x
+
+        operation: T24Operation = T24Operation(
+            rotation_index=1, is_reflected=True, is_inverted=True, operation_id=19
+        )
+
+        result: torch.Tensor = apply_t24_operation(
+            sector_feats, operation, inversion_fn=negate_fn
+        )
+
+        # Expected: negate(D6(input))
+        d6_result: torch.Tensor = apply_d6_operation_to_sectors(
+            sector_feats, rotation_index=1, is_reflected=True
+        )
+        expected: torch.Tensor = -d6_result
+
+        self.assertTrue(torch.allclose(result, expected, atol=1e-6))
+
+    def test_t24_inversion_preserves_gradients(self) -> None:
+        """
+        Test that T24 operation with inversion preserves gradient flow.
+
+        WHY: Inversion function must be differentiable for training
+        HOW: Use differentiable inversion, backprop through T24 op
+        """
+        sector_feats: torch.Tensor = torch.randn(2, 6, 32, requires_grad=True)
+
+        # Differentiable mock inversion (scale by 0.5)
+        scale_fn = lambda x: x * 0.5
+
+        operation: T24Operation = T24Operation(
+            rotation_index=3, is_reflected=True, is_inverted=True, operation_id=21
+        )
+
+        result: torch.Tensor = apply_t24_operation(
+            sector_feats, operation, inversion_fn=scale_fn
+        )
+
+        loss: torch.Tensor = result.sum()
+        loss.backward()
+
+        self.assertIsNotNone(sector_feats.grad, "T24 with inversion should preserve gradients")
+        self.assertGreater(sector_feats.grad.abs().sum().item(), 0,
+                          "Gradients should be non-zero")
+
+
+class TestT24OrbitStructure(unittest.TestCase):
+    """
+    Test T24 orbit structural properties.
+
+    WHY: T24 orbit must partition feature space correctly.
+    HOW: Verify orbit consistency and coverage.
+    WHAT: Tests orbit generation and completeness.
+    """
+
+    def test_t24_all_operations_produce_valid_shapes(self) -> None:
+        """
+        Test that all 24 T24 operations produce correct output shapes.
+
+        WHY: Every T24 operation must preserve tensor shape
+        HOW: Apply all 24 operations, verify shapes match input
+        """
+        sector_feats: torch.Tensor = torch.randn(2, 6, 32)
+        operations: list = generate_t24_group()
+
+        identity_inv = lambda x: x
+
+        for op in operations:
+            result: torch.Tensor = apply_t24_operation(
+                sector_feats, op, inversion_fn=identity_inv
+            )
+            self.assertEqual(
+                result.shape, sector_feats.shape,
+                f"Operation {op.operation_id} changed shape: {result.shape} != {sector_feats.shape}"
+            )
+
+    def test_t24_non_inverted_ops_produce_12_distinct_results(self) -> None:
+        """
+        Test that 12 non-inverted T24 operations (= D6) produce 12 distinct results.
+
+        WHY: Non-inverted subset is exactly D6 with 12 distinct elements
+        HOW: Apply all non-inverted ops, verify 12 unique results
+        """
+        sector_feats: torch.Tensor = torch.zeros(1, 6, 1)
+        for i in range(6):
+            sector_feats[0, i, 0] = float(i)
+
+        operations: list = generate_t24_group()
+        non_inverted: list = [op for op in operations if not op.is_inverted]
+
+        results: set = set()
+        for op in non_inverted:
+            result: torch.Tensor = apply_t24_operation(sector_feats, op, inversion_fn=None)
+            results.add(tuple(result[0, :, 0].tolist()))
+
+        self.assertEqual(len(results), 12, "Non-inverted T24 ops should give 12 distinct results (= D6)")
+
+    def test_t24_operation_string_representation(self) -> None:
+        """
+        Test that T24Operation.__str__ produces readable descriptions.
+
+        WHY: String representation aids debugging and logging
+        HOW: Check identity, rotation, reflection, and combined descriptions
+        """
+        ops: list = generate_t24_group()
+
+        # Identity
+        self.assertIn("identity", str(ops[0]))
+
+        # Pure rotation (r^2)
+        self.assertIn("r^2", str(ops[2]))
+
+        # Reflected operation
+        reflected_op: T24Operation = [op for op in ops if op.is_reflected and not op.is_inverted][0]
+        self.assertIn("sor^", str(reflected_op))
+
+        # Inverted operation
+        inverted_op: T24Operation = [op for op in ops if op.is_inverted and not op.is_reflected and op.rotation_index > 0][0]
+        self.assertIn("i", str(inverted_op))
+
+
+class TestPrecomputedPermutationIndices(unittest.TestCase):
+    """
+    Test pre-computed permutation index tensors.
+
+    WHY: Pre-computed indices must match the mathematical formulas exactly.
+    HOW: Compare pre-computed values against manual computation.
+    WHAT: Tests _D6_REFLECTION_INDICES, _D6_PERMUTATION_INDICES, _T24_PERMUTATION_INDICES.
+    """
+
+    def test_d6_reflection_indices_shape(self) -> None:
+        """
+        Test that D6 reflection indices have correct shape.
+        """
+        from symmetry_ops import _D6_REFLECTION_INDICES
+        self.assertEqual(_D6_REFLECTION_INDICES.shape, (6, 6))
+
+    def test_d6_reflection_indices_values(self) -> None:
+        """
+        Test that D6 reflection indices match formula: (2*axis - i) % 6.
+        """
+        from symmetry_ops import _D6_REFLECTION_INDICES
+
+        for axis in range(6):
+            for i in range(6):
+                expected: int = (2 * axis - i) % 6
+                actual: int = _D6_REFLECTION_INDICES[axis, i].item()
+                self.assertEqual(actual, expected,
+                               f"Reflection index mismatch at axis={axis}, i={i}")
+
+    def test_d6_permutation_indices_shape(self) -> None:
+        """
+        Test that D6 permutation indices have correct shape (12 ops x 6 sectors).
+        """
+        from symmetry_ops import _D6_PERMUTATION_INDICES
+        self.assertEqual(_D6_PERMUTATION_INDICES.shape, (12, 6))
+
+    def test_t24_permutation_indices_shape(self) -> None:
+        """
+        Test that T24 permutation indices have correct shape (24 ops x 6 sectors).
+        """
+        from symmetry_ops import _T24_PERMUTATION_INDICES
+        self.assertEqual(_T24_PERMUTATION_INDICES.shape, (24, 6))
+
+    def test_t24_permutation_indices_duplicated_d6(self) -> None:
+        """
+        Test that T24 indices are D6 indices duplicated (ops 0-11 = ops 12-23).
+
+        WHY: Inversion doesn't change sector permutation, only applies bijection
+        HOW: Compare first 12 rows with last 12 rows
+        """
+        from symmetry_ops import _T24_PERMUTATION_INDICES
+        self.assertTrue(
+            torch.equal(_T24_PERMUTATION_INDICES[:12], _T24_PERMUTATION_INDICES[12:]),
+            "T24 permutation indices should duplicate D6 for inverted/non-inverted"
+        )
+
+
+class TestBatchDimensions(unittest.TestCase):
+    """
+    Test symmetry operations with various batch sizes.
+
+    WHY: Operations must work correctly for batch_size=1, large batches, etc.
+    HOW: Test edge cases in batch dimension.
+    WHAT: Tests shape preservation and correctness across batch sizes.
+    """
+
+    def test_z6_rotation_batch_size_1(self) -> None:
+        """Test Z6 rotation with single sample."""
+        sector_feats: torch.Tensor = torch.randn(1, 6, 32)
+        result: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=3)
+        self.assertEqual(result.shape, (1, 6, 32))
+
+    def test_z6_rotation_large_batch(self) -> None:
+        """Test Z6 rotation with large batch."""
+        sector_feats: torch.Tensor = torch.randn(128, 6, 64)
+        result: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=4)
+        self.assertEqual(result.shape, (128, 6, 64))
+
+    def test_d6_reflection_batch_size_1(self) -> None:
+        """Test D6 reflection with single sample."""
+        sector_feats: torch.Tensor = torch.randn(1, 6, 32)
+        result: torch.Tensor = apply_d6_reflection_to_sectors(sector_feats, reflection_axis=2)
+        self.assertEqual(result.shape, (1, 6, 32))
+
+    def test_operations_preserve_values_across_batch(self) -> None:
+        """
+        Test that operations apply independently to each batch element.
+
+        WHY: Each sample in batch must be transformed independently
+        HOW: Create batch with known samples, verify each is correct
+        """
+        # Create 3 samples with distinct patterns
+        sector_feats: torch.Tensor = torch.zeros(3, 6, 1)
+        for b in range(3):
+            for i in range(6):
+                sector_feats[b, i, 0] = float(b * 10 + i)
+
+        rotated: torch.Tensor = apply_z6_rotation_to_sectors(sector_feats, rotation_index=1)
+
+        # Verify each batch element was rotated correctly
+        for b in range(3):
+            # Rotation by 1: sector i gets content from sector (i-1) mod 6
+            for i in range(6):
+                expected: float = float(b * 10 + (i - 1) % 6)
+                self.assertAlmostEqual(
+                    rotated[b, i, 0].item(), expected, places=5,
+                    msg=f"Batch {b}, sector {i}"
+                )
+
+
 if __name__ == '__main__':
     unittest.main()

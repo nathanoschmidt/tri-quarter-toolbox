@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** February 7, 2026<br>
+**Version:** 1.0.1<br>
+**Date:** February 12, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -237,16 +237,16 @@ If you're still wrestling with hassles, or if you're interesting in the heavier 
 
    - Full CLI reference → [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md)
    - Architecture overview → [`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md)
-   - Symmetry enforcement details → [`doc/SYMMETRY_ENFORCEMENT.md`](doc/SYMMETRY_ENFORCEMENT.md)
-   - Test suite guide & structure → [`doc/TESTS_README.md`](doc/TESTS_README.md)
    - API documentation → [`doc/API_REFERENCE.md`](doc/API_REFERENCE.md)
+   - Data set documentation → [`data/DATASET_README.md`](data/DATASET_README.md)
+   - Test suite guide & structure → [`tests/TESTS_README.md`](tests/TESTS_README.md)
 
 ---
 
 **`QED`**
 
-**Last Updated:** February 7, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 
