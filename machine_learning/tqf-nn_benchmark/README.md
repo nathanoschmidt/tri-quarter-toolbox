@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.1<br>
-**Date:** February 12, 2026<br>
+**Version:** 1.0.2<br>
+**Date:** February 15, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -150,13 +150,32 @@ Most common flags:
 --patience                    Early stopping patience (default: 25)
 --tqf-symmetry-level          none | Z6 | D6 | T24 (default: none)
 --tqf-use-z6-orbit-mixing     TQF Z6 orbit mixing (competes/conflicts with TQF Z6 augmentation)
---no-tqf-z6-augmentation      Disable Z6 data augmentation during training
+--z6-data-augmentation        Enable Z6 data augmentation during training (disabled by default)
 --tqf-z6-equivariance-weight  Enable and set weight for Z6 equivariance loss (range [0.001, 0.05])
 --device                      cpu | cuda (default: cuda if available)
 --compile                     Enable PyTorch model compilation (Linux/macOS only)
 ```
 
 **Note**: Commands work on both Windows (Command Prompt/PowerShell) and Linux/macOS (terminal/bash). Use `python` (or `python3` on some Linux systems) assuming it's in your PATH.
+
+### Orbit Mixing (TQF-ANN)
+Orbit mixing is an evaluation-time ensemble technique in TQF-ANN that adaptively averages logits from symmetry-transformed sector features, improving prediction robustness and rotational invariance without additional training overhead. It operates in feature space using group operations (rotations, reflections, inversions) and temperature-scaled softmax weighting based on prediction confidence. This leverages the TQF lattice's inherent symmetries (ℤ₆, D₆, 𝕋₂₄) to produce more consistent outputs across transformations.
+
+Key CLI flags (focus on ℤ₆ for simplicity and efficiency):
+- `--tqf-use-z6-orbit-mixing`: Enables ℤ₆ orbit mixing (6 rotations: 0°, 60°, 120°, 180°, 240°, 300°) during evaluation. Recommended as the primary option for balanced performance gains on rotated MNIST. (Default: false)
+- `--tqf-use-d6-orbit-mixing`: Enables D₆ orbit mixing (ℤ₆ rotations + 6 reflections). Use for stronger reflection invariance.
+- `--tqf-use-t24-orbit-mixing`: Enables full 𝕋₂₄ orbit mixing (D₆ + circle inversions). Ideal for exploiting inner/outer zone duality, but requires inversion support.
+- Temperature controls (adjust weighting softness):
+  - `--tqf-orbit-mixing-temp-rotation`: Temperature for rotation averaging (default: 1.0).
+  - `--tqf-orbit-mixing-temp-reflection`: Temperature for reflection averaging (default: 1.0).
+  - `--tqf-orbit-mixing-temp-inversion`: Temperature for inversion averaging (default: 1.0).
+
+**Important Note:** Orbit mixing conflicts with training-time data augmentation via `--z6-data-augmentation`, as the latter introduces explicit rotations that may interfere with orbit-based ensembles. Keep `--z6-data-augmentation` off (default) when enabling any orbit mixing to avoid suboptimal results.
+
+Example: Enable ℤ₆ orbit mixing for evaluation robustness:
+```
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
+```
 
 ### Symmetry Enforcement Losses (TQF-ANN)
 Explicit symmetry enforcement through equivariance and/or invariance losses during training.
@@ -191,7 +210,7 @@ Control hierarchical feature learning with Fibonacci weight scaling. All modes h
 --tqf-fibonacci-mode fibonacci      Fibonacci weights [1,1,2,3,5,...] (opt-in)
 
 # Optional: Golden ratio radial binning
---tqf-use-phi-binning              Use φ-scaled bins (faster inference)
+--tqf-use-phi-binning               Use φ-scaled bins (faster inference)
 ```
 
 **Example: Train with uniform weighting (default)**
@@ -309,8 +328,8 @@ See some of our future TODO items in [`FUTURE_TODO.md`](FUTURE_TODO.md).
 
 **`QED`**
 
-**Last Updated:** February 12, 2026<br>
-**Version:** 1.0.1<br>
+**Last Updated:** February 15, 2026<br>
+**Version:** 1.0.2<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

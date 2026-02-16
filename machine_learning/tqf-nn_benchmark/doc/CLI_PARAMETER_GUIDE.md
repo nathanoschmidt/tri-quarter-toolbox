@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.1<br>
-**Date:** February 12, 2026<br>
+**Version:** 1.0.2<br>
+**Date:** February 15, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -1366,30 +1366,30 @@ The temperature controls feature-based attention in neighbor aggregation:
 
 ---
 
-### 8.5 TQF Training Augmentation
+### 8.5 Training Data Augmentation
 
-#### `--no-tqf-z6-augmentation` (flag)
+#### `--z6-data-augmentation` (flag)
 
-**Purpose**: Disable Z6-aligned rotation data augmentation during training. By default, training images are randomly rotated at 60-degree intervals (with jitter) to teach rotation robustness. Disable to test TQF-ANN's architectural rotation robustness in isolation.
+**Purpose**: Enable Z6-aligned rotation data augmentation during training for all models. When enabled, training images are randomly rotated at 60-degree intervals (with jitter) to teach rotation robustness. Disabled by default because it conflicts with orbit mixing features.
 
-**Type**: `flag` (store_false, sets `tqf_z6_augmentation = False`)
+**Type**: `flag` (store_true, sets `z6_data_augmentation = True`)
 
-**Default**: Augmentation enabled (`True`, from `TQF_USE_Z6_AUGMENTATION_DEFAULT` in config.py)
+**Default**: Augmentation disabled (`False`, from `Z6_DATA_AUGMENTATION_DEFAULT` in config.py)
 
 **Examples**:
 
 ```bash
-# Default: Z6 augmentation enabled (best accuracy)
+# Default: Z6 augmentation disabled
 python main.py --models TQF-ANN
 
-# Disable Z6 augmentation to isolate architectural robustness
-python main.py --models TQF-ANN --no-tqf-z6-augmentation
+# Enable Z6 augmentation for rotation robustness
+python main.py --models TQF-ANN --z6-data-augmentation
 
-# Combine with orbit mixing for architectural demonstration
-python main.py --models TQF-ANN --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+# Use orbit mixing instead (recommended over augmentation)
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 ```
 
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+**Applies To**: All models (shared training DataLoader)
 
 ---
 
@@ -1448,11 +1448,11 @@ python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 # Full T24 orbit mixing
 python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
 
-# Demonstrate architectural robustness (no data aug + orbit mixing)
-python main.py --models TQF-ANN --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+# Demonstrate architectural robustness via orbit mixing (augmentation off by default)
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 
-# Compare TQF-ANN vs CNN without augmentation
-python main.py --models TQF-ANN CNN-L5 --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+# Compare TQF-ANN vs CNN with orbit mixing
+python main.py --models TQF-ANN CNN-L5 --tqf-use-z6-orbit-mixing
 
 # Custom temperatures
 python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
@@ -2123,7 +2123,7 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-use-phi-binning` | flag | False | - | Use phi-scaled radial binning |
 | `--tqf-use-gradient-checkpointing` | flag | False | - | Enable gradient checkpointing for memory savings |
 | `--tqf-hop-attention-temp` | float | 1.0 | [0.01, 10.0] | Hop attention temperature (1.0 = fast path) |
-| `--no-tqf-z6-augmentation` | flag | True (enabled) | - | Disable Z6 rotation data augmentation during training |
+| `--z6-data-augmentation` | flag | False (disabled) | - | Enable Z6 rotation data augmentation during training (all models) |
 | `--tqf-use-z6-orbit-mixing` | flag | False | - | Z6 rotation orbit mixing at evaluation |
 | `--tqf-use-d6-orbit-mixing` | flag | False | - | D6 reflection orbit mixing at evaluation |
 | `--tqf-use-t24-orbit-mixing` | flag | False | - | T24 zone-swap orbit mixing at evaluation |
@@ -2800,7 +2800,7 @@ TQF_TRUNCATION_R_DEFAULT = 20
 TQF_HIDDEN_DIMENSION_DEFAULT = None  # Auto-tuned to ~650k params
 TQF_SYMMETRY_LEVEL_DEFAULT = 'none'
 TQF_FIBONACCI_DIMENSION_MODE_DEFAULT = 'none'
-TQF_USE_Z6_AUGMENTATION_DEFAULT = True
+Z6_DATA_AUGMENTATION_DEFAULT = False
 
 # TQF fractal parameters (all disabled/opt-in by default)
 TQF_FRACTAL_ITERATIONS_DEFAULT = 0       # Disabled; provide value via CLI to enable
@@ -2976,8 +2976,8 @@ python main.py --models TQF-ANN --results-dir /tmp/my_results
 ---
 **`QED`**
 
-**Last Updated:** February 12, 2026<br>
-**Version:** 1.0.1<br>
+**Last Updated:** February 15, 2026<br>
+**Version:** 1.0.2<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

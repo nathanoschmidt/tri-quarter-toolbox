@@ -67,32 +67,8 @@ import os
 import time
 from datetime import datetime
 from typing import Any, Dict, List
-import torch
 
 from cli import parse_args, setup_logging
-from engine import (
-    run_multi_seed_experiment,
-    compare_models_statistical,
-    print_final_comparison_table
-)
-from output_formatters import format_time_seconds, save_final_summary_to_disk
-from logging_utils import log_experiment_config, print_separator, print_single_separator
-import config
-from config import (
-    TARGET_PARAMS,
-    TARGET_PARAMS_TOLERANCE_ABSOLUTE,
-    TARGET_PARAMS_TOLERANCE_PERCENT,
-    TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-    TQF_BOX_COUNTING_WEIGHT_DEFAULT
-)
-
-# Assuming prepare_datasets.py provides these functions
-try:
-    from prepare_datasets import get_dataloaders
-except ImportError:
-    print("Warning: prepare_datasets.py not found. Using dummy loaders.")
-    def get_dataloaders(*args, **kwargs):
-        raise NotImplementedError("prepare_datasets.py not available")
 
 
 def verify_parameter_matching(model_configs: Dict[str, Dict]) -> bool:
@@ -105,6 +81,8 @@ def verify_parameter_matching(model_configs: Dict[str, Dict]) -> bool:
         True if all models within tolerance
     """
     from models_baseline import get_model
+    from logging_utils import print_separator, print_single_separator
+    from config import TARGET_PARAMS, TARGET_PARAMS_TOLERANCE_ABSOLUTE, TARGET_PARAMS_TOLERANCE_PERCENT
 
     print_separator("PARAMETER MATCHING VERIFICATION")
     print(f"Target: {TARGET_PARAMS:,} parameters (+/- {TARGET_PARAMS_TOLERANCE_PERCENT}% = {TARGET_PARAMS_TOLERANCE_ABSOLUTE:,})")
@@ -134,11 +112,32 @@ def verify_parameter_matching(model_configs: Dict[str, Dict]) -> bool:
 
 def main():
     """Main execution function with argument-driven configuration."""
+    args = parse_args()
+
+    # Deferred heavy imports (keep out of top-level so `-h` stays fast)
+    import torch
+    from engine import (
+        run_multi_seed_experiment,
+        compare_models_statistical,
+        print_final_comparison_table
+    )
+    from output_formatters import format_time_seconds, save_final_summary_to_disk
+    from logging_utils import log_experiment_config, print_separator, print_single_separator
+    from config import TQF_SELF_SIMILARITY_WEIGHT_DEFAULT, TQF_BOX_COUNTING_WEIGHT_DEFAULT
+    try:
+        from prepare_datasets import get_dataloaders
+    except ImportError:
+        print("Warning: prepare_datasets.py not found. Using dummy loaders.")
+        def get_dataloaders(*args, **kwargs):
+            raise NotImplementedError("prepare_datasets.py not available")
+
     # Startup message
     print_separator("TQF-NN Benchmark Experiment Suite >>> It's time for Cold Hammer L33T 0WN4G3")
     print()
 
-    args = parse_args()
+    # Resolve --device auto
+    if args.device == 'auto':
+        args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # GPU optimization
     if torch.cuda.is_available():
@@ -249,7 +248,7 @@ def main():
         num_val=args.num_val,
         num_test_rot=args.num_test_rot,
         num_test_unrot=args.num_test_unrot,
-        augment_train=args.tqf_z6_augmentation
+        augment_train=args.z6_data_augmentation
     )
 
     # Warm up image caches so first training epoch isn't penalized by disk I/O

@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.1<br>
-**Last Updated:** February 12, 2026<br>
+**Version:** 1.0.2<br>
+**Last Updated:** February 15, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -1985,8 +1985,8 @@ TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
 TQF_FIBONACCI_MODE_CHOICES: List[str] = ['none', 'linear', 'fibonacci']
 TQF_USE_PHI_BINNING_DEFAULT: bool = False
 
-# Z6 augmentation
-TQF_USE_Z6_AUGMENTATION_DEFAULT: bool = True
+# Z6 augmentation (applies to all models)
+Z6_DATA_AUGMENTATION_DEFAULT: bool = False
 
 # Regularization weights (all opt-in, disabled by default)
 TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
@@ -2842,8 +2842,8 @@ PHI = (1 + sqrt(5)) / 2 ≈ 1.618033988749...
 
 **`QED`**
 
-**Last Updated:** February 12, 2026<br>
-**Version:** 1.0.1<br>
+**Last Updated:** February 15, 2026<br>
+**Version:** 1.0.2<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

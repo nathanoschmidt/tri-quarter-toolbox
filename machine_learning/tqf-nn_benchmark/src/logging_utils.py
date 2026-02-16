@@ -397,7 +397,7 @@ def log_experiment_config(
     print(f"  Interpolation mode               : BICUBIC")
     print(f"  Normalization                    : mean=0.1307, std=0.3081 (MNIST standard)")
     print(f"  Stratified sampling              : Enabled (balanced classes)")
-    use_z6_data_aug = getattr(args, 'tqf_z6_augmentation', True)
+    use_z6_data_aug = getattr(args, 'z6_data_augmentation', False)
     print(f"  Z6 data augmentation             : {'Enabled' if use_z6_data_aug else 'Disabled'}")
 
     # -------------------------------------------------------------------------

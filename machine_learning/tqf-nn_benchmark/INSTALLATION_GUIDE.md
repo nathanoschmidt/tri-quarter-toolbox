@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.1<br>
-**Date:** February 12, 2026<br>
+**Version:** 1.0.2<br>
+**Date:** February 15, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -233,6 +233,8 @@ See contact info below.
 
 You're ready to launch! Have fun exploring the TQF-NN!
 
+We recommend to check out [`README.md`](README.md) and [`QUICKSTART.md`](QUICKSTART.md).
+
 If you're still wrestling with hassles, or if you're interesting in the heavier documentation, then feel free to check out the advanced/comprehensive/L33T documentation:
 
    - Full CLI reference → [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md)
@@ -245,8 +247,8 @@ If you're still wrestling with hassles, or if you're interesting in the heavier 
 
 **`QED`**
 
-**Last Updated:** February 12, 2026<br>
-**Version:** 1.0.1<br>
+**Last Updated:** February 15, 2026<br>
+**Version:** 1.0.2<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

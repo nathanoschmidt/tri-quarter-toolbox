@@ -219,15 +219,15 @@ class TestParseArgsDefaults:
             args = parse_args()
             assert args.tqf_symmetry_level == config.TQF_SYMMETRY_LEVEL_DEFAULT
 
-    def test_default_device_cuda(self) -> None:
+    def test_default_device_auto(self) -> None:
         """
-        WHY: Default should use GPU if available
+        WHY: Default should be 'auto' (resolved to cuda/cpu later in main.py)
         HOW: Parse args and check device
-        WHAT: Expect 'cuda'
+        WHAT: Expect 'auto'
         """
         with patch('sys.argv', ['test_cli.py']):
             args = parse_args()
-            assert args.device == 'cuda'
+            assert args.device == 'auto'
 
 
 class TestParseArgsModelSelection:
@@ -1083,28 +1083,28 @@ class TestCombinedLossFlags:
 
 
 class TestZ6AugmentationFlag:
-    """Test suite for --no-tqf-z6-augmentation flag (store_false, default True)."""
+    """Test suite for --z6-data-augmentation flag (store_true, default False)."""
 
-    def test_z6_augmentation_enabled_by_default(self) -> None:
+    def test_z6_augmentation_disabled_by_default(self) -> None:
         """
-        WHY: Z6 augmentation should be enabled by default for best accuracy
+        WHY: Z6 augmentation should be disabled by default (conflicts with orbit mixing)
         HOW: Parse without specifying the flag
-        WHAT: Expect tqf_z6_augmentation = True
+        WHAT: Expect z6_data_augmentation = False
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
             args = parse_args()
-            assert args.tqf_z6_augmentation is True
+            assert args.z6_data_augmentation is False
 
-    def test_z6_augmentation_disabled(self) -> None:
+    def test_z6_augmentation_enabled(self) -> None:
         """
-        WHY: User should be able to disable Z6 augmentation to isolate architectural robustness
-        HOW: Parse with --no-tqf-z6-augmentation
-        WHAT: Expect tqf_z6_augmentation = False
+        WHY: User should be able to enable Z6 augmentation for rotation robustness
+        HOW: Parse with --z6-data-augmentation
+        WHAT: Expect z6_data_augmentation = True
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--no-tqf-z6-augmentation']):
+                               '--z6-data-augmentation']):
             args = parse_args()
-            assert args.tqf_z6_augmentation is False
+            assert args.z6_data_augmentation is True
 
 
 class TestOrbitMixingFlags:
@@ -1314,7 +1314,7 @@ class TestCLIConfigRangeConstantConsistency:
         """Test that CLI default values match config.py defaults."""
         import cli
         defaults = [
-            'TQF_USE_Z6_AUGMENTATION_DEFAULT',
+            'Z6_DATA_AUGMENTATION_DEFAULT',
             'TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT',
             'TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT',
             'TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT',

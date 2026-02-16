@@ -57,9 +57,7 @@ Date: February 2026
 
 import argparse
 import sys
-import torch
 from typing import List
-from models_baseline import MODEL_REGISTRY
 from config import (
     BATCH_SIZE_DEFAULT,
     DEFAULT_RESULTS_DIR,
@@ -85,7 +83,7 @@ from config import (
     TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
     TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
     TQF_USE_PHI_BINNING_DEFAULT,
-    TQF_USE_Z6_AUGMENTATION_DEFAULT,
+    Z6_DATA_AUGMENTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
@@ -133,6 +131,7 @@ def get_all_model_names() -> List[str]:
     """
     # TQF-ANN is not in MODEL_REGISTRY to avoid slow import,
     # but is available via get_model() with lazy loading
+    from models_baseline import MODEL_REGISTRY
     return list(MODEL_REGISTRY.keys()) + ['TQF-ANN']
 
 
@@ -210,8 +209,8 @@ Result Output:
     general_group.add_argument(
         '--device',
         type=str,
-        default='cuda' if torch.cuda.is_available() else 'cpu',
-        help='Device to use (cuda or cpu). Default: cuda if available, else cpu.'
+        default='auto',
+        help='Device to use (cuda, cpu, or auto). Default: auto (cuda if available, else cpu).'
     )
 
     general_group.add_argument(
@@ -460,15 +459,15 @@ Result Output:
     )
 
     tqf_arch_group.add_argument(
-        '--no-tqf-z6-augmentation',
-        action='store_false',
-        dest='tqf_z6_augmentation',
-        default=TQF_USE_Z6_AUGMENTATION_DEFAULT,
-        help='Disable Z6-aligned rotation augmentation during training. '
-             'By default, random rotations at 60-degree intervals (with +/-15 deg jitter) '
-             'are applied to training images. Disabling tests rotation robustness '
-             'from model architecture alone. '
-             'Default: augmentation enabled (True).'
+        '--z6-data-augmentation',
+        action='store_true',
+        dest='z6_data_augmentation',
+        default=Z6_DATA_AUGMENTATION_DEFAULT,
+        help='Enable Z6-aligned rotation augmentation during training for all models. '
+             'When enabled, random rotations at 60-degree intervals (with +/-15 deg jitter) '
+             'are applied to training images to teach rotation robustness. '
+             'Note: conflicts with orbit mixing features; avoid using both together. '
+             'Default: augmentation disabled (False).'
     )
 
     # =========================================================================
@@ -788,8 +787,8 @@ def _validate_args(args: argparse.Namespace) -> None:
             )
 
     # Device
-    if args.device not in ['cuda', 'cpu']:
-        errors.append(f"Invalid device '{args.device}'. Must be 'cuda' or 'cpu'.")
+    if args.device not in ['cuda', 'cpu', 'auto']:
+        errors.append(f"Invalid device '{args.device}'. Must be 'cuda', 'cpu', or 'auto'.")
 
     # Result output: resolve results_dir to absolute path
     if not args.no_save_results:

@@ -2,7 +2,8 @@
 
 * [ ] More feature testing (e.g. multiple different feature combos)
 * [ ] Add more automated tests
-* [ ] Make this TQF-ANN beast more accurate and faster
+* [X] Make this TQF-ANN beast faster
+* [ ] Make this TQF-ANN beast more accurate
 * [ ] Implement trained model saving/loading for reusability
 * [ ] Implement TQF spiking neural networks (TQF-SNN)
 
@@ -10,8 +11,8 @@
 
 **`QED`**
 
-**Last Updated:** February 12, 2026<br>
-**Version:** 1.0.1<br>
+**Last Updated:** February 15, 2026<br>
+**Version:** 1.0.2<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

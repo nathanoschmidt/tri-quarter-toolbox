@@ -639,10 +639,10 @@ class TestOrbitMixingAndAugmentationDefaults(unittest.TestCase):
     """
 
     def test_z6_augmentation_default_exists(self) -> None:
-        """Test that TQF_USE_Z6_AUGMENTATION_DEFAULT exists and is True."""
-        self.assertTrue(hasattr(config, 'TQF_USE_Z6_AUGMENTATION_DEFAULT'))
-        self.assertIsInstance(config.TQF_USE_Z6_AUGMENTATION_DEFAULT, bool)
-        self.assertTrue(config.TQF_USE_Z6_AUGMENTATION_DEFAULT)
+        """Test that Z6_DATA_AUGMENTATION_DEFAULT exists and is False."""
+        self.assertTrue(hasattr(config, 'Z6_DATA_AUGMENTATION_DEFAULT'))
+        self.assertIsInstance(config.Z6_DATA_AUGMENTATION_DEFAULT, bool)
+        self.assertFalse(config.Z6_DATA_AUGMENTATION_DEFAULT)
 
     def test_orbit_mixing_temp_rotation_default(self) -> None:
         """Test rotation temperature default is 0.3 (sharp weighting)."""

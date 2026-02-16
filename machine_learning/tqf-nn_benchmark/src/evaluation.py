@@ -67,20 +67,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from scipy import stats
 from config import (
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
 )
-
-# Try to import ptflops for FLOPs measurement (graceful fallback)
-try:
-    from ptflops import get_model_complexity_info
-    PTFLOPS_AVAILABLE: bool = True
-except ImportError:
-    PTFLOPS_AVAILABLE: bool = False
-    logging.warning("ptflops not available, using simplified FLOPs estimation")
 
 # =============================================================================
 # SECTION 1: Basic Utility Functions
@@ -181,21 +172,21 @@ def measure_flops(
     Returns:
         FLOPs count (0 if estimation fails)
     """
-    if PTFLOPS_AVAILABLE:
-        try:
-            with torch.no_grad():
-                flops, _ = get_model_complexity_info(
-                    model, input_shape[1:], as_strings=False,
-                    print_per_layer_stat=False, verbose=False,
-                    input_constructor=lambda s: torch.randn(1, *s).to(next(model.parameters()).device)
-                )
-            return flops
-        except Exception as e:
-            logging.info(f"FLOPs estimation skipped ({type(e).__name__}): {e}")
-            return 0.0
-    else:
-        # Fallback to simplified estimation
+    try:
+        from ptflops import get_model_complexity_info
+        with torch.no_grad():
+            flops, _ = get_model_complexity_info(
+                model, input_shape[1:], as_strings=False,
+                print_per_layer_stat=False, verbose=False,
+                input_constructor=lambda s: torch.randn(1, *s).to(next(model.parameters()).device)
+            )
+        return flops
+    except ImportError:
+        # ptflops not installed — use simplified estimation
         return estimate_model_flops(model, input_shape)
+    except Exception as e:
+        logging.info(f"FLOPs estimation skipped ({type(e).__name__}): {e}")
+        return 0.0
 
 def estimate_model_flops(
     model: nn.Module,
@@ -731,6 +722,8 @@ def compute_statistical_significance(
     Returns:
         Dict with keys: 'p_value', 't_statistic', 'effect_size' (Cohen's d)
     """
+    from scipy import stats
+
     if test == 'ttest':
         stat, p_val = stats.ttest_ind(scores_a, scores_b)
     elif test == 'wilcoxon':
@@ -776,6 +769,8 @@ def report_statistical_tests(
         raw_results: Dict mapping model_name -> list of result dicts
         symmetry_level: TQF symmetry level for reporting
     """
+    from scipy import stats
+
     if 'TQF-ANN' in raw_results:
         tqf_vals: List[float] = [r['test_rot_acc'][0] for r in raw_results['TQF-ANN']]
         for base in ['FC-MLP', 'CNN-L5', 'ResNet-18-Scaled']:

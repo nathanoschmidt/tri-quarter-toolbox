@@ -873,23 +873,24 @@ TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
 #      Decision: False by default (simpler and faster). Enable for advanced studies.
 TQF_USE_PHI_BINNING_DEFAULT: bool = False
 
-# TQF_USE_Z6_AUGMENTATION_DEFAULT
-# --------------------------------
+# Z6_DATA_AUGMENTATION_DEFAULT
+# -----------------------------
 # WHAT: Whether to apply Z6-aligned rotation augmentation during training.
 #
 # HOW: When True, training images are randomly rotated at 60-degree intervals
 #      (with +/-15 degree jitter) to teach rotation robustness.
-#      - Default: True
-#      - CLI override: --no-tqf-z6-augmentation (sets to False)
-#      - When True: Standard training with rotation augmentation (best accuracy)
-#      - When False: No rotation augmentation (isolates architectural robustness)
+#      - Default: False (disabled)
+#      - CLI override: --z6-data-augmentation (sets to True)
+#      - When True: Training with rotation augmentation (improves rotated accuracy)
+#      - When False: No rotation augmentation (standard training)
+#      - Applies to ALL models (shared training DataLoader), not just TQF-ANN.
 #
-# WHY: Z6 rotation augmentation is the primary source of rotation robustness.
-#      Disabling it allows comparison of TQF-ANN's inherent geometric robustness
-#      vs. baseline models, demonstrating the architectural advantage of hexagonal
-#      symmetry without data augmentation.
-#      Decision: True by default for best accuracy. Disable for architecture studies.
-TQF_USE_Z6_AUGMENTATION_DEFAULT: bool = True
+# WHY: Z6 rotation augmentation is disabled by default because it conflicts with
+#      TQF orbit mixing features and can hurt accuracy when both are active.
+#      Users can opt in via --z6-data-augmentation when rotation robustness is needed
+#      and orbit mixing is not being used.
+#      Decision: False by default. Enable explicitly when needed.
+Z6_DATA_AUGMENTATION_DEFAULT: bool = False
 
 # TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT
 # ---------------------------------------

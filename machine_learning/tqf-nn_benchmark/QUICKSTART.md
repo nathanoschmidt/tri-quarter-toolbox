@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.1<br>
-**Date:** February 12, 2026<br>
+**Version:** 1.0.2<br>
+**Date:** February 15, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -112,19 +112,19 @@
 **Get blasting immediately with a single command:**
 
 ```bash
-(venv) $ python src/main.py --tqf-symmetry-level D6
+(venv) $ python src/main.py --tqf-use-z6-orbit-mixing
 ```
 
 **What happens:**
 - Trains the parameter-matched TQF-ANN (∼650K params) and three strong non-TQF baselines
-- Uses D₆ symmetry
+- Uses ℤ₆ orbit mixing when training TQF-ANN
 - Automatically downloads & prepares the rotated MNIST datasets
 - Prints a clean apples-to-apples comparison table with Val/Test/Rotated Test accuracy ± std
 
-**Quick alternative (single-seed, TQF-ANN model training only):**
+**Quick alternative (TQF-ANN model training only):**
 
 ```bash
-(venv) $ python src/main.py --models TQF-ANN --num-seeds 1
+(venv) $ python src/main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 ```
 
 **Adjust training duration and data size (very common for quick debugging or scaling experiments):**
@@ -156,14 +156,15 @@ Results are saved **incrementally after each seed completes**, so even if traini
 You'll see a clean summary table printed to the console as something like (example format):
 
 ```
-============================================================================================
-Model                Val Acc    Test Acc   Rot Acc    Params (k)   FLOPs (M)   Inf Time (ms)
---------------------------------------------------------------------------------------------
-TQF-ANN             95.4±0.3   95.7±0.2   95.9±0.4     648.2±1.1     12.4±0.3      4.8±0.2
-MLP                 97.1±0.4   97.5±0.3   89.2±1.1     649.8±0.9     11.9±0.2      3.2±0.1
-CNN                 98.2±0.2   98.6±0.2   94.5±0.7     651.3±1.4     18.7±0.5      5.1±0.3
-ResNet              98.5±0.3   98.8±0.2   95.8±0.6     647.9±1.0     22.1±0.4      6.9±0.4
-============================================================================================
+FINAL MODEL COMPARISON (Mean +/- Std)
+========================================================================================================================
+Model                 Val Acc (%)     Test Acc (%)    Rot Acc (%)      Params (k)        FLOPs (M)      Inf Time (ms)
+------------------------------------------------------------------------------------------------------------------------
+FC-MLP                98.50+/-0.00    98.47+/-0.00    38.28+/-0.00     648.4+/- 0.0       1.3+/- 0.0     0.42+/-0.00
+CNN-L5                99.25+/-0.00    99.39+/-0.00    43.43+/-0.00     654.0+/- 0.0      82.3+/- 0.0     1.92+/-0.00
+ResNet-18-Scaled      99.50+/-0.00    99.40+/-0.00    43.33+/-0.00     654.6+/- 0.0     255.3+/- 0.0     1.88+/-0.00
+TQF-ANN               97.05+/-0.00    97.75+/-0.00    66.57+/-0.00     651.2+/- 0.0       1.3+/- 0.0     5.00+/-0.00
+========================================================================================================================
 ```
 
 **Key columns explained:**
@@ -222,13 +223,18 @@ python src/main.py --models FC-MLP CNN-L5 ResNet-18-Scaled
 ```
 
 ```bash
-# TQF-ANN + D6 symmetry + D6 equivariance enforcement (very common combo)
-python src/main.py --models TQF-ANN --tqf-symmetry-level D6 --tqf-d6-equivariance-weight 0.01
+# TQF-ANN + Z6 orbit mixing (very common combo)
+python src/main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 ```
 
 ```bash
-# Change truncation radius R (controls lattice size; hidden_dim auto-tunes to keep ~650k params)
-python src/main.py --models TQF-ANN --tqf-R 15 --tqf-symmetry-level D6
+# TQF-ANN + D6 symmetry + Z6 equivariance enforcement
+python src/main.py --models TQF-ANN --tqf-symmetry-level Z6 --tqf-z6-equivariance-weight 0.01
+```
+
+```bash
+# Change truncation radius R (controls lattice size; sparsifying lattice because hidden_dim auto-tunes to keep ~650k params)
+python src/main.py --models TQF-ANN --tqf-R 30 --tqf-symmetry-level D6
 ```
 
 ```bash
@@ -236,19 +242,20 @@ python src/main.py --models TQF-ANN --tqf-R 15 --tqf-symmetry-level D6
 python src/main.py --models TQF-ANN ResNet-18-Scaled --num-seeds 5 --num-epochs 90 --patience 22
 ```
 
-Most frequently used flags to remember:
+Some common flags to remember:
 
 - `--models`              space- or comma-separated list (e.g. `TQF-ANN ResNet-18-Scaled`)
-- `--tqf-symmetry-level`             `none` / `Z6` / `D6` / `T24`
 - `--num-seeds`                      number of independent runs
 - `--num-train`                      training set size
 - `--num-epochs`                     max epochs
-- `--tqf-z6-equivariance-weight`     Z6 rotation equivariance loss (opt-in)
-- `--tqf-d6-equivariance-weight`     D6 reflection equivariance loss (opt-in)
-- `--tqf-t24-orbit-invariance-weight`  T24 orbit invariance loss (opt-in)
-- `--no-tqf-z6-augmentation`         disable Z6 rotation data augmentation
-- `--tqf-use-z6-orbit-mixing`        Z6 evaluation-time orbit mixing
-- `--tqf-use-t24-orbit-mixing`       full T24 evaluation-time orbit mixing
+- `--tqf-use-z6-orbit-mixing`        ℤ₆ evaluation-time orbit mixing
+- `--tqf-use-d6-orbit-mixing`        D₆ evaluation-time orbit mixing
+- `--tqf-use-t24-orbit-mixing`       full 𝕋₂₄ evaluation-time orbit mixing
+- `--tqf-symmetry-level`             `none` / `Z6` / `D6` / `T24`
+- `--tqf-z6-equivariance-weight`     ℤ₆ rotation equivariance loss (opt-in)
+- `--tqf-d6-equivariance-weight`     D₆ reflection equivariance loss (opt-in)
+- `--tqf-t24-orbit-invariance-weight`  𝕋₂₄ orbit invariance loss (opt-in)
+- `--z6-data-augmentation`            enable ℤ₆ rotation data augmentation (disabled by default)
 - `--tqf-verify-geometry`
 - `--compile`                        (Linux only)
 
@@ -318,22 +325,25 @@ python src/main.py --models TQF-ANN \
 TQF-ANN achieves rotation robustness from two sources: **Z6 data augmentation** (training-time rotation of images at 60-degree intervals) and **architectural symmetry** (hexagonal lattice geometry). You can isolate and compare these contributions:
 
 ```bash
-# Best accuracy: Z6 data augmentation ON (default), no orbit mixing
+# Standard training: no data augmentation (default), no orbit mixing
 python src/main.py --models TQF-ANN
 
-# Isolate architectural robustness: disable augmentation, enable orbit mixing (avoid competing features)
-python src/main.py --models TQF-ANN --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+# With Z6 data augmentation for rotation robustness
+python src/main.py --models TQF-ANN --z6-data-augmentation
 
-# Apples-to-apples comparison: TQF-ANN vs CNN without augmentation
+# Architectural robustness via orbit mixing (no augmentation)
+python src/main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
+
+# Apples-to-apples comparison: TQF-ANN vs CNN with orbit mixing
 # Shows TQF-ANN's geometric advantage over non-symmetric architectures
-python src/main.py --models TQF-ANN CNN-L5 --no-tqf-z6-augmentation --tqf-use-z6-orbit-mixing
+python src/main.py --models TQF-ANN CNN-L5 --tqf-use-z6-orbit-mixing
 
 # Full T24 orbit mixing (Z6 rotations + D6 reflections + zone-swap)
 python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
 ```
 
 **What this does:**
-- `--no-tqf-z6-augmentation` disables training-time rotation augmentation, so the model must rely purely on its architecture for rotation robustness
+- `--z6-data-augmentation` enables training-time rotation augmentation for rotation robustness (disabled by default to avoid conflicts with orbit mixing)
 - `--tqf-use-z6-orbit-mixing` averages predictions over 6 input-space rotations (0, 60, ..., 300 degrees) at evaluation time, leveraging TQF-ANN's hexagonal symmetry
 - `--tqf-use-d6-orbit-mixing` adds feature-space reflections (lightweight, classification head only)
 - `--tqf-use-t24-orbit-mixing` adds inner/outer zone-swap variants (full T24 symmetry group)
@@ -491,8 +501,8 @@ You're ready—get your gameface on and get to training!
 
 **`QED`**
 
-**Last Updated:** February 12, 2026<br>
-**Version:** 1.0.1<br>
+**Last Updated:** February 15, 2026<br>
+**Version:** 1.0.2<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

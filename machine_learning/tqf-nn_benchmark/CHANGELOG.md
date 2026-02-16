@@ -6,6 +6,15 @@ All notable changes to these TQF-NN benchmark tools will be documented in this f
 
 ---
 
+## [1.0.2] - 2026-02-15
+
+### Added
+- Additional performance and caching optimizations to initial dataset loading/preprocessing to decrease the runtime from a few minutes to about 1 second.
+- Performance optimization to simply displaying the usage help message. A bunch of unnecessary overhead was executing before the CLI parameters were even parsed, even when the user was just trying to display the CLI parameter usage help message, so this was reordered/optimized.
+
+### Changed
+- ℤ₆ data augmentation is now **disabled by default** (was enabled). CLI parameter changed from `--no-tqf-z6-augmentation` (opt-out) to `--z6-data-augmentation` (opt-in). Renamed to reflect that augmentation applies to all models (shared training DataLoader), not just TQF-ANN. This avoids conflicts with orbit mixing features and aligns with the finding that augmentation + orbit mixing hurt accuracy.
+
 ## [1.0.1] - 2026-02-12
 
 ### Added

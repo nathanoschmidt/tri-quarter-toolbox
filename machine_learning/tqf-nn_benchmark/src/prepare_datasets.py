@@ -324,6 +324,7 @@ class CustomMNIST(Dataset):
             transform: Optional torchvision transform to apply to images
         """
         self.transform: Optional[Any] = transform
+        self._root_dir: str = root_dir
         self.samples: List[Tuple[str, int]] = []
         self._cache: Dict[int, Image.Image] = {}
 
@@ -348,11 +349,41 @@ class CustomMNIST(Dataset):
     def warmup_cache(self) -> None:
         """Preload all images into memory cache.
 
-        Call this before training to avoid disk I/O during the first epoch.
-        For 60K MNIST images this takes ~3-5 seconds and uses ~47 MB RAM.
+        On first invocation, loads individual PNGs and persists the cache to a
+        single .npy binary file (~47 MB for 60K images). On subsequent runs,
+        loads from the binary file in ~1-2 seconds instead of ~3.5 minutes.
+
+        Cache invalidation: if the number of images in the directory changes,
+        the binary cache is rebuilt automatically.
         """
+        if not self.samples:
+            return
+
+        cache_path: str = os.path.join(self._root_dir, '_image_cache.npy')
+
+        # Try loading from persistent binary cache
+        if os.path.exists(cache_path):
+            try:
+                images: np.ndarray = np.load(cache_path)
+                if images.shape[0] == len(self.samples):
+                    for idx in range(len(self.samples)):
+                        self._cache[idx] = Image.fromarray(images[idx], mode='L')
+                    return
+            except Exception:
+                pass  # Corrupt or incompatible cache — fall through to rebuild
+
+        # Cold path: load all PNGs individually
         for idx in range(len(self.samples)):
             self._load_image(idx)
+
+        # Persist cache to binary file for next run
+        try:
+            images = np.stack(
+                [np.array(self._cache[idx]) for idx in range(len(self.samples))]
+            )
+            np.save(cache_path, images)
+        except Exception:
+            pass  # Non-fatal — cache just won't persist
 
     def __len__(self) -> int:
         """Return total number of samples in dataset."""
@@ -546,7 +577,8 @@ def get_dataloaders(
     val_idx = val_idx_array.tolist()
 
     # Select training samples from remaining indices
-    remaining_idx: np.ndarray = np.array([i for i in indices if i not in val_idx])
+    val_set: set = set(val_idx)
+    remaining_idx: np.ndarray = np.array([i for i in indices if i not in val_set])
 
     if len(remaining_idx) >= num_train:
         train_idx: np.ndarray = np.random.choice(remaining_idx, size=num_train, replace=False)
