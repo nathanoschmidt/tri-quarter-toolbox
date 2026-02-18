@@ -6,6 +6,19 @@ All notable changes to these TQF-NN benchmark tools will be documented in this f
 
 ---
 
+## [1.0.3] - 2026-02-18
+
+### Added
+- Additional automated tests for dual metrics, engine, and output formatters.
+
+### Changed
+- Tuned/enhanced TQF orbit mixing features for ℤ₆, D₆, and 𝕋₂₄.
+- Fixed minor typos in output formatting/logging.
+
+### Removed
+- Some dead code. Winter cleaning.
+
+
 ## [1.0.2] - 2026-02-15
 
 ### Added

@@ -1124,6 +1124,139 @@ class TestLossWeightParameters:
             assert default is None, f"train_epoch {param} should default to None, got {default}"
 
 
+class TestCompareModelsStatistical:
+    """Test suite for compare_models_statistical() aggregation function."""
+
+    def test_single_model_single_seed(self) -> None:
+        """Test aggregation with a single model and single seed."""
+        from engine import compare_models_statistical
+        results = {
+            'TQF-ANN': [{
+                'best_val_acc': 95.0,
+                'test_unrot_acc': 94.5,
+                'test_rot_acc': 93.0,
+                'params': 650000,
+                'flops': 12000000,
+                'inference_time_ms': 1.23
+            }]
+        }
+        summary = compare_models_statistical(results)
+        assert 'TQF-ANN' in summary
+        assert 'val_acc' in summary['TQF-ANN']
+        mean, std = summary['TQF-ANN']['val_acc']
+        assert abs(mean - 95.0) < 1e-6
+        assert abs(std - 0.0) < 1e-6
+
+    def test_multiple_seeds(self) -> None:
+        """Test aggregation computes correct mean and std across seeds."""
+        from engine import compare_models_statistical
+        results = {
+            'FC-MLP': [
+                {'best_val_acc': 90.0, 'test_unrot_acc': 89.0, 'test_rot_acc': 40.0,
+                 'params': 500000, 'flops': 10000000, 'inference_time_ms': 0.5},
+                {'best_val_acc': 92.0, 'test_unrot_acc': 91.0, 'test_rot_acc': 42.0,
+                 'params': 500000, 'flops': 10000000, 'inference_time_ms': 0.6},
+                {'best_val_acc': 91.0, 'test_unrot_acc': 90.0, 'test_rot_acc': 41.0,
+                 'params': 500000, 'flops': 10000000, 'inference_time_ms': 0.55}
+            ]
+        }
+        summary = compare_models_statistical(results)
+        mean, std = summary['FC-MLP']['val_acc']
+        assert abs(mean - 91.0) < 1e-6
+        assert std > 0
+
+    def test_multiple_models(self) -> None:
+        """Test aggregation handles multiple models."""
+        from engine import compare_models_statistical
+        seed_result = lambda name, val: {
+            'best_val_acc': val, 'test_unrot_acc': val - 1,
+            'test_rot_acc': val - 2, 'params': 500000,
+            'flops': 10000000, 'inference_time_ms': 1.0
+        }
+        results = {
+            'TQF-ANN': [seed_result('TQF-ANN', 95.0)],
+            'FC-MLP': [seed_result('FC-MLP', 90.0)],
+        }
+        summary = compare_models_statistical(results)
+        assert len(summary) == 2
+        assert 'TQF-ANN' in summary
+        assert 'FC-MLP' in summary
+
+    def test_all_metric_keys_present(self) -> None:
+        """Test that all expected metric keys are in the summary."""
+        from engine import compare_models_statistical
+        results = {
+            'Model': [{
+                'best_val_acc': 95.0, 'test_unrot_acc': 94.0,
+                'test_rot_acc': 93.0, 'params': 650000,
+                'flops': 12000000, 'inference_time_ms': 1.0
+            }]
+        }
+        summary = compare_models_statistical(results)
+        expected_keys = ['val_acc', 'test_unrot_acc', 'test_rot_acc',
+                         'params', 'flops', 'inference_time_ms']
+        for key in expected_keys:
+            assert key in summary['Model'], f"Missing key: {key}"
+
+    def test_returns_tuples(self) -> None:
+        """Test that each metric value is a (mean, std) tuple."""
+        from engine import compare_models_statistical
+        results = {
+            'Model': [{
+                'best_val_acc': 95.0, 'test_unrot_acc': 94.0,
+                'test_rot_acc': 93.0, 'params': 650000,
+                'flops': 12000000, 'inference_time_ms': 1.0
+            }]
+        }
+        summary = compare_models_statistical(results)
+        for metric, value in summary['Model'].items():
+            assert isinstance(value, tuple), f"{metric} should be a tuple"
+            assert len(value) == 2, f"{metric} tuple should have 2 elements"
+
+
+class TestPrintFinalComparisonTable:
+    """Test suite for print_final_comparison_table() output function."""
+
+    def test_outputs_table_header(self, capsys) -> None:
+        """Test that the comparison table includes header."""
+        from engine import print_final_comparison_table
+        summary = {
+            'TQF-ANN': {
+                'val_acc': (95.0, 0.5),
+                'test_unrot_acc': (94.5, 0.3),
+                'test_rot_acc': (93.0, 0.4),
+                'params': (650000.0, 0.0),
+                'flops': (12000000.0, 0.0),
+                'inference_time_ms': (1.23, 0.05)
+            }
+        }
+        print_final_comparison_table(summary)
+        captured = capsys.readouterr()
+        assert "FINAL MODEL COMPARISON" in captured.out
+        assert "TQF-ANN" in captured.out
+        assert "Val Acc" in captured.out
+
+    def test_outputs_multiple_models(self, capsys) -> None:
+        """Test that all model rows appear in the table."""
+        from engine import print_final_comparison_table
+        model_stats = {
+            'val_acc': (90.0, 0.5),
+            'test_unrot_acc': (89.0, 0.3),
+            'test_rot_acc': (40.0, 0.4),
+            'params': (500000.0, 0.0),
+            'flops': (10000000.0, 0.0),
+            'inference_time_ms': (0.5, 0.01)
+        }
+        summary = {
+            'TQF-ANN': model_stats,
+            'FC-MLP': model_stats,
+        }
+        print_final_comparison_table(summary)
+        captured = capsys.readouterr()
+        assert "TQF-ANN" in captured.out
+        assert "FC-MLP" in captured.out
+
+
 def run_tests(verbosity: int = 2):
     """
     Run all engine tests.

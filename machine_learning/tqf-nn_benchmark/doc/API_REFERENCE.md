@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.2<br>
-**Last Updated:** February 15, 2026<br>
+**Version:** 1.0.3<br>
+**Last Updated:** February 18, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -1531,26 +1531,6 @@ Comprehensive metrics computation and statistical analysis.
 
 ### Core Evaluation Functions
 
-#### `count_parameters(model: nn.Module) -> int`
-
-**Description:** Counts trainable parameters in a model.
-
-**Args:**
-- `model`: PyTorch module
-
-**Returns:**
-- `int`: Number of trainable parameters
-
-**Example:**
-```python
-from evaluation import count_parameters
-
-params: int = count_parameters(model)
-print(f"{params:,} parameters")
-```
-
----
-
 #### `compute_per_class_accuracy(model: nn.Module, data_loader: DataLoader, device: torch.device, num_classes: int = 10) -> Dict[int, float]`
 
 **Description:** Computes accuracy for each class separately.
@@ -1797,26 +1777,6 @@ print(f"Effect size (Cohen's d): {sig_test['cohens_d']:.3f}")
 - Average across dataset
 
 ---
-
-#### `safe_mean_std(values: List[Any]) -> Tuple[float, float]`
-
-**Description:** Computes mean and standard deviation with NaN handling.
-
-**Args:**
-- `values`: List of numeric values
-
-**Returns:**
-- `Tuple[float, float]`: (mean, std)
-  - Returns (0.0, 0.0) if all values are NaN or empty list
-
-**Example:**
-```python
-from evaluation import safe_mean_std
-
-values: List[float] = [95.2, 95.5, np.nan, 95.3]
-mean, std = safe_mean_std(values)
-print(f"Mean: {mean:.2f}%, Std: {std:.2f}%")
-```
 
 ---
 
@@ -2359,51 +2319,6 @@ print(f"Deviation: {abs(params - 650000) / 650000 * 100:.2f}%")
 
 ---
 
-### Reporting
-
-#### `print_parameter_summary(model_configs: Dict[str, Dict]) -> None`
-
-**Description:** Prints formatted parameter matching summary table.
-
-**Args:**
-- `model_configs`: Dict mapping model_name -> config dict
-  - Each config must have `'params'` (int) and `'config'` (str) keys
-
-**Example:**
-```python
-from param_matcher import print_parameter_summary
-
-configs: Dict[str, Dict] = {
-    'TQF-ANN': {
-        'params': 650123,
-        'config': 'R=18, d=143, fractal_iters=10'
-    },
-    'FC-MLP': {
-        'params': 648030,
-        'config': 'layers=[460, 460, 460]'
-    },
-    'CNN-L5': {
-        'params': 649800,
-        'config': 'channels=[32, 64, 96], fc=256'
-    }
-}
-
-print_parameter_summary(configs)
-```
-
-**Output:**
-```
-======================================================================
-PARAMETER MATCHING SUMMARY (+/- 1.1% tolerance)
-======================================================================
-Model           Parameters       Target    Deviation   Status
-----------------------------------------------------------------------
-TQF-ANN            650,123      650,000        0.02%     PASS
-FC-MLP             648,030      650,000       -0.30%     PASS
-CNN-L5             649,800      650,000       -0.03%     PASS
-======================================================================
-```
-
 ---
 
 ## 11. Logging & Output Formatting
@@ -2842,8 +2757,8 @@ PHI = (1 + sqrt(5)) / 2 ≈ 1.618033988749...
 
 **`QED`**
 
-**Last Updated:** February 15, 2026<br>
-**Version:** 1.0.2<br>
+**Last Updated:** February 18, 2026<br>
+**Version:** 1.0.3<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

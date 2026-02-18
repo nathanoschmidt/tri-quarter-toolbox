@@ -71,9 +71,6 @@ try:
     from dual_metrics import (
         DiscreteDualMetric,
         ContinuousDualMetric,
-        compute_inversion_consistency_error,
-        build_hexagonal_adjacency,
-        extract_polar_coords,
         build_triangular_lattice_zones,
         ExplicitLatticeVertex,
         PhasePair,
@@ -370,191 +367,6 @@ class TestContinuousDualMetric(unittest.TestCase):
 
 
 
-class TestInversionConsistency(unittest.TestCase):
-    """Test suite for compute_inversion_consistency_error()."""
-
-    def test_inversion_consistency_initialization(self) -> None:
-        """Test inversion consistency can be computed."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        outer_logits = torch.randn(4, 10)
-        inner_logits = torch.randn(4, 10)
-
-        error: float = compute_inversion_consistency_error(outer_logits, inner_logits)
-        self.assertIsInstance(error, (int, float))
-        self.assertGreaterEqual(error, 0.0)
-
-    def test_inversion_consistency_identical_logits(self) -> None:
-        """Test with identical logits should give zero error."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        logits = torch.randn(4, 10)
-        error: float = compute_inversion_consistency_error(logits, logits)
-        self.assertAlmostEqual(error, 0.0, places=4)
-
-    def test_inversion_consistency_different_shapes(self) -> None:
-        """Test with different batch sizes."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        for batch_size in [1, 2, 8, 16]:
-            outer = torch.randn(batch_size, 10)
-            inner = torch.randn(batch_size, 10)
-            error: float = compute_inversion_consistency_error(outer, inner)
-            self.assertGreaterEqual(error, 0.0)
-
-    def test_inversion_consistency_non_negative(self) -> None:
-        """Test that error is always non-negative."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        for _ in range(5):
-            outer = torch.randn(4, 10)
-            inner = torch.randn(4, 10)
-            error: float = compute_inversion_consistency_error(outer, inner)
-            self.assertGreaterEqual(error, 0.0)
-
-
-class TestHexagonalAdjacency(unittest.TestCase):
-    """Test suite for build_hexagonal_adjacency()."""
-
-    def test_hexagonal_adjacency_returns_dict(self) -> None:
-        """Test that hexagonal adjacency returns a dictionary."""
-        max_norm_sq: int = 100
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-        self.assertIsInstance(adjacency, dict)
-
-    def test_hexagonal_adjacency_correct_size(self) -> None:
-        """Test that adjacency returns reasonable vertex count."""
-        max_norm_sq: int = 16
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-        self.assertGreater(len(adjacency), 10)
-        self.assertLess(len(adjacency), 200)
-
-    def test_hexagonal_adjacency_symmetric(self) -> None:
-        """Test that adjacency is symmetric."""
-        max_norm_sq: int = 9
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-
-        for vertex, neighbors in adjacency.items():
-            for neighbor in neighbors:
-                self.assertIn(vertex, adjacency[neighbor])
-
-    def test_hexagonal_adjacency_small_radius(self) -> None:
-        """Test with small radius."""
-        max_norm_sq: int = 4
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-        self.assertGreater(len(adjacency), 0)
-
-    def test_hexagonal_adjacency_large_radius(self) -> None:
-        """Test with large radius."""
-        max_norm_sq: int = 400  # R = 20
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-        self.assertGreater(len(adjacency), 100)
-
-    def test_hexagonal_adjacency_contains_origin(self) -> None:
-        """Test that adjacency includes origin vertex."""
-        max_norm_sq: int = 25
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-        # Origin should be vertex 0 or exist somewhere
-        self.assertGreater(len(adjacency), 0)
-
-    def test_hexagonal_adjacency_neighbor_lists(self) -> None:
-        """Test that all neighbor lists are lists of integers."""
-        max_norm_sq: int = 16
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-
-        for neighbors in adjacency.values():
-            self.assertIsInstance(neighbors, list)
-            for n in neighbors:
-                self.assertIsInstance(n, int)
-
-    def test_hexagonal_adjacency_no_self_loops(self) -> None:
-        """Test that no vertex is its own neighbor."""
-        max_norm_sq: int = 25
-        adjacency: Dict[int, List[int]] = build_hexagonal_adjacency(max_norm_sq)
-
-        for vertex, neighbors in adjacency.items():
-            self.assertNotIn(vertex, neighbors)
-
-
-class TestPolarCoordExtraction(unittest.TestCase):
-    """Test suite for extract_polar_coords()."""
-
-    def test_polar_coords_returns_tuple(self) -> None:
-        """Test that polar coord extraction returns tuple of tensors."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        features = torch.randn(2, 6, 32)
-        r, theta = extract_polar_coords(features)
-
-        self.assertIsInstance(r, torch.Tensor)
-        self.assertIsInstance(theta, torch.Tensor)
-
-    def test_polar_coords_correct_shapes(self) -> None:
-        """Test that polar coordinates have correct shapes."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        batch_size: int = 4
-        num_nodes: int = 10
-        hidden_dim: int = 64
-        features = torch.randn(batch_size, num_nodes, hidden_dim)
-        r, theta = extract_polar_coords(features)
-
-        self.assertEqual(r.shape, (batch_size, num_nodes))
-        self.assertEqual(theta.shape, (batch_size, num_nodes))
-
-    def test_polar_coords_radii_non_negative(self) -> None:
-        """Test that radial coordinates are non-negative."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        features = torch.randn(3, 8, 16)
-        r, theta = extract_polar_coords(features)
-
-        self.assertTrue((r >= 0).all())
-
-    def test_polar_coords_theta_range(self) -> None:
-        """Test that theta is in valid range."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        features = torch.randn(3, 8, 16)
-        r, theta = extract_polar_coords(features)
-
-        # Theta should be in [-pi, pi] or [0, 2*pi] depending on implementation
-        self.assertTrue((theta >= -math.pi).all())
-        self.assertTrue((theta <= math.pi).all() or (theta <= 2*math.pi).all())
-
-    def test_polar_coords_single_sample(self) -> None:
-        """Test with single sample batch."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        features = torch.randn(1, 5, 8)
-        r, theta = extract_polar_coords(features)
-
-        self.assertEqual(r.shape, (1, 5))
-        self.assertEqual(theta.shape, (1, 5))
-
-    def test_polar_coords_large_batch(self) -> None:
-        """Test with large batch size."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch required")
-
-        features = torch.randn(32, 10, 64)
-        r, theta = extract_polar_coords(features)
-
-        self.assertEqual(r.shape, (32, 10))
-        self.assertEqual(theta.shape, (32, 10))
-
-
-
-
 class TestVertexLevelUtilities(unittest.TestCase):
     """Test suite for vertex-level graph convolution utilities."""
 
@@ -684,25 +496,6 @@ class TestKHopNeighborPrecomputation(unittest.TestCase):
             self.assertNotIn(v_idx, hop_1)
             self.assertNotIn(v_idx, hop_2)
 
-    def test_get_k_hop_neighborhood_flat(self) -> None:
-        """Test flattened k-hop neighborhood retrieval."""
-        from dual_metrics import precompute_k_hop_neighbors, get_k_hop_neighborhood_flat
-
-        neighbor_map: dict = {
-            0: [1],
-            1: [0, 2],
-            2: [1, 3],
-            3: [2]
-        }
-
-        k_hop = precompute_k_hop_neighbors(neighbor_map, max_k=2)
-
-        # Get all neighbors within 2 hops of vertex 0
-        flat_neighbors = get_k_hop_neighborhood_flat(k_hop, 0, max_k=2)
-
-        # Should include 1-hop [1] and 2-hop [2]
-        self.assertEqual(sorted(flat_neighbors), [1, 2])
-
     def test_precompute_k_hop_neighbors_empty_graph(self) -> None:
         """Test k-hop on empty neighbor map."""
         from dual_metrics import precompute_k_hop_neighbors
@@ -736,9 +529,6 @@ def run_tests(verbosity: int = 2) -> unittest.TestResult:
     for test_class in [
         TestDiscreteDualMetric,
         TestContinuousDualMetric,
-        TestInversionConsistency,
-        TestHexagonalAdjacency,
-        TestPolarCoordExtraction,
         TestVertexLevelUtilities,
         TestKHopNeighborPrecomputation
     ]:

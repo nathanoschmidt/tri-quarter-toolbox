@@ -99,18 +99,17 @@ from config import (
     TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    MIN_DELTA_DEFAULT
 )
 from models_baseline import get_model, MODEL_REGISTRY
 from evaluation import (
     compute_per_class_accuracy,
-    compute_per_class_rotated_accuracy,
     compute_rotation_invariance_error,
     estimate_model_flops,
     compute_inversion_consistency_metrics,
     measure_inference_time,
     compute_statistical_significance,
-    print_comprehensive_metrics,
     evaluate_with_orbit_mixing
 )
 from param_matcher import TARGET_PARAMS, TARGET_PARAMS_TOLERANCE_PERCENT
@@ -648,7 +647,7 @@ class TrainingEngine:
         val_loader: DataLoader,
         num_epochs: int = MAX_EPOCHS_DEFAULT,
         early_stopping_patience: int = PATIENCE_DEFAULT,
-        min_delta: float = 0.0005,
+        min_delta: float = MIN_DELTA_DEFAULT,
         inversion_loss_weight: Optional[float] = None,
         z6_equivariance_weight: Optional[float] = None,
         d6_equivariance_weight: Optional[float] = None,
@@ -803,7 +802,7 @@ def run_single_seed_experiment(
     weight_decay: float = WEIGHT_DECAY_DEFAULT,
     label_smoothing: float = LABEL_SMOOTHING_DEFAULT,
     patience: int = PATIENCE_DEFAULT,
-    min_delta: float = 0.0005,
+    min_delta: float = MIN_DELTA_DEFAULT,
     warmup_epochs: int = LEARNING_RATE_WARMUP_EPOCHS,
     verify_duality_interval: int = TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
     inversion_loss_weight: Optional[float] = None,
@@ -938,8 +937,8 @@ def run_single_seed_experiment(
     if 'TQF' in model_name and any_orbit_mixing:
         _, test_rot_acc = evaluate_with_orbit_mixing(
             model, dataloaders['test_rot'], device,
-            use_z6=True,
-            use_d6=use_d6_orbit_mixing or use_t24_orbit_mixing,
+            use_z6=use_z6_orbit_mixing,
+            use_d6=use_d6_orbit_mixing,
             use_t24=use_t24_orbit_mixing,
             temp_rotation=orbit_mixing_temp_rotation,
             temp_reflection=orbit_mixing_temp_reflection,
@@ -1009,7 +1008,7 @@ def run_multi_seed_experiment(
     weight_decay: float = WEIGHT_DECAY_DEFAULT,
     label_smoothing: float = LABEL_SMOOTHING_DEFAULT,
     patience: int = PATIENCE_DEFAULT,
-    min_delta: float = 0.0005,
+    min_delta: float = MIN_DELTA_DEFAULT,
     warmup_epochs: int = LEARNING_RATE_WARMUP_EPOCHS,
     verify_duality_interval: int = TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
     inversion_loss_weight: Optional[float] = None,

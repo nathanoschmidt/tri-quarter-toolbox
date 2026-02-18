@@ -49,7 +49,11 @@ Date: February 2026
 
 import unittest
 import sys
-from typing import Any
+import os
+import json
+import tempfile
+from typing import Any, Dict
+import numpy as np
 
 from conftest import PATHS
 
@@ -349,6 +353,346 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(len(result), 1000)
 
 
+class TestPrintFunctions(unittest.TestCase):
+    """Test suite for print_* output functions that write to stdout."""
+
+    def test_print_section_header_outputs_title(self) -> None:
+        """Test print_section_header includes the title text."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_section_header("TEST SECTION")
+        output = buf.getvalue()
+        self.assertIn("TEST SECTION", output)
+        self.assertIn(fmt.MAJOR_SEP_CHAR, output)
+
+    def test_print_model_training_start(self) -> None:
+        """Test print_model_training_start outputs model name."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_model_training_start("TQF-ANN", 3)
+        output = buf.getvalue()
+        self.assertIn("TQF-ANN", output)
+        self.assertIn("BEGIN MODEL TRAINING", output)
+        self.assertIn("#", output)
+
+    def test_print_model_training_end(self) -> None:
+        """Test print_model_training_end outputs model name."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_model_training_end("TQF-ANN")
+        output = buf.getvalue()
+        self.assertIn("TQF-ANN", output)
+        self.assertIn("END MODEL TRAINING", output)
+
+    def test_print_epoch_progress_basic(self) -> None:
+        """Test print_epoch_progress outputs epoch info."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_epoch_progress(
+                epoch=4, total_epochs=100,
+                train_loss=0.5, val_loss=0.4,
+                val_acc=92.5, lr=0.001, elapsed=12.3
+            )
+        output = buf.getvalue()
+        self.assertIn("5", output)  # epoch+1
+        self.assertIn("100", output)
+        self.assertIn("92.50", output)
+
+    def test_print_epoch_progress_with_optional_losses(self) -> None:
+        """Test print_epoch_progress includes optional loss terms."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_epoch_progress(
+                epoch=0, total_epochs=10,
+                train_loss=1.0, val_loss=0.9,
+                val_acc=50.0, lr=0.001, elapsed=5.0,
+                geom_loss=0.0123, z6_equiv_loss=0.0456,
+                d6_equiv_loss=0.0789, t24_orbit_loss=0.0012
+            )
+        output = buf.getvalue()
+        self.assertIn("Geom", output)
+        self.assertIn("Z6", output)
+        self.assertIn("D6", output)
+        self.assertIn("T24", output)
+
+    def test_print_early_stopping_message(self) -> None:
+        """Test print_early_stopping_message outputs patience and epoch info."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_early_stopping_message(
+                patience=15, best_loss_epoch=24,
+                best_acc_epoch=22, total_epochs=100,
+                best_val_acc_at_best_loss=0.9523,
+                best_val_acc_overall=0.9540,
+                best_val_loss=0.1234
+            )
+        output = buf.getvalue()
+        self.assertIn("EARLY STOPPING", output)
+        self.assertIn("15", output)
+        self.assertIn("25", output)  # best_loss_epoch + 1
+        self.assertIn("95.23", output)  # best_val_acc_at_best_loss * 100
+
+    def test_print_seed_header(self) -> None:
+        """Test print_seed_header outputs seed info."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_seed_header(seed=42, total_seeds=3, model_name="FC-MLP", seed_idx=1)
+        output = buf.getvalue()
+        self.assertIn("FC-MLP", output)
+        self.assertIn("42", output)
+        self.assertIn("1", output)
+        self.assertIn("3", output)
+
+    def test_print_seed_results_summary_minimal(self) -> None:
+        """Test print_seed_results_summary with minimal results dict."""
+        import io
+        from contextlib import redirect_stdout
+        results: Dict[str, Any] = {
+            'best_val_acc': 95.0,
+            'test_unrot_acc': 94.5,
+            'test_rot_acc': 93.0,
+            'rotation_inv_error': 0.012,
+            'invariance_l2_error': 1.5e-6,
+            'params': 650000,
+            'flops': 12000000,
+            'inference_time_ms': 1.23,
+            'train_time_total': 120.5,
+            'best_loss_epoch': 24,
+            'best_acc_epoch': 22,
+            'train_time_per_epoch': 1.2
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_seed_results_summary(seed=42, model_name="TQF-ANN", results=results)
+        output = buf.getvalue()
+        self.assertIn("TQF-ANN", output)
+        self.assertIn("95.00", output)
+        self.assertIn("ACCURACY SUMMARY", output)
+        self.assertIn("GEOMETRIC INVARIANCE", output)
+        self.assertIn("MODEL SPECIFICATIONS", output)
+        self.assertIn("PERFORMANCE METRICS", output)
+
+    def test_print_seed_results_summary_with_per_class(self) -> None:
+        """Test print_seed_results_summary with per-class accuracy enabled."""
+        import io
+        from contextlib import redirect_stdout
+        results: Dict[str, Any] = {
+            'best_val_acc': 95.0,
+            'test_unrot_acc': 94.5,
+            'test_rot_acc': 93.0,
+            'per_class_acc': {i: 0.90 + i * 0.01 for i in range(10)}
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fmt.print_seed_results_summary(
+                seed=42, model_name="TQF-ANN", results=results,
+                show_per_class=True
+            )
+        output = buf.getvalue()
+        self.assertIn("PER-CLASS ACCURACY", output)
+
+
+class TestResultSerialization(unittest.TestCase):
+    """Test suite for result serialization and disk I/O functions."""
+
+    def test_make_result_serializable_basic(self) -> None:
+        """Test _make_result_serializable converts numpy types."""
+        result: Dict[str, Any] = {
+            'best_val_acc': np.float64(95.23),
+            'params': np.int64(650000),
+            'model_name': 'TQF-ANN',
+            'seed': 42
+        }
+        out = fmt._make_result_serializable(result)
+        self.assertIsInstance(out['best_val_acc'], float)
+        self.assertIsInstance(out['params'], float)
+        self.assertIsInstance(out['model_name'], str)
+        self.assertEqual(out['seed'], 42)
+
+    def test_make_result_serializable_per_class_acc(self) -> None:
+        """Test _make_result_serializable handles per_class_acc dict keys."""
+        result: Dict[str, Any] = {
+            'per_class_acc': {0: np.float64(0.95), 1: np.float64(0.92)}
+        }
+        out = fmt._make_result_serializable(result)
+        self.assertIn('0', out['per_class_acc'])
+        self.assertIn('1', out['per_class_acc'])
+        self.assertIsInstance(out['per_class_acc']['0'], float)
+
+    def test_make_result_serializable_ndarray(self) -> None:
+        """Test _make_result_serializable converts numpy arrays to lists."""
+        result: Dict[str, Any] = {
+            'some_array': np.array([1.0, 2.0, 3.0])
+        }
+        out = fmt._make_result_serializable(result)
+        self.assertIsInstance(out['some_array'], list)
+        self.assertEqual(out['some_array'], [1.0, 2.0, 3.0])
+
+    def test_make_result_serializable_json_compatible(self) -> None:
+        """Test _make_result_serializable output is JSON-serializable."""
+        result: Dict[str, Any] = {
+            'best_val_acc': np.float64(95.23),
+            'params': np.int64(650000),
+            'per_class_acc': {i: np.float64(0.9 + i * 0.01) for i in range(10)},
+            'model_name': 'TQF-ANN',
+            'seed': 42
+        }
+        out = fmt._make_result_serializable(result)
+        # Should not raise
+        json_str = json.dumps(out)
+        self.assertIsInstance(json_str, str)
+
+    def test_save_seed_result_to_disk_creates_file(self) -> None:
+        """Test save_seed_result_to_disk creates a JSON results file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "output", "results.json")
+            result: Dict[str, Any] = {
+                'model_name': 'TQF-ANN',
+                'seed': 42,
+                'best_val_acc': 95.0,
+                'test_unrot_acc': 94.5,
+                'test_rot_acc': 93.0
+            }
+            fmt.save_seed_result_to_disk(result, path)
+            self.assertTrue(os.path.exists(path))
+
+            with open(path, 'r') as f:
+                data = json.load(f)
+            self.assertIn('results', data)
+            self.assertIn('TQF-ANN', data['results'])
+            self.assertEqual(len(data['results']['TQF-ANN']), 1)
+            self.assertEqual(data['status'], 'in_progress')
+
+    def test_save_seed_result_to_disk_appends(self) -> None:
+        """Test save_seed_result_to_disk appends multiple seeds."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "results.json")
+            for seed in [42, 43, 44]:
+                result: Dict[str, Any] = {
+                    'model_name': 'TQF-ANN',
+                    'seed': seed,
+                    'best_val_acc': 95.0
+                }
+                fmt.save_seed_result_to_disk(result, path)
+
+            with open(path, 'r') as f:
+                data = json.load(f)
+            self.assertEqual(len(data['results']['TQF-ANN']), 3)
+
+    def test_save_seed_result_with_experiment_config(self) -> None:
+        """Test save_seed_result_to_disk stores experiment config on first call."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "results.json")
+            config = {'learning_rate': 0.001, 'batch_size': 128}
+            result: Dict[str, Any] = {
+                'model_name': 'FC-MLP',
+                'seed': 42,
+                'best_val_acc': 90.0
+            }
+            fmt.save_seed_result_to_disk(result, path, experiment_config=config)
+
+            with open(path, 'r') as f:
+                data = json.load(f)
+            self.assertIn('config', data)
+            self.assertEqual(data['config']['learning_rate'], 0.001)
+
+    def test_save_final_summary_to_disk(self) -> None:
+        """Test save_final_summary_to_disk writes JSON and TXT files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "results.json")
+            # Create initial file
+            result: Dict[str, Any] = {
+                'model_name': 'TQF-ANN',
+                'seed': 42,
+                'best_val_acc': 95.0
+            }
+            fmt.save_seed_result_to_disk(result, path)
+
+            summary = {
+                'TQF-ANN': {
+                    'val_acc': (95.0, 0.5),
+                    'test_unrot_acc': (94.5, 0.3),
+                    'test_rot_acc': (93.0, 0.4),
+                    'params': (650000.0, 0.0),
+                    'flops': (12000000.0, 0.0),
+                    'inference_time_ms': (1.23, 0.05)
+                }
+            }
+            fmt.save_final_summary_to_disk(summary, path)
+
+            with open(path, 'r') as f:
+                data = json.load(f)
+            self.assertEqual(data['status'], 'completed')
+            self.assertIn('summary', data)
+            self.assertIn('TQF-ANN', data['summary'])
+            self.assertIn('completed_at', data)
+
+            # Check TXT companion file
+            txt_path = path.replace('.json', '.txt')
+            self.assertTrue(os.path.exists(txt_path))
+            with open(txt_path, 'r') as f:
+                txt_content = f.read()
+            self.assertIn("TQF-ANN", txt_content)
+            self.assertIn("FINAL MODEL COMPARISON", txt_content)
+
+
+class TestTimeFormatting(unittest.TestCase):
+    """Test suite for time formatting functions."""
+
+    def test_format_time_seconds_under_minute(self) -> None:
+        """Test seconds formatting for < 60s."""
+        result = fmt.format_time_seconds(30.5)
+        self.assertIn("sec", result)
+
+    def test_format_time_seconds_minutes(self) -> None:
+        """Test seconds formatting for minutes range."""
+        result = fmt.format_time_seconds(90.0)
+        self.assertIn("min", result)
+
+    def test_format_time_seconds_hours(self) -> None:
+        """Test seconds formatting for hours range."""
+        result = fmt.format_time_seconds(7200.0)
+        self.assertIn("hr", result)
+
+
+class TestFlopsFormatting(unittest.TestCase):
+    """Test suite for FLOPs formatting."""
+
+    def test_format_flops_millions(self) -> None:
+        result = fmt.format_flops(12e6)
+        self.assertIn("M", result)
+
+    def test_format_flops_billions(self) -> None:
+        result = fmt.format_flops(1.5e9)
+        self.assertIn("G", result)
+
+    def test_format_flops_trillions(self) -> None:
+        result = fmt.format_flops(2.0e12)
+        self.assertIn("T", result)
+
+    def test_format_flops_small(self) -> None:
+        result = fmt.format_flops(500.0)
+        self.assertIsInstance(result, str)
+
+    def test_format_scientific(self) -> None:
+        result = fmt.format_scientific(1.5e-6)
+        self.assertIn("e", result.lower())
+
+
 def run_tests(verbosity: int = 2) -> unittest.TestResult:
     """Run all output formatter tests."""
     loader: unittest.TestLoader = unittest.TestLoader()
@@ -359,7 +703,11 @@ def run_tests(verbosity: int = 2) -> unittest.TestResult:
         TestSeparators,
         TestLabeledValueFormatting,
         TestConstantsAndDefaults,
-        TestEdgeCases
+        TestEdgeCases,
+        TestPrintFunctions,
+        TestResultSerialization,
+        TestTimeFormatting,
+        TestFlopsFormatting
     ]:
         suite.addTests(loader.loadTestsFromTestCase(test_class))
 

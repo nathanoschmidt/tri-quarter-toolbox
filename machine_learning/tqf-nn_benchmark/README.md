@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.2<br>
-**Date:** February 15, 2026<br>
+**Version:** 1.0.3<br>
+**Date:** February 18, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -166,9 +166,9 @@ Key CLI flags (focus on ℤ₆ for simplicity and efficiency):
 - `--tqf-use-d6-orbit-mixing`: Enables D₆ orbit mixing (ℤ₆ rotations + 6 reflections). Use for stronger reflection invariance.
 - `--tqf-use-t24-orbit-mixing`: Enables full 𝕋₂₄ orbit mixing (D₆ + circle inversions). Ideal for exploiting inner/outer zone duality, but requires inversion support.
 - Temperature controls (adjust weighting softness):
-  - `--tqf-orbit-mixing-temp-rotation`: Temperature for rotation averaging (default: 1.0).
-  - `--tqf-orbit-mixing-temp-reflection`: Temperature for reflection averaging (default: 1.0).
-  - `--tqf-orbit-mixing-temp-inversion`: Temperature for inversion averaging (default: 1.0).
+  - `--tqf-orbit-mixing-temp-rotation`: Temperature for rotation averaging (default: 0.3).
+  - `--tqf-orbit-mixing-temp-reflection`: Temperature for reflection averaging (default: 0.5).
+  - `--tqf-orbit-mixing-temp-inversion`: Temperature for inversion averaging (default: 0.7).
 
 **Important Note:** Orbit mixing conflicts with training-time data augmentation via `--z6-data-augmentation`, as the latter introduces explicit rotations that may interfere with orbit-based ensembles. Keep `--z6-data-augmentation` off (default) when enabling any orbit mixing to avoid suboptimal results.
 
@@ -328,8 +328,8 @@ See some of our future TODO items in [`FUTURE_TODO.md`](FUTURE_TODO.md).
 
 **`QED`**
 
-**Last Updated:** February 15, 2026<br>
-**Version:** 1.0.2<br>
+**Last Updated:** February 18, 2026<br>
+**Version:** 1.0.3<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

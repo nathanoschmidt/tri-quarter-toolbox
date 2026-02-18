@@ -64,7 +64,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 
 # =============================================================================
@@ -124,17 +124,6 @@ def print_section_header(
     print(f"\n{sep}")
     print(f" {title}")
     print(f"{sep}")
-
-def print_subsection(title: str, width: int = WIDTH_STANDARD) -> None:
-    """
-    Print a subsection header with minor separator.
-
-    Args:
-        title: Subsection title
-        width: Section width
-    """
-    print(f"\n{title}:")
-    print(make_separator(MINOR_SEP_CHAR, width))
 
 def format_labeled_value(
     label: str,
@@ -240,20 +229,6 @@ def format_flops(flops: float) -> str:
     else:
         return f"{flops:.0f}"
 
-def format_memory(mem_mb: float) -> str:
-    """
-    Format memory in MB or GB.
-
-    Args:
-        mem_mb: Memory in megabytes
-    Returns:
-        Formatted string with unit
-    """
-    if mem_mb >= 1024:
-        return f"{mem_mb / 1024:.2f} GB"
-    else:
-        return f"{mem_mb:.1f} MB"
-
 def format_scientific(value: float) -> str:
     """Format in scientific notation for small values"""
     return f"{value:.2e}"
@@ -296,7 +271,7 @@ def print_seed_header(
         width: Header width
     """
     print_section_header(
-        f"{model_name} >>> SEED #{seed_idx} of {total_seeds}: {seed} >>> EXECUTING",
+        f"{model_name} >>> SEED {seed_idx} (#{seed} of {total_seeds}): {seed} >>> EXECUTING",
         char=MAJOR_SEP_CHAR,
         width=width
     )
@@ -469,7 +444,7 @@ def print_seed_results_summary(
         show_per_angle: Whether to show per-angle accuracy breakdown
     """
     print(f"\n{make_separator(MINOR_SEP_CHAR, width)}")
-    print(f" {model_name} >>> SEED #{seed_idx} of {total_seeds}: {seed} >>> RESULTS")
+    print(f" {model_name} >>> SEED {seed_idx} (#{seed} of {total_seeds}): {seed} >>> RESULTS")
     print(f"{make_separator(MINOR_SEP_CHAR, width)}")
 
     # =========================================================================
@@ -555,398 +530,8 @@ def print_seed_results_summary(
 
     print(f"{make_separator(MINOR_SEP_CHAR, width)}\n")
 
-def print_model_architecture_summary(
-    model_name: str,
-    total_params: int,
-    trainable_params: int,
-    layer_count: int,
-    param_memory_mb: float,
-    is_tqf: bool = False,
-    tqf_info: Optional[Dict[str, Any]] = None,
-    width: int = WIDTH_STANDARD
-) -> None:
-    """
-    Print model architecture summary.
-
-    Why: Provides transparency into model structure for reproducibility
-         and helps verify parameter matching across models.
-
-    Args:
-        model_name: Model name
-        total_params: Total parameter count
-        trainable_params: Trainable parameter count
-        layer_count: Number of layers
-        param_memory_mb: Parameter memory in MB
-        is_tqf: Whether this is a TQF model
-        tqf_info: Optional TQF-specific info (nodes, edges, symmetry)
-        width: Output width
-    """
-    print_section_header(f"MODEL ARCHITECTURE - {model_name}", width=width)
-
-    print(format_labeled_value("Total parameters", f"{total_params:,}"))
-    print(format_labeled_value("Trainable parameters", f"{trainable_params:,}"))
-    print(format_labeled_value("Non-trainable", f"{total_params - trainable_params:,}"))
-    print(format_labeled_value("Parameter memory", format_memory(param_memory_mb)))
-    print(format_labeled_value("Layer count", str(layer_count)))
-
-    if is_tqf and tqf_info:
-        print(format_labeled_value("TQF nodes", f"{tqf_info.get('num_nodes', 'N/A'):,}"))
-        print(format_labeled_value("TQF edges", f"{tqf_info.get('num_edges', 'N/A'):,}"))
-        print(format_labeled_value("Symmetry group", tqf_info.get('symmetry', 'N/A')))
-
-    print(f"{make_separator(MAJOR_SEP_CHAR, width)}\n")
-
-def print_statistical_tests(
-    test_results: Dict[str, Tuple[float, float]],
-    alpha: float = 0.01,
-    width: int = WIDTH_STANDARD
-) -> None:
-    """
-    Print statistical significance test results.
-
-    Why: Makes statistical testing transparent and visible in main output,
-         essential for scientific validity claims in benchmarks.
-
-    Args:
-        test_results: Dict mapping comparison -> (t_statistic, p_value)
-        alpha: Significance level (default 0.01 for p < 0.01)
-        width: Output width
-    """
-    print_section_header("STATISTICAL SIGNIFICANCE TESTS", width=width)
-
-    print(f"  {'Comparison':<40} {'t-statistic':>12}  {'p-value':>12}  {'Result':>10}")
-    print(make_separator(MINOR_SEP_CHAR, width))
-
-    for comparison, (t_stat, p_val) in test_results.items():
-        sig_result: str = "YES" if p_val < alpha else "NO"
-        print(f"  {comparison:<40} {t_stat:+12.3f}  {p_val:12.2e}  {sig_result:>10}")
-
-    print(make_separator(MAJOR_SEP_CHAR, width))
-    print(f"  Significance threshold: p < {alpha} (Welch's t-test)")
-    print(f"{make_separator(MAJOR_SEP_CHAR, width)}\n")
-
-def print_gpu_memory_summary(
-    peak_allocated_mb: float,
-    peak_reserved_mb: float,
-    current_allocated_mb: float,
-    width: int = WIDTH_STANDARD
-) -> None:
-    """
-    Print GPU memory utilization summary.
-
-    Why: Tracks resource usage for understanding hardware requirements
-         and identifying potential memory bottlenecks.
-
-    Args:
-        peak_allocated_mb: Peak allocated memory (MB)
-        peak_reserved_mb: Peak reserved memory (MB)
-        current_allocated_mb: Currently allocated memory (MB)
-        width: Output width
-    """
-    print_section_header("GPU MEMORY UTILIZATION", width=width)
-
-    print(format_labeled_value("Peak allocated", format_memory(peak_allocated_mb)))
-    print(format_labeled_value("Peak reserved", format_memory(peak_reserved_mb)))
-    print(format_labeled_value("Current allocated", format_memory(current_allocated_mb)))
-
-    print(f"{make_separator(MAJOR_SEP_CHAR, width)}\n")
-
-def print_experiment_timeline(
-    start_time: datetime,
-    end_time: datetime,
-    num_models: int,
-    num_seeds: int,
-    avg_seed_time_sec: float,
-    width: int = WIDTH_STANDARD
-) -> None:
-    """
-    Print experiment timeline summary.
-
-    Why: Provides overview of experiment duration and efficiency,
-         useful for estimating future experiment times.
-
-    Args:
-        start_time: Experiment start timestamp
-        end_time: Experiment end timestamp
-        num_models: Number of models evaluated
-        num_seeds: Number of seeds per model
-        avg_seed_time_sec: Average time per seed in seconds
-        width: Output width
-    """
-    duration: timedelta = end_time - start_time
-    total_sec: float = duration.total_seconds()
-
-    print_section_header("EXPERIMENT TIMELINE", width=width)
-
-    print(format_labeled_value("Start time", start_time.strftime("%Y-%m-%d %H:%M:%S")))
-    print(format_labeled_value("End time", end_time.strftime("%Y-%m-%d %H:%M:%S")))
-    print(format_labeled_value("Total duration", format_time_seconds(total_sec)))
-    print(format_labeled_value("Models evaluated", str(num_models)))
-    print(format_labeled_value("Seeds per model", str(num_seeds)))
-    print(format_labeled_value("Avg time per seed", format_time_seconds(avg_seed_time_sec)))
-    print(format_labeled_value("Total seed runs", str(num_models * num_seeds)))
-
-    print(f"{make_separator(MAJOR_SEP_CHAR, width)}\n")
-
-def print_comprehensive_accuracy_breakdown(
-    model_name: str,
-    results: Dict[str, Any],
-    width: int = WIDTH_EXTRA
-) -> None:
-    """
-    Print comprehensive accuracy breakdown including all accuracy types.
-
-    Why: Provides complete transparency into model performance across
-         all evaluation dimensions (classes, rotations, datasets).
-
-    Args:
-        model_name: Model name
-        results: Results dictionary containing all accuracy metrics
-        width: Output width for large tables
-    """
-    print_section_header(f"COMPREHENSIVE ACCURACY BREAKDOWN - {model_name}", width=width)
-
-    # =========================================================================
-    # SECTION 1: Summary Accuracies
-    # =========================================================================
-    print("\n1. SUMMARY ACCURACIES:")
-    print(make_separator(MINOR_SEP_CHAR, width))
-
-    if 'best_val_acc' in results:
-        print(format_labeled_value("Validation Set", f"{results['best_val_acc']:.4f}%", label_width=40))
-    if 'test_unrot_acc' in results:
-        print(format_labeled_value("Test Set (Unrotated)", f"{results['test_unrot_acc']:.4f}%", label_width=40))
-    if 'test_rot_acc' in results:
-        print(format_labeled_value("Test Set (Rotated, all angles avg)", f"{results['test_rot_acc']:.4f}%", label_width=40))
-
-    # =========================================================================
-    # SECTION 2: Per-Class Accuracy (Unrotated)
-    # =========================================================================
-    if 'per_class_acc' in results and results['per_class_acc']:
-        print(f"\n2. PER-CLASS ACCURACY (Test Unrotated):")
-        print(make_separator(MINOR_SEP_CHAR, width))
-
-        per_class: Dict[int, float] = results['per_class_acc']
-
-        # Print header
-        header: str = "  Class:  "
-        for c in range(10):
-            header += f"   {c}   "
-        print(header)
-        print(make_separator(MINOR_SEP_CHAR, width))
-
-        # Print accuracies
-        acc_line: str = "  Acc(%):  "
-        for c in range(10):
-            if c in per_class:
-                acc_line += f" {per_class[c] * 100:5.2f} "
-            else:
-                acc_line += "   N/A  "
-        print(acc_line)
-
-        # Compute and show class-wise statistics
-        class_accs: List[float] = [per_class[c] for c in range(10) if c in per_class]
-        if class_accs:
-            mean_acc: float = sum(class_accs) / len(class_accs)
-            min_acc: float = min(class_accs)
-            max_acc: float = max(class_accs)
-            print(f"\n  Mean: {mean_acc * 100:.2f}%  |  Min: {min_acc * 100:.2f}%  |  Max: {max_acc * 100:.2f}%")
-
-    # =========================================================================
-    # SECTION 3: Per-Angle Accuracy (Averaged Across Classes)
-    # =========================================================================
-    # Note: This would require additional computation in engine.py
-    # For now, we document the availability
-    print(f"\n3. PER-ANGLE ACCURACY (Averaged Across Classes):")
-    print(make_separator(MINOR_SEP_CHAR, width))
-    print("  [Requires per_class_rotated_accuracy aggregation - see detailed report]")
-    print("  Angles: 0deg, 60deg, 120deg, 180deg, 240deg, 300deg")
-
-    # =========================================================================
-    # SECTION 4: Per-Class, Per-Angle Matrix (if available)
-    # =========================================================================
-    print(f"\n4. PER-CLASS, PER-ANGLE ACCURACY MATRIX:")
-    print(make_separator(MINOR_SEP_CHAR, width))
-    print("  [10 classes x 6 angles = 60 combinations]")
-    print("  [Computed but not displayed per-seed to reduce output verbosity]")
-    print("  [Available in final aggregated results]")
-
-    print(f"{make_separator(MAJOR_SEP_CHAR, width)}\n")
-
-def print_per_angle_accuracy_summary(
-    model_results: Dict[str, List[float]],
-    angles: List[int] = [0, 60, 120, 180, 240, 300],
-    width: int = WIDTH_STANDARD
-) -> None:
-    """
-    Print per-angle accuracy summary (averaged across classes).
-
-    Why: Shows rotation equivariance quality - TQF models should maintain
-         consistent accuracy across all 60-degree rotations (T24 symmetry).
-
-    Args:
-        model_results: Dict mapping model_name -> list of per-angle accuracies (averaged)
-        angles: Rotation angles in degrees
-        width: Table width
-    """
-    print_section_header("PER-ANGLE ACCURACY SUMMARY (averaged across classes)", width=width)
-
-    # Header
-    model_names: List[str] = list(model_results.keys())
-    header: str = f"  {'Angle':>8}"
-    for name in model_names:
-        header += f"  {name[:12]:>12}"
-    print(header)
-    print(make_separator(MINOR_SEP_CHAR, width))
-
-    # Rows
-    for angle in angles:
-        row: str = f"  {angle:>6}deg "
-        for name in model_names:
-            if len(model_results[name]) > angles.index(angle):
-                acc = model_results[name][angles.index(angle)]
-                row += f"  {acc * 100:>12.2f}"
-            else:
-                row += f"  {'N/A':>12}"
-        print(row)
-
-    # Statistics
-    print(make_separator(MINOR_SEP_CHAR, width))
-    row_mean: str = "  Mean:   "
-    row_std: str = "  Std:    "
-    for name in model_names:
-        if model_results[name]:
-            mean_val: float = sum(model_results[name]) / len(model_results[name])
-            if len(model_results[name]) > 1:
-                import statistics
-                std_val: float = statistics.stdev(model_results[name])
-            else:
-                std_val: float = 0.0
-            row_mean += f"  {mean_val * 100:>12.2f}"
-            row_std += f"  {std_val * 100:>12.2f}"
-        else:
-            row_mean += f"  {'N/A':>12}"
-            row_std += f"  {'N/A':>12}"
-    print(row_mean)
-    print(row_std)
-
-    print(f"{make_separator(MAJOR_SEP_CHAR, width)}\n")
-
-def print_per_class_accuracy_table(
-    model_results: Dict[str, List[float]],
-    num_classes: int = 10,
-    width: int = WIDTH_STANDARD
-) -> None:
-    """
-    Print per-class accuracy comparison table.
-
-    Why: Reveals model strengths/weaknesses on specific digit classes,
-         important for understanding rotation equivariance patterns.
-
-    Args:
-        model_results: Dict mapping model_name -> list of per-class accuracies
-        num_classes: Number of classes (default 10 for MNIST)
-        width: Table width
-    """
-    print_section_header("PER-CLASS ACCURACY COMPARISON (mean across seeds)", width=width)
-
-    # Header
-    model_names: List[str] = list(model_results.keys())
-    header: str = f"  {'Class':>5}"
-    for name in model_names:
-        header += f"  {name[:8]:>8}"
-    print(header)
-    print(make_separator(MINOR_SEP_CHAR, width))
-
-    # Rows
-    for cls in range(num_classes):
-        row: str = f"    {cls:>3}"
-        for name in model_names:
-            acc = model_results[name][cls]
-            row += f"  {acc * 100:8.2f}"
-        print(row)
-
-    print(f"{make_separator(MAJOR_SEP_CHAR, width)}\n")
-
 # =============================================================================
-# SECTION 6: Ranking and Comparison Utilities
-# =============================================================================
-
-def compute_ranking(
-    scores: Dict[str, float],
-    higher_is_better: bool = True
-) -> Dict[str, int]:
-    """
-    Compute rankings from scores.
-
-    Why: Provides clear performance ordering for comparison tables,
-         making it easy to identify top performers.
-
-    Args:
-        scores: Dict mapping model_name -> score
-        higher_is_better: Whether higher scores are better
-    Returns:
-        Dict mapping model_name -> rank (1-based)
-    """
-    sorted_items: List[Tuple[str, float]] = sorted(
-        scores.items(),
-        key=lambda x: x[1],
-        reverse=higher_is_better
-    )
-
-    rankings: Dict[str, int] = {}
-    for rank, (model_name, _) in enumerate(sorted_items, start=1):
-        rankings[model_name] = rank
-
-    return rankings
-
-def format_with_rank(value: float, rank: int, fmt: str = ".2f") -> str:
-    """
-    Format value with rank indicator.
-
-    Args:
-        value: Numeric value
-        rank: Rank (1, 2, 3, ...)
-        fmt: Format string
-    Returns:
-        Formatted string with rank indicator
-
-    Example:
-        >>> format_with_rank(98.50, 1)
-        "98.50 [1st]"
-    """
-    rank_suffix: str
-    if rank == 1:
-        rank_suffix = "[1st]"
-    elif rank == 2:
-        rank_suffix = "[2nd]"
-    elif rank == 3:
-        rank_suffix = "[3rd]"
-    else:
-        rank_suffix = f"[{rank}th]"
-
-    return f"{value:{fmt}} {rank_suffix}"
-
-def compute_percentage_difference(value: float, baseline: float) -> str:
-    """
-    Compute percentage difference from baseline.
-
-    Args:
-        value: Current value
-        baseline: Baseline value
-    Returns:
-        Formatted percentage difference with sign
-
-    Example:
-        >>> compute_percentage_difference(98.5, 95.0)
-        "+3.68%"
-    """
-    diff_pct: float = ((value - baseline) / baseline) * 100
-    return f"{diff_pct:+.2f}%"
-
-
-# =============================================================================
-# SECTION 7: Persistent Result Logging (Disk I/O)
+# SECTION 6: Persistent Result Logging (Disk I/O)
 # =============================================================================
 
 def _make_result_serializable(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -1029,7 +614,7 @@ def save_seed_result_to_disk(
     with open(output_path, 'w') as f:
         json.dump(data, f, indent=2)
 
-    logging.info(f"Saved seed {result['seed']} results to {output_path}")
+    logging.info(f"\nSaved seed {result['seed']} results to {output_path}")
 
 
 def save_final_summary_to_disk(

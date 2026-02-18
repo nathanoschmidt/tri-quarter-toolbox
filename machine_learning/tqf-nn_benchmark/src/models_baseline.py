@@ -67,14 +67,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Optional
 
-from config import (
-    TARGET_PARAMS_TOLERANCE_PERCENT,
-    TQF_HIDDEN_DIMENSION_DEFAULT,
-    TQF_TRUNCATION_R_DEFAULT,
-    DROPOUT_DEFAULT,
-    TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
-    TQF_USE_PHI_BINNING_DEFAULT
-)
+from config import DROPOUT_DEFAULT
 # LAZY IMPORT: Import TQFANN only when needed to avoid slow startup
 # from models_tqf import TQFANN  # Moved to get_model() function
 from param_matcher import (
@@ -509,89 +502,3 @@ def get_model(name: str, **kwargs) -> nn.Module:
 
     model_class = MODEL_REGISTRY[name]
     return model_class(**kwargs)
-
-
-def print_model_comparison():
-    """
-    Print parameter counts for all models.
-
-    Displays a formatted table comparing actual parameter counts
-    to the target (650k) for all baseline and TQF models.
-
-    Useful for verifying that parameter matching has worked correctly
-    and all models are truly comparable.
-    """
-    print("\n" + "=" * 80)
-    print(f"MODEL PARAMETER COMPARISON (Target: {TARGET_PARAMS:,} +/- {TARGET_PARAMS_TOLERANCE_PERCENT}%)")
-    print("=" * 80)
-    print(f"{'Model':<20} {'Parameters':>15} {'Deviation':>15} {'Status':>10}")
-    print("-" * 80)
-
-    models_config: dict = {
-        'FC-MLP': {},
-        'CNN-L5': {},
-        'ResNet-18-Scaled': {},
-        'TQF-ANN': {
-            'R': TQF_TRUNCATION_R_DEFAULT,
-            'hidden_dim': TQF_HIDDEN_DIMENSION_DEFAULT,
-            'fibonacci_mode': TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
-            'use_phi_binning': TQF_USE_PHI_BINNING_DEFAULT
-        }
-    }
-
-    for name, config in models_config.items():
-        model: nn.Module = get_model(name, **config)
-        params: int = model.count_parameters()
-        deviation: float = abs(params - TARGET_PARAMS) / TARGET_PARAMS * 100
-        status: str = 'PASS' if deviation <= TARGET_PARAMS_TOLERANCE_PERCENT else 'FAIL'
-
-        print(f"{name:<20} {params:>15,} {deviation:>14.2f}% {status:>10}")
-
-    print("=" * 80)
-
-
-def test_all_models():
-    """
-    Test all model architectures.
-
-    Verifies:
-    1. Parameter counts match target
-    2. Forward passes execute correctly
-    3. Output shapes are consistent
-
-    Useful for quick sanity checks during development and for
-    verifying that all models work correctly before training.
-    """
-    print("Testing All Model Architectures")
-    print_model_comparison()
-
-    # Test forward passes
-    print("\nForward Pass Tests:")
-    print("-" * 80)
-
-    batch_size: int = 4
-    x: torch.Tensor = torch.randn(batch_size, 784)
-
-    for name in MODEL_REGISTRY.keys():
-        config: dict = {}
-        if name == 'TQF-ANN':
-            config = {
-                'R': TQF_TRUNCATION_R_DEFAULT,
-                'hidden_dim': TQF_HIDDEN_DIMENSION_DEFAULT,
-                'fibonacci_mode': TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
-                'use_phi_binning': TQF_USE_PHI_BINNING_DEFAULT
-            }
-
-        model: nn.Module = get_model(name, **config)
-        model.eval()
-
-        with torch.no_grad():
-            logits = model(x)
-
-        print(f"{name:<20} Input: {x.shape} -> Output: {logits.shape}")
-
-    print("=" * 80)
-
-
-if __name__ == "__main__":
-    test_all_models()

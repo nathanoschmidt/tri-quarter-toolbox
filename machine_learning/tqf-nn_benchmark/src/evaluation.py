@@ -61,7 +61,6 @@ import os
 import time
 import logging
 import numpy as np
-import statistics
 from typing import Any, Dict, List, Tuple, Optional, Union
 import torch
 import torch.nn as nn
@@ -74,119 +73,8 @@ from config import (
 )
 
 # =============================================================================
-# SECTION 1: Basic Utility Functions
+# SECTION 1: Performance Metrics
 # =============================================================================
-
-def count_parameters(model: nn.Module) -> int:
-    """
-    Count the number of trainable parameters in the model.
-
-    Why: Essential for verifying that models are parameter-matched (~650k) in
-         apples-to-apples benchmarks, ensuring fair comparisons of efficiency
-         and capacity across architectures.
-
-    Args:
-        model: PyTorch neural network module
-    Returns:
-        Number of trainable parameters
-    """
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-def safe_mean_std(values: List[Any]) -> Tuple[float, float]:
-    """
-    Safely compute mean and std dev, filtering None/NaN values.
-
-    Why: Handles incomplete or erroneous data in experiment aggregations
-         (e.g., failed seeds); returns NaN for empty lists to propagate
-         errors gracefully in scientific reporting.
-
-    Args:
-        values: List of numeric values (may contain None or NaN)
-    Returns:
-        Tuple of (mean, std_dev)
-    """
-    clean: List[float] = [v for v in values if v is not None and not (isinstance(v, float) and math.isnan(v))]
-    if not clean:
-        return (float('nan'), float('nan'))
-    return (statistics.mean(clean), statistics.stdev(clean) if len(clean) > 1 else 0.0)
-
-def safe_mean_std_seeds(values: List[Any]) -> Tuple[float, float]:
-    """
-    Safely compute mean and std dev across seeds, filtering None/NaN.
-
-    Why: Aggregates multi-seed results robustly for statistical reliability;
-         std=0 for single values aligns with scientific practice for
-         low-sample variance estimation.
-
-    Args:
-        values: List of values across different random seeds
-    Returns:
-        Tuple of (mean, std_dev)
-    """
-    clean: List[float] = [v for v in values if v is not None and not (isinstance(v, float) and math.isnan(v))]
-    if not clean:
-        return (float('nan'), float('nan'))
-    mean: float = statistics.mean(clean)
-    std: float = statistics.stdev(clean) if len(clean) > 1 else 0.0
-    return (mean, std)
-
-def custom_scatter_mean(src: torch.Tensor, index: torch.Tensor, dim_size: int) -> torch.Tensor:
-    """
-    Custom scatter-mean operation for aggregating messages in graph neural networks.
-
-    Why: Efficiently computes means over indexed groups (e.g., node neighbors
-         in TQF lattice); avoids built-in scatter_mean for compatibility and
-         control in symmetry-reduced graphs.
-
-    Args:
-        src: Source tensor to scatter
-        index: Index tensor for grouping
-        dim_size: Output dimension size
-    Returns:
-        Scattered and averaged tensor
-    """
-    out: torch.Tensor = torch.zeros(dim_size, src.size(1), dtype=src.dtype, device=src.device)
-    count: torch.Tensor = torch.zeros(dim_size, dtype=src.dtype, device=src.device)
-    out.scatter_add_(0, index.unsqueeze(1).repeat(1, src.size(1)), src)
-    count.scatter_add_(0, index, torch.ones_like(index, dtype=src.dtype))
-    return out / count.clamp(min=1.0).unsqueeze(1)
-
-# =============================================================================
-# SECTION 2: Performance Metrics
-# =============================================================================
-
-def measure_flops(
-    model: nn.Module,
-    input_shape: Tuple[int, int, int, int] = (1, 1, 28, 28)
-) -> Union[int, float]:
-    """
-    Measure FLOPs (floating-point operations) for ANN models.
-
-    Why: Quantifies computational complexity as a proxy for energy/inference
-         efficiency; crucial for comparing ANNs to SNNs in scientific benchmarks,
-         with graceful error handling.
-
-    Args:
-        model: Neural network model
-        input_shape: Input tensor shape (batch, channels, height, width)
-    Returns:
-        FLOPs count (0 if estimation fails)
-    """
-    try:
-        from ptflops import get_model_complexity_info
-        with torch.no_grad():
-            flops, _ = get_model_complexity_info(
-                model, input_shape[1:], as_strings=False,
-                print_per_layer_stat=False, verbose=False,
-                input_constructor=lambda s: torch.randn(1, *s).to(next(model.parameters()).device)
-            )
-        return flops
-    except ImportError:
-        # ptflops not installed — use simplified estimation
-        return estimate_model_flops(model, input_shape)
-    except Exception as e:
-        logging.info(f"FLOPs estimation skipped ({type(e).__name__}): {e}")
-        return 0.0
 
 def estimate_model_flops(
     model: nn.Module,
@@ -387,74 +275,6 @@ def compute_per_class_accuracy(
             per_class_acc[c] = 0.0
 
     return per_class_acc
-
-def compute_per_class_rotated_accuracy(
-    model: nn.Module,
-    loader: DataLoader,
-    device: torch.device,
-    num_classes: int = 10,
-    rotation_angles: List[int] = [0, 60, 120, 180, 240, 300]
-) -> Dict[Tuple[int, int], float]:
-    """
-    Compute per-class accuracy for each rotation angle.
-
-    Spec requirement: Report accuracy breakdown by digit class AND rotation.
-
-    Args:
-        model: Neural network model
-        loader: Data loader
-        device: Computation device
-        num_classes: Number of classes
-        rotation_angles: List of rotation angles (degrees)
-    Returns:
-        Dict mapping (class_id, rotation_angle) -> accuracy
-    """
-    model.eval()
-
-    # Stats: [class, rotation]
-    class_rot_correct: np.ndarray = np.zeros((num_classes, len(rotation_angles)))
-    class_rot_total: np.ndarray = np.zeros((num_classes, len(rotation_angles)))
-
-    with torch.no_grad():
-        for inputs, labels, rotations in loader:
-            inputs: torch.Tensor = inputs.to(device)
-            labels: torch.Tensor = labels.to(device)
-            rotations: torch.Tensor = rotations.to(device)
-
-            # Forward pass
-            if hasattr(model, 'forward') and 'return_inv_loss' in model.forward.__code__.co_varnames:
-                outputs = model(inputs, return_inv_loss=False)
-            else:
-                outputs = model(inputs)
-
-            _, predicted = torch.max(outputs, 1)
-
-            # Per-class, per-rotation stats
-            for label, pred, rot in zip(
-                labels.cpu().numpy(),
-                predicted.cpu().numpy(),
-                rotations.cpu().numpy()
-            ):
-                try:
-                    rot_idx: int = rotation_angles.index(int(rot))
-                except ValueError:
-                    continue  # Skip unknown rotations
-
-                class_rot_total[label, rot_idx] += 1
-                if label == pred:
-                    class_rot_correct[label, rot_idx] += 1
-
-    # Compute per-class, per-rotation accuracy
-    per_class_rot_acc: Dict[Tuple[int, int], float] = {}
-    for c in range(num_classes):
-        for r_idx, angle in enumerate(rotation_angles):
-            if class_rot_total[c, r_idx] > 0:
-                acc: float = class_rot_correct[c, r_idx] / class_rot_total[c, r_idx]
-            else:
-                acc: float = 0.0
-            per_class_rot_acc[(c, angle)] = acc
-
-    return per_class_rot_acc
 
 def compute_rotation_invariance_error_from_outputs(
     outputs_dict: Dict[int, torch.Tensor]
@@ -754,77 +574,13 @@ def compute_statistical_significance(
         'effect_size': float(cohens_d)
     }
 
-def report_statistical_tests(
-    raw_results: Dict[str, Any],
-    symmetry_level: str = 'Z6'
-) -> None:
-    """
-    Perform and log statistical tests (Welch's t-test) on rotated accuracies.
-
-    Why: Rigorously tests if TQF models significantly outperform baselines
-         (p < 0.01); uses Welch's for unequal variances, aligning with
-         scientific best practices in benchmarks.
-
-    Args:
-        raw_results: Dict mapping model_name -> list of result dicts
-        symmetry_level: TQF symmetry level for reporting
-    """
-    from scipy import stats
-
-    if 'TQF-ANN' in raw_results:
-        tqf_vals: List[float] = [r['test_rot_acc'][0] for r in raw_results['TQF-ANN']]
-        for base in ['FC-MLP', 'CNN-L5', 'ResNet-18-Scaled']:
-            if base in raw_results:
-                base_vals: List[float] = [r['test_rot_acc'][0] for r in raw_results[base]]
-                t_stat, p_val = stats.ttest_ind(tqf_vals, base_vals, equal_var=False)
-                logging.info(
-                    f"Welch's t-test (TQF-ANN {symmetry_level} vs {base}): "
-                    f"t={t_stat:+.3f}, p={p_val:.2e} "
-                    f"(significant if p < 0.01 per scientific best practice)"
-                )
-
-def print_comprehensive_metrics(
-    model_name: str,
-    metrics: Dict[str, any]
-) -> None:
-    """
-    Print comprehensive evaluation metrics in formatted table.
-
-    Args:
-        model_name: Model name
-        metrics: Dict of all metrics
-    """
-    print(f"\n{'='*70}")
-    print(f"COMPREHENSIVE METRICS: {model_name}")
-    print(f"{'='*70}")
-
-    # Standard metrics
-    print(f"\n{'Metric':<30} {'Value':>15}")
-    print("-" * 70)
-
-    for key, val in metrics.items():
-        if isinstance(val, float):
-            print(f"{key:<30} {val:>15.4f}")
-        elif isinstance(val, int):
-            print(f"{key:<30} {val:>15,}")
-        elif isinstance(val, dict):
-            # Nested dict (e.g., per-class accuracies)
-            if len(val) <= 10:
-                for sub_key, sub_val in val.items():
-                    print(f"  {str(sub_key):<28} {sub_val:>15.4f}")
-        else:
-            print(f"{key:<30} {str(val):>15}")
-
-    print("=" * 70)
-
-
 # =============================================================================
-# SECTION 6: Orbit Mixing Evaluation
+# SECTION 5: Orbit Mixing Evaluation
 # =============================================================================
 
 def adaptive_orbit_mixing(
     logits_per_variant: List[torch.Tensor],
-    temperature: float = 0.3
+    temperature: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT
 ) -> torch.Tensor:
     """
     Combine multiple prediction variants using max-logit confidence weighting.
@@ -856,6 +612,7 @@ def classify_from_sector_features(
     model: nn.Module,
     outer_sector_feats: torch.Tensor,
     inner_sector_feats: torch.Tensor,
+    swap_weights: bool = False,
 ) -> torch.Tensor:
     """
     Run the TQF-ANN classification pipeline on pre-computed zone features.
@@ -868,6 +625,10 @@ def classify_from_sector_features(
         model: TQFANN model instance (must have dual_output attribute)
         outer_sector_feats: Outer zone features (batch, 6, hidden_dim)
         inner_sector_feats: Inner zone features (batch, 6, hidden_dim)
+        swap_weights: If True, flip the confidence weighting so the normally-
+            less-confident zone dominates. Used by T24 zone-swap to produce
+            a genuinely different prediction (the default ensemble is symmetric
+            in outer/inner, so simply swapping args is a no-op).
 
     Returns:
         Ensemble logits (batch, num_classes)
@@ -880,6 +641,10 @@ def classify_from_sector_features(
     inner_logits_per_sector: torch.Tensor = model.dual_output.classification_head(inner_sector_feats)
     inner_logits: torch.Tensor = torch.einsum('bsc,s->bc', inner_logits_per_sector, sector_weights)
 
+    if swap_weights:
+        return model.dual_output.confidence_weighted_ensemble(
+            outer_logits, inner_logits, swap_weights=True
+        )
     return model.dual_output.confidence_weighted_ensemble(outer_logits, inner_logits)
 
 
@@ -897,25 +662,26 @@ def evaluate_with_orbit_mixing(
     verbose: bool = False
 ) -> Tuple[float, float]:
     """
-    Evaluate TQF-ANN with hierarchical orbit mixing preserving inner/outer mirroring.
+    Evaluate TQF-ANN with orbit mixing over independent symmetry levels.
 
-    Three levels of symmetry exploitation:
+    Three independently toggleable levels of symmetry exploitation:
     - Level 1 (Z6): Input-space rotation — 6 full forward passes (0-300 deg, step 60)
     - Level 2 (D6): Feature-space reflection — sector permutation on both zones
-    - Level 3 (T24): Zone-swap — exchange inner/outer roles in dual ensemble
+    - Level 3 (T24): Zone-swap — flip inner/outer confidence weighting in dual ensemble
 
-    The hierarchical structure mirrors the group decomposition T24 = Z6 x Z2 x Z2:
-    - Outer loop: Z6 rotation averaging (temp_rotation, sharpest)
-    - Middle: Z2 inversion averaging (temp_inversion, softest)
-    - Inner: Z2 reflection averaging (temp_reflection, moderate)
+    Each level can be enabled independently or in any combination. When multiple
+    levels are active, averaging is applied hierarchically:
+    - Inner: D6 reflection averaging (temp_reflection)
+    - Middle: T24 zone-swap averaging (temp_inversion)
+    - Outer: Z6 rotation averaging (temp_rotation)
 
     Args:
         model: TQFANN model instance
         loader: DataLoader for evaluation
         device: Torch device
-        use_z6: Enable Z6 rotation orbit mixing
-        use_d6: Enable D6 reflection orbit mixing (implies Z6)
-        use_t24: Enable T24 zone-swap orbit mixing (implies D6)
+        use_z6: Enable Z6 rotation orbit mixing (6 input rotations)
+        use_d6: Enable D6 reflection orbit mixing (sector permutation)
+        use_t24: Enable T24 zone-swap orbit mixing (flip zone confidence weights)
         temp_rotation: Temperature for Z6 rotation averaging
         temp_reflection: Temperature for D6 reflection averaging
         temp_inversion: Temperature for T24 zone-swap averaging
@@ -935,19 +701,18 @@ def evaluate_with_orbit_mixing(
     correct: int = 0
     total: int = 0
 
-    z6_angles: List[int] = [0, 60, 120, 180, 240, 300]
-
-    # Determine which levels are active
-    do_reflections: bool = use_d6 or use_t24
-    do_inversions: bool = use_t24
+    # Z6: iterate over 6 rotation angles, or just [0] (no rotation) if disabled
+    z6_angles: List[int] = [0, 60, 120, 180, 240, 300] if use_z6 else [0]
 
     if verbose:
-        level_str: str = "Z6"
+        levels: List[str] = []
+        if use_z6:
+            levels.append("Z6")
+        if use_d6:
+            levels.append("D6")
         if use_t24:
-            level_str = "T24 (Z6+D6+zone-swap)"
-        elif use_d6:
-            level_str = "D6 (Z6+reflections)"
-        logging.info(f"Orbit mixing evaluation: {level_str}")
+            levels.append("T24")
+        logging.info(f"Orbit mixing evaluation: {'+'.join(levels) if levels else 'none'}")
 
     with torch.no_grad():
         for batch_idx, (inputs, labels) in enumerate(loader):
@@ -962,82 +727,62 @@ def evaluate_with_orbit_mixing(
                 with torch.amp.autocast('cuda', enabled=use_amp and device.type == 'cuda'):
                     logits = model(rotated_input, return_inv_loss=False)
 
-                # Collect base logits from this rotation
-                base_logits: torch.Tensor = logits
-                variant_logits: List[torch.Tensor] = [base_logits]
+                # Start with base logits from this forward pass
+                current: torch.Tensor = logits
 
-                if do_reflections or do_inversions:
+                if use_d6 or use_t24:
                     # Retrieve cached zone features from this forward pass
                     outer_feats: torch.Tensor = model.get_cached_sector_features()
                     inner_feats: torch.Tensor = model.get_cached_inner_sector_features()
 
-                    # ── Level 2: D6 feature-space reflection ──
-                    if do_reflections:
-                        # Apply reflection across axis 0 to BOTH zones (preserves mirroring)
-                        reflected_outer: torch.Tensor = apply_d6_reflection_to_sectors(
-                            outer_feats, reflection_axis=0
+                # ── Level 2: D6 feature-space reflection ──
+                if use_d6:
+                    reflected_outer: torch.Tensor = apply_d6_reflection_to_sectors(
+                        outer_feats, reflection_axis=0
+                    )
+                    reflected_inner: torch.Tensor = apply_d6_reflection_to_sectors(
+                        inner_feats, reflection_axis=0
+                    )
+                    reflected_logits: torch.Tensor = classify_from_sector_features(
+                        model, reflected_outer, reflected_inner
+                    )
+                    # Average base + reflected with reflection temperature
+                    refl_stack = torch.stack([current, reflected_logits], dim=0)
+                    refl_conf = refl_stack.max(dim=2).values
+                    refl_w = F.softmax(refl_conf / temp_reflection, dim=0)
+                    current = (refl_stack * refl_w.unsqueeze(2)).sum(dim=0)
+
+                # ── Level 3: T24 zone-swap (flip confidence weighting) ──
+                if use_t24:
+                    swapped_logits: torch.Tensor = classify_from_sector_features(
+                        model, outer_feats, inner_feats, swap_weights=True
+                    )
+                    if use_d6:
+                        # Also compute reflected + zone-swapped variant
+                        swapped_refl_logits: torch.Tensor = classify_from_sector_features(
+                            model, reflected_outer, reflected_inner, swap_weights=True
                         )
-                        reflected_inner: torch.Tensor = apply_d6_reflection_to_sectors(
-                            inner_feats, reflection_axis=0
-                        )
-                        reflected_logits: torch.Tensor = classify_from_sector_features(
-                            model, reflected_outer, reflected_inner
-                        )
-                        variant_logits.append(reflected_logits)
+                        # Average the two swapped variants
+                        sw_stack = torch.stack([swapped_logits, swapped_refl_logits], dim=0)
+                        sw_conf = sw_stack.max(dim=2).values
+                        sw_w = F.softmax(sw_conf / temp_reflection, dim=0)
+                        swapped_logits = (sw_stack * sw_w.unsqueeze(2)).sum(dim=0)
 
-                    # ── Level 3: T24 zone-swap (inner <-> outer) ──
-                    if do_inversions:
-                        # Zone-swap: inner becomes "outer", outer becomes "inner"
-                        swapped_logits: torch.Tensor = classify_from_sector_features(
-                            model, inner_feats, outer_feats  # swapped roles
-                        )
-                        variant_logits.append(swapped_logits)
-
-                        if do_reflections:
-                            # Zone-swap on reflected features
-                            swapped_reflected_logits: torch.Tensor = classify_from_sector_features(
-                                model, reflected_inner, reflected_outer  # reflected + swapped
-                            )
-                            variant_logits.append(swapped_reflected_logits)
-
-                # ── Hierarchical averaging within this rotation ──
-                if len(variant_logits) == 1:
-                    # Z6 only: no inner averaging needed
-                    rotation_logits.append(variant_logits[0])
-                elif len(variant_logits) == 2:
-                    # D6: average base + reflected with reflection temperature
-                    stacked = torch.stack(variant_logits, dim=0)
-                    max_conf = stacked.max(dim=2).values
-                    weights = F.softmax(max_conf / temp_reflection, dim=0)
-                    averaged = (stacked * weights.unsqueeze(2)).sum(dim=0)
-                    rotation_logits.append(averaged)
-                else:
-                    # T24: hierarchical — first average reflection pairs, then inversion pairs
-
-                    # Non-inverted pair: variant_logits[0] (base), variant_logits[1] (reflected)
-                    non_inv_stack = torch.stack([variant_logits[0], variant_logits[1]], dim=0)
-                    non_inv_conf = non_inv_stack.max(dim=2).values
-                    non_inv_w = F.softmax(non_inv_conf / temp_reflection, dim=0)
-                    non_inv_avg = (non_inv_stack * non_inv_w.unsqueeze(2)).sum(dim=0)
-
-                    # Inverted pair: variant_logits[2] (swapped), variant_logits[3] (swapped+reflected)
-                    inv_stack = torch.stack([variant_logits[2], variant_logits[3]], dim=0)
+                    # Average normal vs zone-swapped with inversion temperature
+                    inv_stack = torch.stack([current, swapped_logits], dim=0)
                     inv_conf = inv_stack.max(dim=2).values
-                    inv_w = F.softmax(inv_conf / temp_reflection, dim=0)
-                    inv_avg = (inv_stack * inv_w.unsqueeze(2)).sum(dim=0)
+                    inv_w = F.softmax(inv_conf / temp_inversion, dim=0)
+                    current = (inv_stack * inv_w.unsqueeze(2)).sum(dim=0)
 
-                    # Inversion averaging (non-inverted vs inverted)
-                    zone_stack = torch.stack([non_inv_avg, inv_avg], dim=0)
-                    zone_conf = zone_stack.max(dim=2).values
-                    zone_w = F.softmax(zone_conf / temp_inversion, dim=0)
-                    rotation_result = (zone_stack * zone_w.unsqueeze(2)).sum(dim=0)
-
-                    rotation_logits.append(rotation_result)
+                rotation_logits.append(current)
 
             # ── Final Z6 rotation averaging ──
-            ensemble_logits: torch.Tensor = adaptive_orbit_mixing(
-                rotation_logits, temperature=temp_rotation
-            )
+            if use_z6:
+                ensemble_logits: torch.Tensor = adaptive_orbit_mixing(
+                    rotation_logits, temperature=temp_rotation
+                )
+            else:
+                ensemble_logits = rotation_logits[0]
 
             # Standard evaluation metrics
             loss = F.cross_entropy(ensemble_logits, labels)

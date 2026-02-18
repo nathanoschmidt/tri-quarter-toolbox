@@ -150,8 +150,8 @@ from config import (
 )
 
 from dual_metrics import (
-    DiscreteDualMetric, ContinuousDualMetric, build_triangular_lattice_zones,
-    ExplicitLatticeVertex, build_vertex_neighbor_map,
+    ContinuousDualMetric, build_triangular_lattice_zones,
+    ExplicitLatticeVertex,
     PhasePair, compute_phase_pair, verify_phase_pair_preservation,
     compute_trihexagonal_six_coloring, verify_trihexagonal_six_coloring_independence,
     compute_angular_sector, eisenstein_to_cartesian
@@ -1250,7 +1250,8 @@ class BijectionDualOutputHead(nn.Module):
         self,
         outer_logits: torch.Tensor,
         inner_logits: torch.Tensor,
-        temperature: float = 1.0
+        temperature: float = 1.0,
+        swap_weights: bool = False
     ) -> torch.Tensor:
         """
         Combine outer and inner zone predictions using confidence-weighted averaging.
@@ -1269,6 +1270,9 @@ class BijectionDualOutputHead(nn.Module):
             outer_logits: Classification logits from outer zone (batch, num_classes)
             inner_logits: Classification logits from inner zone (batch, num_classes)
             temperature: Softmax temperature for entropy computation (default: 1.0)
+            swap_weights: If True, flip the confidence weights so the normally-
+                less-confident zone dominates. This makes the ensemble asymmetric,
+                allowing T24 zone-swap to produce genuinely different predictions.
 
         Returns:
             Confidence-weighted ensemble logits (batch, num_classes)
@@ -1296,6 +1300,10 @@ class BijectionDualOutputHead(nn.Module):
         total_conf: torch.Tensor = outer_conf + inner_conf
         outer_weight: torch.Tensor = outer_conf / total_conf
         inner_weight: torch.Tensor = inner_conf / total_conf
+
+        if swap_weights:
+            # Flip: apply inner's weight to outer and vice versa
+            return inner_weight * outer_logits + outer_weight * inner_logits
 
         # Weighted combination of logits
         return outer_weight * outer_logits + inner_weight * inner_logits

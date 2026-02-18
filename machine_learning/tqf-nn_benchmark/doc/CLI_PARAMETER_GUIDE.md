@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.2<br>
-**Date:** February 15, 2026<br>
+**Version:** 1.0.3<br>
+**Date:** February 18, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -80,12 +80,12 @@ python main.py
 
 This runs all 4 models with defaults:
 - 1 random seed (42)
-- 100 training epochs (with early stopping)
+- 150 training epochs (with early stopping, patience 25)
 - Batch size 128
 - Learning rate 0.001
 - Weight decay 0.0001
 - Label smoothing 0.1
-- 30,000 training samples
+- 58,000 training samples
 - 2,000 validation samples
 - 2,000 rotated test samples
 - 8,000 unrotated test samples
@@ -125,10 +125,10 @@ python main.py --models all
 python main.py --num-epochs 10 --num-seeds 1 --num-train 1000 --num-val 200
 ```
 
-### Production Run (100 epochs, 10 seeds)
+### Production Run (150 epochs, 10 seeds)
 
 ```bash
-python main.py --num-epochs 100 --num-seeds 10
+python main.py --num-epochs 150 --num-seeds 10
 ```
 
 ### TQF-Specific Examples
@@ -265,7 +265,7 @@ python main.py --device cpu
 ```
 
 **Why This Matters**:
-- CUDA (GPU): ~18 seconds/epoch on RTX 4060 (30k training samples)
+- CUDA (GPU): ~12 seconds/epoch on RTX 4060 (58k training samples, with in-memory caching)
 - CPU: ~5-10 minutes/epoch (significantly slower)
 - Useful for debugging without GPU
 - Allows testing on machines without CUDA
@@ -441,11 +441,12 @@ python main.py --num-epochs 200
 - CosineAnnealingLR fine-tuning tail (LR < 3e-4) provides +0.5% accuracy gain
 - Computational cost scales linearly with epochs
 
-**Computational Impact** (RTX 4060, 58k training samples):
-- 10 epochs ~ 4 minutes
-- 50 epochs ~ 15 minutes
-- 100 epochs ~ 30 minutes
-- 200 epochs ~ 60 minutes
+**Computational Impact** (RTX 4060, 58k training samples, in-memory caching):
+- 10 epochs ~ 2 minutes
+- 50 epochs ~ 10 minutes
+- 100 epochs ~ 20 minutes
+- 150 epochs ~ 30 minutes (default)
+- 200 epochs ~ 40 minutes
 
 **Validation**:
 - Must be in range `[1, 200]`
@@ -872,12 +873,12 @@ python main.py --num-train 58000
 - Must be divisible by 10 to ensure equal samples per class
 - If requested size exceeds available samples (60K minus validation), it is capped automatically
 
-**Computational Impact** (RTX 4060, batch_size=64):
+**Computational Impact** (RTX 4060, batch_size=128, in-memory caching):
 - 1,000 samples: ~2 seconds/epoch
-- 5,000 samples: ~6 seconds/epoch
-- 10,000 samples: ~10 seconds/epoch
-- 30,000 samples: ~18 seconds/epoch
-- 58,000 samples: ~25 seconds/epoch
+- 5,000 samples: ~4 seconds/epoch
+- 10,000 samples: ~6 seconds/epoch
+- 30,000 samples: ~8 seconds/epoch
+- 58,000 samples: ~12 seconds/epoch (default)
 
 **Validation**:
 - Must be in range `[100, 60000]`
@@ -2976,8 +2977,8 @@ python main.py --models TQF-ANN --results-dir /tmp/my_results
 ---
 **`QED`**
 
-**Last Updated:** February 15, 2026<br>
-**Version:** 1.0.2<br>
+**Last Updated:** February 18, 2026<br>
+**Version:** 1.0.3<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 
