@@ -60,9 +60,6 @@ try:
 except ImportError:
     DUAL_METRICS_AVAILABLE = False
 
-# Note: FibonacciWeightScaler is not needed for parameter estimation
-# because Fibonacci mode now uses constant dimensions (weight-based, not dimension scaling).
-# All modes (none, linear, fibonacci) have IDENTICAL parameter counts.
 
 
 # ============================================================================
@@ -118,7 +115,6 @@ def _estimate_radial_binner_params(
 def estimate_tqf_params(
     R: int,
     d: int,
-    binning_method: str = 'dyadic',
     fractal_iters: int = TQF_FRACTAL_ITERATIONS_DEFAULT,
 ) -> int:
     """Estimate TQF-ANN parameter count from architecture configuration.
@@ -147,7 +143,6 @@ def estimate_tqf_params(
     Args:
         R: Truncation radius. Controls lattice extent.
         d: Hidden dimension (CONSTANT for all layers). Auto-tuned by tune_d_for_params().
-        binning_method: 'dyadic' or 'linear' (affects layer count calculation).
         fractal_iters: Number of fractal self-similarity iterations.
 
     Returns:
@@ -157,31 +152,19 @@ def estimate_tqf_params(
         Formula must stay synchronized with TQFANN implementation.
     """
     # Calculate number of radial bin layers (matches TQFANN.__init__ exactly)
-    # IMPORTANT: The actual model uses different formulas based on binning_method:
-    # - dyadic/uniform: max(3, int(math.log2(len(vertices))) - 2)
-    # - phi: max(3, int(math.log(len(vertices)) / math.log(PHI)) - 2)
+    # Formula: max(3, int(math.log2(len(vertices))) - 2)
     # We must calculate the number of vertices first to get accurate layer count
-    PHI: float = (1.0 + math.sqrt(5.0)) / 2.0  # Golden ratio ~ 1.618
 
     if DUAL_METRICS_AVAILABLE:
         # Build lattice to get exact vertex count (fast: ~6ms for R=20)
         vertices, _, _, _, _, _ = build_triangular_lattice_zones(R, r_sq=1)
         num_vertices: int = len(vertices)
-        # Use the same formula as TQFANN.__init__ based on binning method
-        if binning_method == 'phi':
-            # Phi binning: more layers due to golden ratio growth (slower than 2x)
-            L: int = max(3, int(math.log(num_vertices) / math.log(PHI)) - 2)
-        else:
-            # Standard dyadic binning (uniform/dyadic)
-            L: int = max(3, int(math.log2(num_vertices)) - 2)
+        L: int = max(3, int(math.log2(num_vertices)) - 2)
     else:
         # Fallback approximation if dual_metrics not available
         # Hexagonal lattice has approximately 3*R^2 vertices
         approx_vertices: int = int(3 * R * R)
-        if binning_method == 'phi':
-            L: int = max(3, int(math.log(approx_vertices) / math.log(PHI)) - 2)
-        else:
-            L: int = max(3, int(math.log2(approx_vertices)) - 2)
+        L: int = max(3, int(math.log2(approx_vertices)) - 2)
 
     # ========================================================================
     # BOUNDARY ZONE ENCODER PARAMETERS
@@ -243,29 +226,22 @@ def tune_d_for_params(
     R: int,
     target: int = TARGET_PARAMS,
     tol: int = TARGET_PARAMS_TOLERANCE_ABSOLUTE,
-    binning_method: str = 'dyadic',
     fractal_iters: int = TQF_FRACTAL_ITERATIONS_DEFAULT,
-    fibonacci_mode: str = 'fibonacci',
 ) -> int:
     """Find optimal hidden dimension d to match target parameter count.
 
     Uses binary search to find the hidden dimension that produces a TQF-ANN
     model with approximately TARGET_PARAMS parameters (default 650,000).
 
-    The search is constrained to d in [4, 300] to ensure reasonable model
+    The search is constrained to d in [10, 300] to ensure reasonable model
     architectures. If no exact match exists within tolerance, returns the
     closest achievable value.
-
-    For fibonacci_mode='attention', the returned hidden_dim is guaranteed to be
-    divisible by 4 (required for num_heads=4 in FibonacciSymmetryAttention).
 
     Args:
         R: Truncation radius for TQF graph
         target: Target parameter count (default: 650,000)
         tol: Acceptable deviation from target (default: 7,150 for 1.1%)
-        binning_method: 'dyadic' or 'linear' binning strategy
         fractal_iters: Number of fractal self-similarity iterations
-        fibonacci_mode: Fibonacci aggregation mode ('none', 'linear', 'fibonacci')
 
     Returns:
         Optimal hidden dimension d (int) that brings parameter count closest
@@ -275,29 +251,16 @@ def tune_d_for_params(
         >>> tune_d_for_params(R=20, fractal_iters=10)
         38  # Produces ~650,000 params with R=20, fractal_iters=10
     """
-    # Expanded search range to handle edge cases
-    # With correct layer calculation (more layers), Fibonacci mode needs smaller d
-    if fibonacci_mode == 'attention':
-        d_low: int = 4  # Must be multiple of 4 for attention heads
-    elif fibonacci_mode in ['fibonacci', 'linear']:
-        d_low: int = 4  # Fibonacci scaling creates many params, start small
-    else:
-        d_low: int = 10  # Standard mode
+    d_low: int = 10
     d_high: int = 300
     best_d: int = d_low
-    best_diff: int = abs(estimate_tqf_params(R, d_low, binning_method, fractal_iters) - target)
+    best_diff: int = abs(estimate_tqf_params(R, d_low, fractal_iters) - target)
 
     # Binary search for optimal d
     while d_low <= d_high:
         d_mid: int = (d_low + d_high) // 2
 
-        # For attention mode, d must be divisible by num_heads (4)
-        if fibonacci_mode == 'attention':
-            d_mid = (d_mid // 4) * 4  # Round down to nearest multiple of 4
-            if d_mid < 4:
-                d_mid = 4
-
-        params: int = estimate_tqf_params(R, d_mid, binning_method, fractal_iters)
+        params: int = estimate_tqf_params(R, d_mid, fractal_iters)
         diff: int = abs(params - target)
 
         # Update best if closer to target
@@ -311,12 +274,6 @@ def tune_d_for_params(
             d_low = d_mid + 1
         else:
             d_high = d_mid - 1
-
-    # Ensure return value is divisible by 4 for attention mode
-    if fibonacci_mode == 'attention':
-        best_d = (best_d // 4) * 4
-        if best_d < 4:
-            best_d = 4
 
     return best_d
 

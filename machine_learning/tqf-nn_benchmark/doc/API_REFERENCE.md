@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.3<br>
-**Last Updated:** February 18, 2026<br>
+**Version:** 1.0.4<br>
+**Last Updated:** February 20, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -50,7 +50,7 @@ This API reference provides comprehensive documentation for all public functions
 |--------|---------|-------|----------------|
 | `cli.py` | Command-line interface | 850 | Argument parsing, validation |
 | `config.py` | Configuration constants | 1,232 | Hyperparameters, defaults |
-| `models_tqf.py` | TQF-ANN architecture | 700 | Fibonacci aggregation, symmetry ops |
+| `models_tqf.py` | TQF-ANN architecture | 700 | Layer aggregation, symmetry ops |
 | `models_baseline.py` | Baseline models | 525 | MLP, CNN, ResNet |
 | `dual_metrics.py` | Geometric operations | 970 | Dual metrics, fractal dim |
 | `engine.py` | Training orchestration | 996 | Multi-seed experiments |
@@ -257,11 +257,6 @@ print(f"Available models: {models}")
   - Default: `'none'` (from `TQF_SYMMETRY_LEVEL_DEFAULT`, orbit pooling disabled)
   - Choices: `['none', 'Z6', 'D6', 'T24']`
 
-- `--tqf-fibonacci-mode`: Fibonacci weight scaling mode
-  - Type: `str`
-  - Default: `'none'`
-  - Choices: `['none', 'linear', 'fibonacci']`
-
 **TQF Equivariance Losses (TQF-ANN only):**
 Features are disabled by default and enabled by providing a weight value.
 - `--tqf-z6-equivariance-weight`: Enable and set weight for Z6 rotation equivariance loss (disabled by default)
@@ -282,8 +277,6 @@ Features are disabled by default and enabled by providing a weight value.
 - `--tqf-fractal-iterations`: Iterations for dimension estimation (default: 0, disabled; enable by providing value in range [1-20])
 - `--tqf-self-similarity-weight`: Self-similarity loss weight (default: 0.0, disabled)
 - `--tqf-box-counting-weight`: Box-counting loss weight (default: 0.0, disabled)
-- `--tqf-use-phi-binning`: Use golden ratio radial binning (default: False)
-
 **TQF Attention (TQF-ANN only):**
 - `--tqf-hop-attention-temp`: Hop attention temperature (default: 1.0)
 
@@ -372,16 +365,16 @@ logging.debug("Debug information")
 
 ### TQF-ANN (`models_tqf.py`)
 
-The Tri-Quarter Framework Artificial Neural Network implements Schmidt's radial dual triangular lattice graph architecture with Fibonacci enhancements.
+The Tri-Quarter Framework Artificial Neural Network implements Schmidt's radial dual triangular lattice graph architecture with symmetry exploitation.
 
 #### `class TQFANN(nn.Module)`
 
-**Description:** Main TQF-ANN model with Fibonacci enhancements, symmetry-preserving operations, and dual zone structure.
+**Description:** Main TQF-ANN model with symmetry-preserving operations and dual zone structure.
 
 **Architecture:**
 1. **Boundary Encoder**: Maps input to unit-norm lattice boundary (6 vertices for r=1)
-2. **Radial Bins**: Partitions outer zone by integer norms with optional golden ratio (φ) scaling
-3. **Fibonacci Aggregation**: Linear layer combination using Fibonacci numbers or linear weights
+2. **Radial Bins**: Partitions outer zone by integer norms
+3. **Layer Aggregation**: Linear layer combination with uniform weighting
 4. **Dual Output**: Inner zone (via circle inversion) provides dual predictions
 5. **Symmetry Operations**: ℤ₆, D₆, or T₂₄ group actions for equivariance
 
@@ -396,48 +389,12 @@ TQFANN(
     symmetry_level: str = 'none',
     fractal_iters: int = 0,
     use_dual_output: bool = True,
-    fibonacci_mode: str = 'none',
-    use_phi_binning: bool = False,
     use_gradient_checkpointing: bool = False,
     dropout: float = 0.2
 )
 ```
 
-**New Parameters (v1.1.0):**
-
-- `fibonacci_mode` (str): Fibonacci enhancement mode
-  - **Default**: `'none'`
-  - **Choices**: `['none', 'linear', 'fibonacci']`
-  - **Purpose**: Controls how layer aggregation is performed
-  - **Options**:
-    - `'none'`: Disables Fibonacci enhancements (legacy TQF-ANN behavior)
-      - Parameters: ~647K
-      - Use case: Backwards compatibility, ablation baseline
-    - `'linear'`: Linear-weighted layer aggregation (**RECOMMENDED**)
-      - Parameters: ~651K (+4K)
-      - Expected gain: +1.5% validation accuracy
-      - Rationale: Outer radial layers weighted linearly (1, 2, 3, 4, 5, ...) to match lattice vertex density
-      - Mathematical basis: Eisenstein integer norms N(n + m·ω) naturally generate linearly-scaled shells
-    - `'fibonacci'`: Fibonacci self-attention with positional encoding
-      - Parameters: ~700K (+53K)
-      - Expected gain: +3.2% validation accuracy
-      - Computational cost: +9% inference time
-      - Use case: Maximum performance setting
-
-- `use_phi_binning` (bool): Use golden ratio (φ ≈ 1.618) scaled radial binning
-  - **Default**: `False` (uses dyadic binning with powers of 2)
-  - **Purpose**: Alternative radial layer computation using golden ratio growth
-  - **Effect when True**:
-    - Radial layers grow as φˡ instead of 2ˡ (slower, more gradual growth)
-    - Increases number of radial layers (e.g., 7 vs 5 for R=20) due to log_φ > log_2
-    - Produces more uniform radial spacing for better lattice alignment
-    - Preserves fractal self-similarity better than dyadic scaling
-  - **Mathematical basis**: Golden ratio relates to 6-fold symmetry via φ⁶ - φ³ - 1 = 0
-  - **Implementation details**:
-    - Stored in `model.radial_binner.binning_method` as 'phi' or 'uniform'
-    - Affects `num_radial_layers` calculation: `max(3, int(log_φ(|V|)) - 2)`
-    - Synergizes with `fibonacci_mode` for complete golden ratio integration
-  - **Recommendation**: Enable `True` for advanced geometric experiments; keep `False` for baseline
+**Additional Parameters:**
 
 - `use_gradient_checkpointing` (bool): Enable gradient checkpointing for memory optimization
   - **Default**: `False` (standard training with all activations stored)
@@ -470,12 +427,9 @@ Each vertex connects to at most 6 neighbors, respecting the radial dual triangul
 **Updated Parameters:**
 
 - `hidden_dim` (Optional[int]): Feature dimension distributed across lattice
-  - **Default**: `None` (auto-tuned to ~650K parameters based on `fibonacci_mode`)
+  - **Default**: `None` (auto-tuned to ~650K parameters)
   - **Range**: [8, 512]
-  - **Auto-tuning**: Adjusts for Fibonacci mode to maintain parameter budget
-    - `fibonacci_mode='none'` → ~647K params
-    - `fibonacci_mode='linear'` → ~651K params
-    - `fibonacci_mode='fibonacci'` → ~700K params
+  - **Auto-tuning**: Adjusts to maintain ~650K parameter budget
 
 - `R` (int): Truncation radius for lattice construction
   - **Default**: 20 (updated from 18 for better coverage)
@@ -490,9 +444,7 @@ import torch
 # Default: Baseline mode (no orbit pooling, fastest)
 model = TQFANN(
     hidden_dim=128,
-    R=20,
-    fibonacci_mode='none',  # Default mode (uniform weighting)
-    use_phi_binning=False
+    R=20
     # symmetry_level='none' is default (no orbit pooling)
 )
 
@@ -500,29 +452,10 @@ model = TQFANN(
 model_d6 = TQFANN(
     hidden_dim=128,
     R=20,
-    fibonacci_mode='none',  # Default: uniform weighting
     symmetry_level='D6'  # Enable D6 orbit pooling
 )
 
-# Linear mode (lighter than fibonacci)
-model_linear = TQFANN(
-    hidden_dim=128,
-    R=20,
-    fibonacci_mode='linear',  # Linear weights instead of fibonacci
-    use_phi_binning=False,
-    symmetry_level='none'
-)
-
-# Speed-optimized mode
-model_fast = TQFANN(
-    hidden_dim=128,
-    R=20,
-    fibonacci_mode='none',  # Default: uniform weighting
-    use_phi_binning=True  # Fewer bins, faster inference
-    # symmetry_level='none' is default
-)
-
-# Standard forward pass (all modes)
+# Standard forward pass
 x = torch.randn(32, 784)
 logits = model(x)
 print(f"Output shape: {logits.shape}")  # (32, 10)
@@ -575,15 +508,6 @@ print(f"Parameters: {model.count_parameters():,}")
   - **Default**: 0 (from `TQF_FRACTAL_ITERATIONS_DEFAULT`, disabled; enable by providing value in range [1, 20])
   - **Range**: [1, 20] when enabled
   - **Why**: Opt-in feature that enforces scale-invariant feature hierarchies
-
-- `fibonacci_mode` (str): Fibonacci weight scaling mode
-  - **Default**: `'none'` (from `TQF_FIBONACCI_DIMENSION_MODE_DEFAULT`)
-  - **Choices**: `['none', 'linear', 'fibonacci']`
-  - **Purpose**: Controls layer aggregation weighting
-
-- `use_phi_binning` (bool): Use golden ratio radial binning
-  - **Default**: False
-  - **Effect**: More uniform radial spacing, more bins
 
 - `dropout` (float): Dropout probability
   - **Default**: 0.2
@@ -802,91 +726,6 @@ for epoch in range(num_epochs):
 
 #### Helper Classes in `models_tqf.py`
 
-##### `class FibonacciLinearAggregator(nn.Module)` (NEW)
-
-**Description:** Linear-weighted aggregation over radial lattice bins. Implements weighted layer combination where outer layers (with more lattice vertices) receive higher linear-based weights.
-
-**Constructor:**
-```python
-FibonacciLinearAggregator(
-    num_layers: int,
-    hidden_dim: int
-)
-```
-
-**Parameters:**
-- `num_layers` (int): Number of radial bins/layers to aggregate
-- `hidden_dim` (int): Feature dimension per layer
-
-**Mathematical Basis:**
-- Computes linear sequence: 1, 2, 3, 4, 5, ...
-- Initializes learnable layer_scales parameter with linear values
-- Applies softmax normalization: weights = softmax([1, 2, 3, ..., n])
-- Aggregates: output = Σᵢ weights[i] · layer_features[i]
-
-**Example:**
-```python
-from models_tqf import FibonacciLinearAggregator
-
-aggregator = FibonacciLinearAggregator(num_layers=7, hidden_dim=128)
-
-# List of layer features from radial bins
-layer_features = [torch.randn(32, 128) for _ in range(7)]
-
-# Linear-weighted aggregation
-aggregated = aggregator(layer_features)  # (32, 128)
-```
-
----
-
-##### `class FibonacciSymmetryAttention(nn.Module)` (NEW)
-
-**Description:** Multi-head self-attention mechanism with Fibonacci positional encoding for radial layers. Learns task-specific layer importance adaptively.
-
-**Constructor:**
-```python
-FibonacciSymmetryAttention(
-    hidden_dim: int,
-    num_layers: int,
-    num_heads: int = 4
-)
-```
-
-**Parameters:**
-- `hidden_dim` (int): Feature dimension
-- `num_layers` (int): Number of radial layers
-- `num_heads` (int): Number of attention heads
-  - **Default**: 4
-  - **Must divide** `hidden_dim` evenly
-
-**Architecture:**
-- **Positional Encoding**: Fibonacci numbers transformed via log-scaling
-  - pos_embed[l] ∝ log(Fₗ + 1) for layer l
-  - Learnable embeddings initialized with Fibonacci-scaled variance
-- **Multi-Head Attention**: Standard scaled dot-product attention
-  - Q, K, V projections: hidden_dim → hidden_dim
-  - Attention weights: softmax(QKᵀ / √d_head)
-- **Output**: Mean pooling over attended layers with residual connection
-
-**Example:**
-```python
-from models_tqf import FibonacciSymmetryAttention
-
-attention = FibonacciSymmetryAttention(
-    hidden_dim=128,
-    num_layers=7,
-    num_heads=4
-)
-
-# Layer features from radial bins
-layer_features = [torch.randn(32, 128) for _ in range(7)]
-
-# Fibonacci attention aggregation
-aggregated = attention(layer_features)  # (32, 128)
-```
-
----
-
 ##### `class BoundaryZoneEncoder(nn.Module)`
 
 **Description:** Maps input features to the lattice boundary zone (unit norm ring).
@@ -913,7 +752,6 @@ aggregated = attention(layer_features)  # (32, 128)
 **Binning Methods:**
 - `'linear'`: Uniform bin widths
 - `'dyadic'`: Powers of 2 (better for fractal analysis)
-- `'fibonacci'`: Golden ratio spacing
 - `'dual_metric'`: Based on ContinuousDualMetric distances
 
 ---
@@ -1600,7 +1438,7 @@ print(f"Rotation invariance score: {1.0 - inv_error:.4f}")
 
 ---
 
-#### `adaptive_orbit_mixing(logits_per_variant: List[torch.Tensor], temperature: float = 0.3) -> torch.Tensor`
+#### `adaptive_orbit_mixing(logits_per_variant: List[torch.Tensor], temperature: float = 0.5) -> torch.Tensor`
 
 **Description:** Combines multiple prediction variants using max-logit confidence weighting. Each variant's contribution is weighted by the confidence of its most certain prediction (max logit).
 
@@ -1654,7 +1492,7 @@ loss, acc = evaluate_with_orbit_mixing(
     use_z6=True,
     use_d6=True,
     use_t24=True,
-    temp_rotation=0.3,
+    temp_rotation=0.5,
     temp_reflection=0.5,
     temp_inversion=0.7
 )
@@ -1940,11 +1778,6 @@ TQF_THEORETICAL_FRACTAL_DIM_DEFAULT: float = 1.585  # Sierpinski triangle dimens
 TQF_FRACTAL_EPSILON_DEFAULT: float = 1e-8
 TQF_BOX_COUNTING_SCALES_DEFAULT: int = 10
 
-# Fibonacci features
-TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
-TQF_FIBONACCI_MODE_CHOICES: List[str] = ['none', 'linear', 'fibonacci']
-TQF_USE_PHI_BINNING_DEFAULT: bool = False
-
 # Z6 augmentation (applies to all models)
 Z6_DATA_AUGMENTATION_DEFAULT: bool = False
 
@@ -2116,7 +1949,6 @@ ContinuousDualMetric(
 - `binning_method`: Binning strategy
   - `'linear'`: Uniform bin widths
   - `'dyadic'`: Powers of 2
-  - `'fibonacci'`: Golden ratio spacing
 
 **Methods:**
 
@@ -2543,7 +2375,7 @@ for comp in comparison['comparisons']:
 
 ---
 
-### Example 3: Custom TQF Configuration with Fibonacci Enhancements
+### Example 3: Custom TQF Configuration
 
 ```python
 from models_tqf import TQFANN
@@ -2553,7 +2385,6 @@ from param_matcher import tune_d_for_params, estimate_tqf_params
 R: int = 25
 fractal_iterations: int = 12
 symmetry_level: str = 'T24'
-fibonacci_mode: str = 'linear'  # NEW
 
 # Auto-tune hidden dimension
 d_hidden: int = tune_d_for_params(R, fractal_iterations, target_params=650000)
@@ -2565,8 +2396,6 @@ model: TQFANN = TQFANN(
     R=R,
     symmetry_level=symmetry_level,
     fractal_iterations=fractal_iterations,
-    fibonacci_mode=fibonacci_mode,  # NEW
-    use_phi_binning=False,  # NEW
     geometry_reg_weight=0.15,
     inv_loss_weight=0.25,
     verify_duality_interval=10,
@@ -2586,47 +2415,7 @@ print(f"Duality check passed: {duality_metrics['passes'] == 1.0}")
 
 ---
 
-### Example 4: Fibonacci Mode Ablation Study
-
-```python
-from models_baseline import get_model
-import torch
-
-# Test all three Fibonacci modes
-modes = ['none', 'linear', 'fibonacci']
-results = {}
-
-for mode in modes:
-    model = get_model('TQF-ANN',
-                      hidden_dim=128,
-                      R=20,
-                      fibonacci_mode=mode)
-
-    # Training loop (simplified)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
-    # ... training code ...
-
-    # Evaluate
-    val_acc = evaluate_model(model, val_loader)
-    results[mode] = {
-        'params': model.count_parameters(),
-        'val_acc': val_acc
-    }
-
-# Compare results
-for mode, metrics in results.items():
-    print(f"{mode:>12}: {metrics['params']:>8,} params, "
-          f"{metrics['val_acc']:.2f}% val acc")
-
-# Expected output:
-#         none:  647,xxx params, 88.90% val acc
-#       linear:  651,xxx params, 90.40% val acc (recommended)
-#    fibonacci:  700,xxx params, 92.10% val acc (max performance)
-```
-
----
-
-### Example 5: Evaluation Only (Pre-Trained Model)
+### Example 4: Evaluation Only (Pre-Trained Model)
 
 ```python
 from evaluation import (
@@ -2706,41 +2495,9 @@ See [TESTS_README.md](TESTS_README.md) for detailed testing documentation.
 
 ## Performance Benchmarks (Updated v1.1.0)
 
-### TQF-ANN Performance by Mode
+### TQF-ANN Performance
 
-| Fibonacci Mode | Val Acc | Rot Acc | Params | Inference | Notes |
-|----------------|---------|---------|--------|-----------|-------|
-| `none` | 88.9% | 88.1% | 647K | 32ms | Legacy behavior |
-| `linear` ⭐ | **90.4%** | **89.3%** | 651K | 32ms | **Default** |
-| `fibonacci` | **92.1%** | **91.5%** | 700K | 35ms | Max performance |
-
-⭐ Recommended default for v1.1.0
-
-### Phi-Binning Performance
-
-| Binning | Bins | Val Acc | Inference | Notes |
-|---------|------|---------|-----------|-------|
-| Dyadic (2ˡ) | ~18 | 90.4% | 32ms | Standard |
-| Phi (φˡ) | ~7 | ~90.2% | 30ms | -6% time, -61% bins |
-
----
-
-## Golden Ratio (φ) Constants
-
-**Golden Ratio (φ):**
-```python
-PHI = (1 + sqrt(5)) / 2 ≈ 1.618033988749...
-```
-
-**Key Properties:**
-- φ² = φ + 1 (fundamental recursion)
-- 1/φ = φ - 1 ≈ 0.618... (golden ratio conjugate)
-- φ⁶ - φ³ - 1 = 0 (hexagonal golden ratio equation)
-
-**Usage in TQF-ANN:**
-- Phi-scaled radial bins: rₗ = r · φˡ
-- Golden angle: θ_φ = 360° / φ² ≈ 137.508° (phyllotaxis optimization)
-- Logarithmic spiral structure on hexagonal lattice
+See the project MEMORY.md for the latest benchmark results with optimal configuration.
 
 ---
 
@@ -2757,8 +2514,8 @@ PHI = (1 + sqrt(5)) / 2 ≈ 1.618033988749...
 
 **`QED`**
 
-**Last Updated:** February 18, 2026<br>
-**Version:** 1.0.3<br>
+**Last Updated:** February 20, 2026<br>
+**Version:** 1.0.4<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

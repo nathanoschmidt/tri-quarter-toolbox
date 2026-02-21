@@ -188,11 +188,6 @@ class TestTQFArchitectureParameters(unittest.TestCase):
         valid: List[str] = ['none', 'Z6', 'D6', 'T24']
         self.assertIn(config.TQF_SYMMETRY_LEVEL_DEFAULT, valid)
 
-    def test_fibonacci_mode_valid(self) -> None:
-        """Test that Fibonacci dimension mode is valid."""
-        valid: List[str] = ['none', 'linear', 'fibonacci']
-        self.assertIn(config.TQF_FIBONACCI_DIMENSION_MODE_DEFAULT, valid)
-
     def test_tqf_weights_non_negative(self) -> None:
         """Test that TQF weight parameters are non-negative."""
         for param in ['TQF_FRACTAL_DIM_TOLERANCE_DEFAULT',
@@ -645,9 +640,9 @@ class TestOrbitMixingAndAugmentationDefaults(unittest.TestCase):
         self.assertFalse(config.Z6_DATA_AUGMENTATION_DEFAULT)
 
     def test_orbit_mixing_temp_rotation_default(self) -> None:
-        """Test rotation temperature default is 0.3 (sharp weighting)."""
+        """Test rotation temperature default is 0.5 (experimentally optimal)."""
         self.assertIsInstance(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT, float)
-        self.assertEqual(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT, 0.3)
+        self.assertEqual(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT, 0.5)
 
     def test_orbit_mixing_temp_reflection_default(self) -> None:
         """Test reflection temperature default is 0.5 (moderate weighting)."""
@@ -660,14 +655,14 @@ class TestOrbitMixingAndAugmentationDefaults(unittest.TestCase):
         self.assertEqual(config.TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT, 0.7)
 
     def test_orbit_mixing_temp_ordering(self) -> None:
-        """Test that temperatures follow rotation < reflection < inversion.
+        """Test that temperatures follow rotation <= reflection < inversion.
 
-        WHY: The mark 3 spec requires progressively softer weighting for
-             more abstract symmetry operations. Rotation is most reliable
-             (sharp), inversion is most abstract (soft).
+        WHY: Progressively softer weighting for more abstract symmetry
+             operations. Rotation is most reliable (sharp or equal to
+             reflection), inversion is most abstract (soft).
         """
-        self.assertLess(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-                        config.TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT)
+        self.assertLessEqual(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+                             config.TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT)
         self.assertLess(config.TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
                         config.TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT)
 

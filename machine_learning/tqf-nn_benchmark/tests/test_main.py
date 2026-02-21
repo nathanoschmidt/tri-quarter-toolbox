@@ -11,7 +11,7 @@ Key Test Coverage:
 - Parameter Count Tolerance: ±5% tolerance for matched architectures
 - Auto-Tuning Validation: Correct hidden dimension calculation for parameter matching
 - Model Configuration Assembly: Proper configuration dict construction from CLI args
-- TQF Model Config: R, hidden_dim, symmetry_level, fibonacci_mode, binning scheme
+- TQF Model Config: R, hidden_dim, symmetry_level
 - Baseline Model Config: Hidden dimensions, layer counts for FC-MLP, CNN-L5, ResNet-18-Scaled
 - Device Management: Correct CPU/CUDA device assignment for models and data
 - Device Consistency: Model and batch tensors on same device throughout training
@@ -277,20 +277,6 @@ class TestCLIParameterIntegration:
             assert args.tqf_z6_equivariance_weight == 0.02
             assert args.tqf_d6_equivariance_weight == 0.015
             assert args.tqf_t24_orbit_invariance_weight == 0.008
-
-    def test_fibonacci_mode_parameter_exists_in_args(self) -> None:
-        """
-        WHY: fibonacci_mode must be accessible from CLI
-        HOW: Parse args with --tqf-fibonacci-mode
-        WHAT: Expect correct mode in args
-        """
-        from cli import parse_args
-        for mode in ['none', 'linear', 'fibonacci']:
-            with patch('sys.argv', ['test', '--tqf-fibonacci-mode', mode]):
-                args = parse_args()
-                assert hasattr(args, 'tqf_fibonacci_mode')
-                assert args.tqf_fibonacci_mode == mode
-
 
 def run_tests(verbosity: int = 2):
     """Run all main.py integration tests."""

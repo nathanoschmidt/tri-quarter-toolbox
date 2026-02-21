@@ -81,8 +81,6 @@ from config import (
     NUM_TEST_UNROT_DEFAULT,
     TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
     TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-    TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
-    TQF_USE_PHI_BINNING_DEFAULT,
     Z6_DATA_AUGMENTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
@@ -412,7 +410,7 @@ Result Output:
     # =========================================================================
     tqf_arch_group = parser.add_argument_group(
         'TQF Architecture (TQF-ANN only)',
-        'Core TQF-ANN architecture settings: lattice size, symmetry, and Fibonacci mode'
+        'Core TQF-ANN architecture settings: lattice size and symmetry'
     )
 
     tqf_arch_group.add_argument(
@@ -444,18 +442,6 @@ Result Output:
              f'Choices: none (fastest, no pooling), Z6 (6x cost, rotation invariance), '
              f'D6 (12x cost, +reflections), T24 (24x cost, full symmetry). '
              f'Default: {TQF_SYMMETRY_LEVEL_DEFAULT}.'
-    )
-
-    tqf_arch_group.add_argument(
-        '--tqf-fibonacci-mode',
-        type=str,
-        default=TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
-        choices=['none', 'linear', 'fibonacci'],
-        help=f'Fibonacci weight scaling mode for feature aggregation. '
-             f'Choices: none (uniform weighting), linear (linear weights ablation), '
-             f'fibonacci (Fibonacci sequence weights per Schmidt spec). '
-             f'Default: {TQF_FIBONACCI_DIMENSION_MODE_DEFAULT}. '
-             f'All modes have identical parameter counts.'
     )
 
     tqf_arch_group.add_argument(
@@ -698,14 +684,6 @@ Result Output:
     # NOTE: --tqf-box-counting-scales removed (consolidated as internal constant
     # TQF_BOX_COUNTING_SCALES_DEFAULT=10 in config.py, not user-tunable)
 
-    tqf_fractal_group.add_argument(
-        '--tqf-use-phi-binning',
-        action='store_true',
-        default=TQF_USE_PHI_BINNING_DEFAULT,
-        help='Use golden ratio (phi) scaled radial binning instead of dyadic. '
-            f'Default: {TQF_USE_PHI_BINNING_DEFAULT}.'
-    )
-
     # =========================================================================
     # TQF MEMORY OPTIMIZATION PARAMETERS
     # =========================================================================
@@ -931,12 +909,6 @@ def _validate_args(args: argparse.Namespace) -> None:
 
     # NOTE: --tqf-box-counting-scales validation removed (internal constant)
 
-    if args.tqf_fibonacci_mode not in ['none', 'linear', 'fibonacci']:
-        errors.append(
-            f"--tqf-fibonacci-mode must be 'none', 'linear', or 'fibonacci', "
-            f"got '{args.tqf_fibonacci_mode}'"
-        )
-
     # TQF attention
     if not (TQF_HOP_ATTENTION_TEMP_MIN <= args.tqf_hop_attention_temp <= TQF_HOP_ATTENTION_TEMP_MAX):
         errors.append(
@@ -1005,6 +977,22 @@ def _validate_args(args: argparse.Namespace) -> None:
             f"(--tqf-symmetry-level={args.tqf_symmetry_level}) are enabled. "
             f"These mechanisms may conflict — orbit pooling destroys rotation-specific "
             f"information that orbit mixing needs.",
+            file=sys.stdout
+        )
+
+    # Orbit mixing + equivariance loss conflict warning
+    any_equiv_loss: bool = (
+        args.tqf_z6_equivariance_weight is not None
+        or args.tqf_d6_equivariance_weight is not None
+    )
+    if any_orbit_mixing and any_equiv_loss:
+        print(
+            "WARNING: Both orbit mixing and equivariance loss are enabled. "
+            "These features conflict — equivariance loss constrains training-time "
+            "representations that orbit mixing needs to vary at evaluation time. "
+            "Experimental results show this combination reduces rotation accuracy "
+            "(62.83% vs 67.42% with orbit mixing alone). "
+            "Recommendation: use orbit mixing OR equivariance loss, not both.",
             file=sys.stdout
         )
 

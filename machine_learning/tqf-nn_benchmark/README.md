@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.3<br>
-**Date:** February 18, 2026<br>
+**Version:** 1.0.4<br>
+**Date:** February 20, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -166,7 +166,7 @@ Key CLI flags (focus on ℤ₆ for simplicity and efficiency):
 - `--tqf-use-d6-orbit-mixing`: Enables D₆ orbit mixing (ℤ₆ rotations + 6 reflections). Use for stronger reflection invariance.
 - `--tqf-use-t24-orbit-mixing`: Enables full 𝕋₂₄ orbit mixing (D₆ + circle inversions). Ideal for exploiting inner/outer zone duality, but requires inversion support.
 - Temperature controls (adjust weighting softness):
-  - `--tqf-orbit-mixing-temp-rotation`: Temperature for rotation averaging (default: 0.3).
+  - `--tqf-orbit-mixing-temp-rotation`: Temperature for rotation averaging (default: 0.5).
   - `--tqf-orbit-mixing-temp-reflection`: Temperature for reflection averaging (default: 0.5).
   - `--tqf-orbit-mixing-temp-inversion`: Temperature for inversion averaging (default: 0.7).
 
@@ -199,28 +199,6 @@ python src/main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01 --num-epoc
 **Example: Train with full symmetry enforcement over 150 epochs max**
 ```bash
 python src/main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01 --tqf-d6-equivariance-weight 0.01 --tqf-t24-orbit-invariance-weight 0.005 --num-epochs 150
-```
-
-### Fibonacci Weight Scaling Modes (TQF-ANN)
-Control hierarchical feature learning with Fibonacci weight scaling. All modes have identical parameter counts - only the feature aggregation weights differ:
-```bash
-# Fibonacci weight mode options
---tqf-fibonacci-mode none           Uniform weighting (default)
---tqf-fibonacci-mode linear         Linear weights [1,2,3,...] (ablation baseline)
---tqf-fibonacci-mode fibonacci      Fibonacci weights [1,1,2,3,5,...] (opt-in)
-
-# Optional: Golden ratio radial binning
---tqf-use-phi-binning               Use φ-scaled bins (faster inference)
-```
-
-**Example: Train with uniform weighting (default)**
-```bash
-python src/main.py --models TQF-ANN --tqf-fibonacci-mode none --num-epochs 50
-```
-
-**Example: Full Fibonacci specification**
-```bash
-python src/main.py --models TQF-ANN --tqf-fibonacci-mode fibonacci --tqf-symmetry-level D6 --num-epochs 100
 ```
 
 See full documentation in [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
@@ -328,8 +306,8 @@ See some of our future TODO items in [`FUTURE_TODO.md`](FUTURE_TODO.md).
 
 **`QED`**
 
-**Last Updated:** February 18, 2026<br>
-**Version:** 1.0.3<br>
+**Last Updated:** February 20, 2026<br>
+**Version:** 1.0.4<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

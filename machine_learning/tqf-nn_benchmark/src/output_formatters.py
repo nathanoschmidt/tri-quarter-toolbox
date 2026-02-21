@@ -614,7 +614,8 @@ def save_seed_result_to_disk(
     with open(output_path, 'w') as f:
         json.dump(data, f, indent=2)
 
-    logging.info(f"\nSaved seed {result['seed']} results to {output_path}")
+    print()  # blank line separator
+    logging.info(f"Saved seed {result['seed']} results to {output_path}")
 
 
 def save_final_summary_to_disk(

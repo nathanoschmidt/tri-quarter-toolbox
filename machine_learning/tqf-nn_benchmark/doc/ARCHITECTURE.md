@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.3<br>
-**Date:** February 18, 2026<br>
+**Version:** 1.0.4<br>
+**Date:** February 20, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -297,7 +297,6 @@ TQF_TRUNCATION_R_DEFAULT: int = 20
 TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'  # Orbit pooling disabled by default
 TQF_FRACTAL_ITERATIONS_DEFAULT: int = 0  # Disabled, opt-in via CLI
-TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
 
 # ===== TQF LOSS WEIGHTS (opt-in, all default to 0.0) =====
 TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
@@ -346,8 +345,7 @@ class TQFANN(nn.Module):
         hidden_dim: Optional[int] = None,  # Auto-tuned to ~650K params
         R: int = 20,                         # Truncation radius
         symmetry_level: str = 'none',        # Symmetry group (opt-in)
-        fractal_iters: int = 0,              # Fractal iterations (disabled by default)
-        fibonacci_mode: str = 'none'         # Fibonacci weighting
+        fractal_iters: int = 0               # Fractal iterations (disabled by default)
     ):
         # Initialize layers...
 ```
@@ -1218,14 +1216,13 @@ Aggregate results across all seeds:
 
 ## 5. TQF-ANN Architecture
 
-### 5.1 Overview - Fibonacci-Enhanced Design (v1.1.0)
+### 5.1 Overview
 
-The TQF-ANN architecture (v1.1.0) implements Nathan O. Schmidt's Tri-Quarter Framework with integrated **Fibonacci sequence** enhancements for improved performance. The architecture leverages deep mathematical connections between:
+The TQF-ANN architecture implements Nathan O. Schmidt's Tri-Quarter Framework with symmetry exploitation for improved performance. The architecture leverages:
 
 1. **Hexagonal Lattice Structure**: Eisenstein integer basis with 6-fold rotational symmetry
-2. **Fibonacci Sequence**: Natural emergence in Eisenstein integer norms
-3. **Golden Ratio (φ)**: Relates to hexagonal symmetry via φ⁶ - φ³ - 1 = 0
-4. **Phyllotaxis Optimization**: Biological principle applied to neural information flow
+2. **Dual Zone Architecture**: Inner/outer zones connected via circle inversion bijection
+3. **Symmetry Groups**: ℤ₆, D₆, and T₂₄ group operations for equivariance
 
 ### 5.2 Detailed Layer Structure (Updated)
 
@@ -1253,29 +1250,14 @@ Input: (B, 784) MNIST images
 +------------------------------------------------+
 |  RADIAL BINNING                                |
 |  +-- Dyadic: r_l = 2^l (default)               |
-|  +-- Phi: r_l = φ^l (optional, faster)         |
 |  +-- Assigns features to L radial layers       |
 +---------------------+--------------------------+
                       | List[(B, hidden_dim)] × L
                       v
 +------------------------------------------------+
-|  FIBONACCI AGGREGATION                        |
-|  ┌─────────────────────────────────────────┐  |
-|  │ Mode: 'none' (legacy)                   │  |
-|  │   → Uniform averaging (~647K params)    │  |
-|  ├─────────────────────────────────────────┤  |
-|  │ Mode: 'linear'                          │  |
-|  │   → FibonacciLinearAggregator           │  |
-|  │   → Weights: [F₁, F₂, ..., Fₗ]         │  |
-|  │   → Learnable scaling via softmax       │  |
-|  │   → +1.5% accuracy (~651K params)       │  |
-|  ├─────────────────────────────────────────┤  |
-|  │ Mode: 'fibonacci' (maximum performance) │  |
-|  │   → FibonacciSymmetryAttention          │  |
-|  │   → Multi-head self-attention           │  |
-|  │   → Fibonacci positional encoding       │  |
-|  │   → +3.2% accuracy (~700K params)       │  |
-|  └─────────────────────────────────────────┘  |
+|  LAYER AGGREGATION                             |
+|  +-- Uniform averaging over radial layers     |
+|  +-- ~650K total params                        |
 +---------------------+--------------------------+
                       | (B, hidden_dim)
                       v
@@ -1297,226 +1279,20 @@ Input: (B, 784) MNIST images
 OUTPUT (B, num_classes)
 ```
 
-### 5.3 Fibonacci Component Details
-
-#### 5.3.1 FibonacciLinearAggregator (~1K params)
-
-**Purpose**: Emphasizes outer radial layers (which have more lattice vertices) using Fibonacci-based weights.
-
-**Mathematical Foundation**:
-
-**Fibonacci Sequence**:
-```
-F₀ = 0, F₁ = 1, F_{n+2} = F_{n+1} + F_n
-Sequence: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, ...
-```
-
-**Golden Ratio Convergence**:
-```
-φ = lim(n→∞) F_{n+1}/F_n = (1 + √5)/2 ≈ 1.618033988...
-```
-
-**Eisenstein Integer Connection**:
-```
-Eisenstein basis: {1, ω} where ω = exp(iπ/3)
-Norm function: N(a + bω) = a² + ab + b²
-
-Key theorem: For Fibonacci numbers F_n:
-  z_n = F_n + F_{n+1}·ω
-  N(z_n) = F_{2n+1}  (Lucas number!)
-```
-
-This means **Fibonacci-linear lattice points naturally organize into radial shells**!
-
-**Algorithm**:
-```python
-# Precompute Fibonacci numbers
-fib = [0, 1]
-for i in range(2, num_layers + 1):
-    fib.append(fib[-1] + fib[-2])
-fib_weights = tensor(fib[1:num_layers+1])  # [F₁, F₂, ..., F_L]
-
-# Initialize learnable scales (Fibonacci-initialized)
-layer_scales = nn.Parameter(fib_weights.float())
-
-# Forward pass: linear aggregation
-weights = softmax(layer_scales, dim=0)  # Normalize to probabilities
-aggregated = sum(weights[l] * layer_features[l] for l in range(num_layers))
-```
-
-**Why This Works**:
-- Outer layers have more vertices: N(r_l) ∝ r_l² (quadratic growth)
-- Fibonacci weights: F_l ~ φˡ (exponential growth)
-- Ratio: F_l / r_l² ≈ φˡ / 4ˡ (for dyadic binning with r_l = 2ˡ)
-- This provides a reasonable approximation to vertex density weighting
-
----
-
-#### 5.3.2 FibonacciSymmetryAttention (~50K params)
-
-**Purpose**: Learns task-specific layer importance adaptively via multi-head self-attention with Fibonacci positional encoding.
-
-**Architecture Components**:
-
-1. **Fibonacci Positional Embeddings**:
-```python
-# Compute log-scaled Fibonacci for numerical stability
-fib = compute_fibonacci(num_layers)
-log_fib = log(fib + 1)  # Add 1 to avoid log(0)
-
-# Initialize learnable embeddings with Fibonacci-scaled variance
-for l in range(num_layers):
-    scale = log_fib[l] / log_fib[-1]  # Normalize to [0, 1]
-    pos_embedding.weight[l] = randn(hidden_dim) * scale * 0.02
-```
-
-2. **Multi-Head Self-Attention**:
-```python
-# Add positional encoding to layer features
-features_with_pos = layer_features + pos_embedding
-
-# Standard multi-head attention
-Q = query_proj(features_with_pos)   # (B, L, hidden_dim)
-K = key_proj(features_with_pos)
-V = value_proj(features_with_pos)
-
-# Reshape for multi-head: (B, num_heads, L, head_dim)
-Q = Q.view(B, L, num_heads, head_dim).transpose(1, 2)
-K = K.view(B, L, num_heads, head_dim).transpose(1, 2)
-V = V.view(B, L, num_heads, head_dim).transpose(1, 2)
-
-# Scaled dot-product attention
-scores = matmul(Q, K.transpose(-2, -1)) / sqrt(head_dim)
-attn_weights = softmax(scores, dim=-1)
-attended = matmul(attn_weights, V)
-
-# Mean pooling over layers
-output = attended.mean(dim=2)  # (B, num_heads, head_dim)
-```
-
-3. **Residual Connection + Layer Norm**:
-```python
-# Residual from original features (skip connection)
-output = layer_norm(output + layer_features.mean(dim=1))
-```
-
-**Parameter Breakdown**:
-- Q/K/V projections: 3 × hidden_dim²
-- Output projection: hidden_dim²
-- Positional embeddings: num_layers × hidden_dim
-- Total: ~4 × hidden_dim² ≈ 1M for hidden_dim=512
-
----
-
-#### 5.3.3 Phi-Scaled Radial Binning (Optional)
-
-**Standard Dyadic Binning**:
-```
-r_l = 2^l for l = 0, 1, 2, ..., L
-Bins for R=20: [1, 2], [2, 4], [4, 8], [8, 16], [16, 20]
-Total bins: L ≈ log₂(R) ≈ 5 bins
-```
-
-**Phi-Scaled Binning** (use_phi_binning=True):
-```
-r_l = φ^l for l = 0, 1, 2, ..., L where φ = (1+√5)/2
-Bins for R=20: [1.0, 1.6], [1.6, 2.6], [2.6, 4.2], [4.2, 6.9],
-               [6.9, 11.1], [11.1, 18.0], [18.0, 20.0]
-Total bins: L ≈ log_φ(R) ≈ 7 bins
-```
-
-**Comparison**:
-
-| Aspect | Dyadic (2ˡ) | Phi (φˡ) | Notes |
-|--------|-------------|----------|-------|
-| Bin count (R=20) | 5 | 7 | Phi uses more bins |
-| Bin size growth | 2× per layer | 1.618× per layer | Phi more gradual |
-| Lattice alignment | Arbitrary | Natural (φ⁶-φ³-1=0) | Phi matches hexagonal |
-| Fractal preservation | Good | Better | Phi preserves D=2 |
-| Inference speed | Baseline | +6% faster | Optimized computation |
-| Validation accuracy | Baseline | Comparable | ~±0.2% difference |
-
-**When to Use**:
-- **Keep False (dyadic)**: Default, stable, well-tested
-- **Set True (phi)**: Speed optimization, mathematical elegance, research
-
----
-
-### 5.4 Parameter Budget Allocation (v1.1.0)
-
-**Mode: `fibonacci_mode='none'` (Default)**
+### 5.3 Parameter Budget Allocation
 
 | Component | Parameters | % of Total | Notes |
 |-----------|-----------|------------|-------|
 | EnhancedPreEncoder | ~560,000 | 86.0% | Main capacity |
 | LatticeEncoder | ~5,000 | 0.8% | Boundary encoding |
-| FibonacciLinearAggregator | ~1,000 | 0.2% | Layer scales + norms |
+| LayerAggregation | ~1,000 | 0.2% | Layer scales + norms |
 | SymmetryMatrices | ~25,000 | 3.8% | Rotation/reflection |
 | DualClassifiers | ~60,000 | 9.2% | 2× (768→128→10) |
 | **Total** | **~651,000** | **100%** | Within tolerance |
 
-**Mode: `fibonacci_mode='fibonacci'`**
-
-| Component | Parameters | % of Total | Notes |
-|-----------|-----------|------------|-------|
-| EnhancedPreEncoder | ~510,000 | 72.9% | Reduced from 560K |
-| LatticeEncoder | ~5,000 | 0.7% | Same |
-| FibonacciSymmetryAttention | ~50,000 | 7.1% | Q/K/V + pos_embed |
-| SymmetryMatrices | ~25,000 | 3.6% | Same |
-| DualClassifiers | ~60,000 | 8.6% | Same |
-| GraphConvolutions | ~50,000 | 7.1% | Optional |
-| **Total** | **~700,000** | **100%** | +8% over baseline |
-
 ---
 
-### 5.5 Design Decisions & Rationale
-
-#### Why Fibonacci for Layer Weighting?
-
-**Problem**: Uniform averaging treats all radial layers equally:
-```python
-aggregated = mean([feat_0, feat_1, ..., feat_L])
-```
-
-But this ignores **information density**! Outer layers have:
-- More lattice vertices (N ∝ r²)
-- Richer geometric structure
-- More diverse feature representations
-
-**Solution**: Weight layers by Fibonacci numbers:
-```python
-weights = softmax([F_1, F_2, ..., F_L])
-aggregated = sum(weights[l] * feat_l)
-```
-
-**Mathematical Justification**:
-1. Fibonacci growth (φˡ) matches lattice vertex density growth (r²ₗ)
-2. Eisenstein integer norms naturally generate Fibonacci-scaled shells
-3. Golden ratio φ relates to hexagonal symmetry (φ⁶ - φ³ - 1 = 0)
-
-**Empirical Validation**: +1.5% accuracy over uniform averaging!
-
-#### Why Golden Ratio (φ) for Binning?
-
-**Standard Approach**: Dyadic binning with powers of 2
-- Pro: Simple, uniform doubling
-- Con: Arbitrary choice (why 2? why not 3 or e?)
-
-**Phi-Scaled Approach**: Bins grow as φˡ
-- Pro: Natural connection to hexagonal lattice geometry
-- Pro: Logarithmic spiral structure (phyllotaxis)
-- Pro: Self-similar fractal properties preserved
-- Con: Non-uniform bin sizes (but this is intentional!)
-
-**When to Use**:
-- Standard (dyadic): Default, stable, well-tested
-- Phi-scaled: Optimization for speed, mathematical elegance
-
----
-
-### Original Layer Structure (Legacy Mode: fibonacci_mode='none')
-
-### Performance Optimizations
+### 5.4 Performance Optimizations
 
 The TQF-ANN implementation includes several critical performance optimizations that dramatically improve inference speed while maintaining complete mathematical correctness:
 
@@ -2130,95 +1906,6 @@ parser.add_argument('--my-new-loss-weight', type=float, ...)
 
 ---
 
-### Adding Custom Fibonacci Modes
-
-**Scenario**: You want to implement a new Fibonacci aggregation strategy.
-
-**Steps**:
-
-1. **Create New Aggregator Class** in `models_tqf.py`:
-
-```python
-class CustomFibonacciAggregator(nn.Module):
-    """
-    Your custom Fibonacci-based aggregation.
-    """
-
-    def __init__(self, num_layers: int, hidden_dim: int):
-        super().__init__()
-        self.num_layers: int = num_layers
-        self.hidden_dim: int = hidden_dim
-
-        # Your custom initialization
-        # E.g., Lucas numbers instead of Fibonacci
-        self.lucas_weights = self._compute_lucas(num_layers)
-
-    def _compute_lucas(self, n: int) -> torch.Tensor:
-        """Lucas numbers: L_0=2, L_1=1, L_{n+1}=L_n+L_{n-1}"""
-        lucas: List[int] = [2, 1]
-        for i in range(2, n + 1):
-            lucas.append(lucas[-1] + lucas[-2])
-        return torch.tensor(lucas[:n], dtype=torch.float32)
-
-    def forward(
-        self,
-        layer_features: List[torch.Tensor]
-    ) -> torch.Tensor:
-        # Your custom aggregation logic
-        weights = torch.softmax(self.lucas_weights, dim=0)
-        # ... implementation ...
-        return aggregated_features
-```
-
-2. **Add to FibonacciTQFANN Constructor**:
-
-```python
-if fibonacci_mode == 'lucas':  # Your new mode
-    self.fibonacci_aggregator = CustomFibonacciAggregator(
-        self.num_layers,
-        hidden_dim
-    )
-```
-
-3. **Update Config and CLI**:
-
-In `config.py`:
-```python
-# Update choices
-TQF_FIBONACCI_MODE_DEFAULT: str = 'none'
-# Document new 'lucas' mode in comments
-```
-
-In `cli.py`:
-```python
-parser.add_argument(
-    '--tqf-fibonacci-mode',
-    type=str,
-    default=TQF_FIBONACCI_MODE_DEFAULT,
-    choices=['none', 'linear', 'fibonacci', 'lucas'],  # Add 'lucas'
-    help='...'
-)
-```
-
-4. **Add Unit Tests**:
-
-```python
-def test_lucas_fibonacci_mode():
-    model = FibonacciTQFANN(
-        hidden_dim=64,
-        R=10,
-        fibonacci_mode='lucas'
-    )
-
-    x = torch.randn(4, 784)
-    logits = model(x)
-
-    assert logits.shape == (4, 10)
-    assert not torch.isnan(logits).any()
-```
-
----
-
 ### Adding a New Metric
 
 1. **Define metric function:**
@@ -2372,8 +2059,8 @@ A: All code works on CPU. Add `--device cpu` to CLI or remove CUDA checks in cod
 
 **`QED`**
 
-**Last Updated:** February 18, 2026<br>
-**Version:** 1.0.3<br>
+**Last Updated:** February 20, 2026<br>
+**Version:** 1.0.4<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

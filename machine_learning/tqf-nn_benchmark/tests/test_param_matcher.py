@@ -8,14 +8,12 @@ parameter counts for fair "apples-to-apples" architectural comparison.
 Key Test Coverage:
 - Parameter Counting: Accurate count of trainable parameters across all model types
 - Baseline Model Configs: FC-MLP, CNN-L5, ResNet-18-Scaled configuration generation
-- TQF Model Configs: R, hidden_dim, symmetry_level, fibonacci_mode, phi_binning
+- TQF Model Configs: R, hidden_dim, symmetry_level
 - Parameter Matching Algorithm: Binary search for hidden_dim to meet target parameter count
 - Tolerance Validation: ±5% tolerance around target parameter count (~650K)
 - Target Parameter Count: Default 650K parameters for all models
 - Config Dictionary Structure: Correct keys and value types for each model
 - Symmetry Matrix Regression: Fixes for Z6/D6/T24 symmetry matrix parameter counting
-- Fibonacci Mode Support: Parameter estimation for none/linear/fibonacci scaling modes
-- Fibonacci Mode Independence: Constant parameters across all fibonacci modes (weight-based)
 - Model Instantiation: Successful model creation from generated configs
 - Hidden Dimension Search: Binary search convergence to optimal hidden_dim
 - Boundary Cases: Very small/large target parameter counts
@@ -29,7 +27,6 @@ Test Organization:
 - TestParameterMatching: Auto-tuning hidden_dim to match target parameters
 - TestSymmetryMatrixRegression: Symmetry matrix parameter count fixes
 - TestModelInstantiation: Model creation from auto-tuned configs
-- TestFibonacciModeParameterEstimation: Fibonacci mode parameter invariance
 - TestParameterEstimationRegressions: Historical bug regression tests
 
 Scientific Rationale:
@@ -281,8 +278,7 @@ class TestSymmetryMatrixRegression:
 
         # Estimate parameters
         total_params: int = estimate_tqf_params(
-            R=R, d=d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=d,            fractal_iters=fractal_iters
         )
 
         # IMPORTANT: After Step 6 T24 completion, symmetry matrices are NO LONGER
@@ -318,12 +314,11 @@ class TestSymmetryMatrixRegression:
 
         tuned_d: int = tune_d_for_params(
             R=R, target=TARGET_PARAMS, tol=TARGET_PARAMS_TOLERANCE_ABSOLUTE,
-            binning_method='dyadic', fractal_iters=fractal_iters
+            fractal_iters=fractal_iters
         )
 
         estimated_params: int = estimate_tqf_params(
-            R=R, d=tuned_d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=tuned_d,            fractal_iters=fractal_iters
         )
 
         deviation_percent: float = abs(estimated_params - TARGET_PARAMS) / TARGET_PARAMS * 100
@@ -347,13 +342,13 @@ class TestSymmetryMatrixRegression:
 
         tuned_d: int = tune_d_for_params(
             R=R, target=TARGET_PARAMS,
-            binning_method='dyadic', fractal_iters=fractal_iters
+            fractal_iters=fractal_iters
         )
 
         # Get params for tuned_d and neighbors
-        params_d: int = estimate_tqf_params(R, tuned_d, 'dyadic', fractal_iters)
-        params_d_minus: int = estimate_tqf_params(R, tuned_d - 1, 'dyadic', fractal_iters)
-        params_d_plus: int = estimate_tqf_params(R, tuned_d + 1, 'dyadic', fractal_iters)
+        params_d: int = estimate_tqf_params(R, tuned_d, fractal_iters)
+        params_d_minus: int = estimate_tqf_params(R, tuned_d - 1, fractal_iters)
+        params_d_plus: int = estimate_tqf_params(R, tuned_d + 1, fractal_iters)
 
         dev_d: int = abs(params_d - TARGET_PARAMS)
         dev_d_minus: int = abs(params_d_minus - TARGET_PARAMS)
@@ -375,8 +370,8 @@ class TestSymmetryMatrixRegression:
         R: int = 20
         fractal_iters: int = 10
 
-        params_50: int = estimate_tqf_params(R, 50, 'dyadic', fractal_iters)
-        params_100: int = estimate_tqf_params(R, 100, 'dyadic', fractal_iters)
+        params_50: int = estimate_tqf_params(R, 50, fractal_iters)
+        params_100: int = estimate_tqf_params(R, 100, fractal_iters)
 
         growth_factor: float = params_100 / params_50
 
@@ -400,8 +395,7 @@ class TestSymmetryMatrixRegression:
         estimated_params: int = estimate_tqf_params(
             R=config.TQF_TRUNCATION_R_DEFAULT,
             d=model.hidden_dim,
-            binning_method='dyadic',
-            fractal_iters=config.TQF_FRACTAL_ITERATIONS_DEFAULT
+                       fractal_iters=config.TQF_FRACTAL_ITERATIONS_DEFAULT
         )
 
         difference: int = abs(actual_params - estimated_params)
@@ -499,14 +493,13 @@ class TestFibonacciModeParameterEstimation:
 
             # Estimate
             estimated = estimate_tqf_params(
-                R=R, d=d, binning_method='dyadic',
-                fractal_iters=fractal_iters
+                R=R, d=d,                fractal_iters=fractal_iters
             )
 
             # Actual
             model = TQFANN(
                 R=R, hidden_dim=d, fractal_iters=fractal_iters,
-                fibonacci_mode='fibonacci'
+
             )
             actual = model.count_parameters()
 
@@ -534,14 +527,12 @@ class TestFibonacciModeParameterEstimation:
 
         # Standard mode
         standard_params = estimate_tqf_params(
-            R=R, d=d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=d,            fractal_iters=fractal_iters
         )
 
         # Fibonacci mode (weight-based only) - uses same estimate since params are identical
         fibonacci_params = estimate_tqf_params(
-            R=R, d=d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=d,            fractal_iters=fractal_iters
         )
 
         # Fibonacci should have SAME parameters (weight-based, not dimension scaling)
@@ -568,8 +559,7 @@ class TestFibonacciModeParameterEstimation:
 
         # Get total params
         total_params = estimate_tqf_params(
-            R=R, d=d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=d,            fractal_iters=fractal_iters
         )
 
         # Classification head: d * 10 + 10 (uses hidden_dim, not scaled)
@@ -584,34 +574,28 @@ class TestFibonacciModeParameterEstimation:
             f"Head components should be >1% of total params, got {pct_contribution:.1f}%"
         )
 
-    def test_auto_tuning_converges_for_fibonacci(self):
+    def test_auto_tuning_converges(self):
         """
-        WHY: Auto-tuning must find hidden_dim that hits target with Fibonacci mode
-        HOW: Run tune_d_for_params with fibonacci_mode='fibonacci'
+        WHY: Auto-tuning must find hidden_dim that hits target
+        HOW: Run tune_d_for_params
         WHAT: Expect tuned model within standard tolerance of target
-
-        NOTE: With weight-based Fibonacci, auto-tuning works identically to
-        standard mode since parameter counts are the same.
         """
         from param_matcher import tune_d_for_params, estimate_tqf_params, TARGET_PARAMS
 
         R = 20
         fractal_iters = 10
 
-        # Auto-tune for Fibonacci mode
+        # Auto-tune
         tuned_d = tune_d_for_params(
             R=R, target=TARGET_PARAMS,
-            binning_method='dyadic', fractal_iters=fractal_iters,
-            fibonacci_mode='fibonacci'
+            fractal_iters=fractal_iters
         )
 
         # Verify tuned dimension produces params near target
         estimated_params = estimate_tqf_params(
-            R=R, d=tuned_d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=tuned_d,            fractal_iters=fractal_iters
         )
 
-        # With weight-based Fibonacci, use standard tolerance (not 15%)
         deviation_pct = abs(estimated_params - TARGET_PARAMS) / TARGET_PARAMS * 100
         assert deviation_pct < TARGET_PARAMS_TOLERANCE_PERCENT, (
             f"Auto-tuned params {estimated_params:,} should be within "
@@ -723,7 +707,7 @@ class TestParameterEstimationRegressions:
         from models_tqf import TQFANN
 
         hidden_dim: int = 80
-        model = TQFANN(R=20, hidden_dim=hidden_dim, fractal_iters=10, fibonacci_mode='fibonacci')
+        model = TQFANN(R=20, hidden_dim=hidden_dim, fractal_iters=10)
         binner = model.radial_binner
 
         # Verify fractal_gates use hidden_dim (uniform across all gates)
@@ -751,14 +735,13 @@ class TestParameterEstimationRegressions:
 
         # Get total estimation
         total_estimated: int = estimate_tqf_params(
-            R=R, d=d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=d,            fractal_iters=fractal_iters
         )
 
         # Estimation without self-transforms (should be less)
         # We can't easily calculate this, so we verify model actually has them
         from models_tqf import TQFANN
-        model = TQFANN(R=R, hidden_dim=d, fractal_iters=fractal_iters, fibonacci_mode='none')
+        model = TQFANN(R=R, hidden_dim=d, fractal_iters=fractal_iters)
 
         # Note: self_transforms were removed for performance (now using direct residual addition)
         # Verify model uses direct residuals instead
@@ -781,7 +764,7 @@ class TestParameterEstimationRegressions:
         from models_tqf import TQFANN
         import torch.nn as nn
 
-        model = TQFANN(R=20, hidden_dim=100, fractal_iters=10, fibonacci_mode='none')
+        model = TQFANN(R=20, hidden_dim=100, fractal_iters=10)
         binner = model.radial_binner
 
         # Each graph conv should have exactly 1 Linear layer
@@ -791,39 +774,6 @@ class TestParameterEstimationRegressions:
                 f"Graph conv layer {layer_idx} should have exactly 1 Linear layer, "
                 f"got {len(linears)}"
             )
-
-    def test_estimation_vs_actual_within_tolerance_fibonacci(self) -> None:
-        """
-        REGRESSION: Ensure parameter estimation accurately predicts actual count
-        WHY: Previous bugs caused 40%+ estimation errors
-        WHAT: Verify estimation within 5% of actual for Fibonacci mode
-        """
-        from models_tqf import TQFANN
-
-        # Test configuration
-        R: int = 20
-        d: int = 100
-        fractal_iters: int = 10
-
-        # Estimate parameters
-        estimated: int = estimate_tqf_params(
-            R=R, d=d, binning_method='dyadic',
-            fractal_iters=fractal_iters
-        )
-
-        # Create actual model
-        model = TQFANN(R=R, hidden_dim=d, fractal_iters=fractal_iters,
-                      fibonacci_mode='fibonacci')
-        actual: int = model.count_parameters()
-
-        # Calculate deviation
-        deviation: float = abs(estimated - actual) / actual
-        tolerance: float = 0.05  # 5%
-
-        assert deviation < tolerance, (
-            f"Fibonacci mode estimation should be within {tolerance*100}% of actual. "
-            f"Estimated {estimated:,}, Actual {actual:,}, Deviation {deviation*100:.2f}%"
-        )
 
     def test_estimation_vs_actual_within_tolerance_standard(self) -> None:
         """
@@ -840,13 +790,11 @@ class TestParameterEstimationRegressions:
 
         # Estimate parameters
         estimated: int = estimate_tqf_params(
-            R=R, d=d, binning_method='dyadic',
-            fractal_iters=fractal_iters
+            R=R, d=d,            fractal_iters=fractal_iters
         )
 
         # Create actual model
-        model = TQFANN(R=R, hidden_dim=d, fractal_iters=fractal_iters,
-                      fibonacci_mode='none')
+        model = TQFANN(R=R, hidden_dim=d, fractal_iters=fractal_iters)
         actual: int = model.count_parameters()
 
         # Calculate deviation

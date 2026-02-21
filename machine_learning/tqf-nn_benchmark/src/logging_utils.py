@@ -81,7 +81,6 @@ from config import (
     TQF_HOP_ATTENTION_TEMP_DEFAULT,
     TQF_DUALITY_TOLERANCE_DEFAULT,
     TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-    TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
@@ -317,7 +316,6 @@ def log_experiment_config(
         }
         sym_ops = sym_ops_map.get(sym_level, '')
         print(f"    Symmetry level                 : {sym_level} {sym_ops}")
-        print(f"    Fibonacci weighting mode       : {getattr(args, 'tqf_fibonacci_mode', TQF_FIBONACCI_DIMENSION_MODE_DEFAULT)}")
 
         # Fractal Parameters
         print("\n  Fractal Parameters:")
@@ -327,8 +325,6 @@ def log_experiment_config(
         print(f"    Self-similarity weight         : {getattr(args, 'tqf_self_similarity_weight', TQF_SELF_SIMILARITY_WEIGHT_DEFAULT)}")
         print(f"    Box-counting weight            : {getattr(args, 'tqf_box_counting_weight', TQF_BOX_COUNTING_WEIGHT_DEFAULT)}")
         print(f"    Box-counting scales            : {TQF_BOX_COUNTING_SCALES_DEFAULT} (internal default)")
-        use_phi_binning = getattr(args, 'tqf_use_phi_binning', False)
-        print(f"    Phi (golden ratio) binning     : {'Enabled' if use_phi_binning else 'Disabled'}")
 
         # Dual Metrics & Geometry Parameters
         print("\n  Dual Metrics & Geometry:")

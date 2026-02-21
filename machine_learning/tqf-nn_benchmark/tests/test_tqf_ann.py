@@ -6,8 +6,8 @@ covering all architectural components, geometric features, and TQF framework
 compliance. Includes regression tests for Fibonacci mode fixes (January 2026).
 
 Key Test Coverage:
-- Fibonacci Mode Regressions: Weight-based scaling, constant dimensions, parameter counting
-- Model Initialization: Various configurations (R, hidden_dim, symmetry_level, fibonacci_mode)
+- Regression Tests: Constant dimensions, parameter counting
+- Model Initialization: Various configurations (R, hidden_dim, symmetry_level)
 - Forward Pass: Logits shape, dual output structure, NaN/inf validation
 - Priority Corrections: Explicit vertices, sector-based computation, circle inversion, graph convolution
 - Geometric Properties: Lattice structure, phase pairs, zone partitioning, inversion maps
@@ -18,7 +18,7 @@ Key Test Coverage:
 - Dual Output: Inner and outer zone predictions, inversion consistency
 
 Test Organization:
-- TestFibonacciModeRegressions: Prevent re-introduction of January 2026 bugs
+- TestRegressions: Prevent re-introduction of January 2026 bugs
 - TestTQFANNBasics: Model initialization and forward pass
 - TestExplicitVertexTracking: Lattice vertex storage and access
 - TestSectorComputation: Angular sector partitioning (60-degree increments)
@@ -82,19 +82,14 @@ pytestmark = pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch required")
 
 class TestFibonacciModeRegressions(unittest.TestCase):
     """
-    Regression tests for Fibonacci mode fixes completed January 2026.
-
-    IMPORTANT: As of Jan 2026, Fibonacci mode uses WEIGHT-BASED scaling,
-    not dimension scaling. All modes have IDENTICAL parameter counts.
-    Fibonacci weights only affect feature aggregation during forward pass.
+    Regression tests for fixes completed January 2026.
 
     These tests prevent re-introduction of bugs that were fixed:
     1. Missing LabelSmoothingCrossEntropy class
-    2. Fibonacci mode now uses constant dimensions (weight-based)
-    3. Pre-encoder parameter overcount in estimation
-    4. Phase encodings counted as parameters (should be buffer)
-    5. Fractal gates use constant hidden_dim (uniform)
-    6. Self-transforms not counted in standard mode estimation
+    2. Pre-encoder parameter overcount in estimation
+    3. Phase encodings counted as parameters (should be buffer)
+    4. Fractal gates use constant hidden_dim (uniform)
+    5. Self-transforms not counted in standard mode estimation
     """
 
     def test_label_smoothing_cross_entropy_exists(self):
@@ -121,32 +116,6 @@ class TestFibonacciModeRegressions(unittest.TestCase):
         self.assertEqual(loss.dim(), 0)  # Scalar loss
         self.assertGreater(loss.item(), 0)  # Positive loss
 
-    def test_fibonacci_weight_scaler_constant_dimensions(self):
-        """
-        WHY: Fibonacci mode uses WEIGHT-based scaling (constant dimensions)
-        HOW: Verify get_dimension always returns base_dim
-        WHAT: All layers have same dimension regardless of mode
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import FibonacciWeightScaler
-
-        # Test Fibonacci mode - dimensions should be CONSTANT
-        base_dim = 10
-        scaler = FibonacciWeightScaler(num_layers=4, base_dim=base_dim, mode='fibonacci')
-
-        # ALL dimensions should equal base_dim (weight-based, not dimension scaling)
-        for i in range(5):
-            actual = scaler.get_dimension(i)
-            self.assertEqual(actual, base_dim,
-                           f"Dimension at index {i} should be {base_dim} (constant), got {actual}")
-
-        # Verify weights are normalized and follow Fibonacci pattern
-        weights = scaler.get_all_weights()
-        self.assertAlmostEqual(sum(weights), 1.0, places=6,
-                              msg="Fibonacci weights should sum to 1.0")
-
     def test_fractal_gates_use_constant_hidden_dim(self):
         """
         WHY: Gates use constant hidden_dim (weight-based Fibonacci)
@@ -162,8 +131,7 @@ class TestFibonacciModeRegressions(unittest.TestCase):
         model = TQFANN(
             R=20,
             hidden_dim=hidden_dim,
-            fractal_iters=10,
-            fibonacci_mode='fibonacci'
+            fractal_iters=10
         )
 
         radial_binner = model.radial_binner
@@ -867,13 +835,10 @@ class TestPhase2Corrections(unittest.TestCase):
 
 class TestFibonacciModeDimensions(unittest.TestCase):
     """
-    Test suite for Fibonacci mode constant dimension consistency.
+    Test suite for constant dimension consistency.
 
-    IMPORTANT: As of Jan 2026, Fibonacci mode uses WEIGHT-BASED scaling,
-    not dimension scaling. All modes have IDENTICAL parameter counts.
-    All layers use constant hidden_dim.
-
-    These tests verify all components use correct dimensions in Fibonacci mode.
+    All layers use constant hidden_dim. These tests verify all components
+    use correct dimensions.
     """
 
     def test_fractal_gates_uniform_structure(self):
@@ -881,8 +846,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         WHY: Fractal gates use constant hidden_dim (uniform, not per-layer)
         HOW: Check gate structure is 1D ModuleList with constant dimensions
         WHAT: Expect gates[gate_idx] structure with constant hidden_dim
-
-        NOTE: With weight-based Fibonacci, gates are uniform across all layers.
         """
         if not TORCH_AVAILABLE:
             self.skipTest("PyTorch not available")
@@ -893,8 +856,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         model = TQFANN(
             R=20,
             hidden_dim=hidden_dim,
-            fractal_iters=10,
-            fibonacci_mode='fibonacci'
+            fractal_iters=10
         )
 
         radial_binner = model.radial_binner
@@ -929,7 +891,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
             R=20,
             hidden_dim=hidden_dim,
             fractal_iters=10,
-            fibonacci_mode='fibonacci',
             symmetry_level='Z6'
         )
 
@@ -951,8 +912,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         WHY: Classification head uses constant hidden_dim (not variable final_dim)
         HOW: Check classification head input dimension matches hidden_dim
         WHAT: Expect Linear(hidden_dim, num_classes)
-
-        NOTE: With weight-based Fibonacci, all dimensions are constant.
         """
         if not TORCH_AVAILABLE:
             self.skipTest("PyTorch not available")
@@ -963,8 +922,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         model = TQFANN(
             R=20,
             hidden_dim=hidden_dim,
-            fractal_iters=10,
-            fibonacci_mode='fibonacci'
+            fractal_iters=10
         )
 
         # Check classification head uses hidden_dim (constant)
@@ -974,7 +932,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         self.assertEqual(classification_head.out_features, 10,
                        "Classification head output should be 10 (num_classes)")
 
-    def test_fibonacci_forward_pass_no_dimension_errors(self):
+    def test_forward_pass_no_dimension_errors(self):
         """
         WHY: Forward pass must complete without dimension mismatches
         HOW: Run forward pass with various batch sizes
@@ -990,8 +948,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         model = TQFANN(
             R=20,
             hidden_dim=80,
-            fractal_iters=10,
-            fibonacci_mode='fibonacci'
+            fractal_iters=10
         )
         model.eval()
 
@@ -1004,14 +961,11 @@ class TestFibonacciModeDimensions(unittest.TestCase):
                 self.assertEqual(output.shape, (batch_size, 10),
                                f"Output shape should be ({batch_size}, 10) for batch_size={batch_size}")
 
-    def test_fibonacci_auto_tuning_uses_correct_mode(self):
+    def test_auto_tuning_uses_correct_mode(self):
         """
-        WHY: Auto-tuning must optimize for actual fibonacci_mode, not 'none'
+        WHY: Auto-tuning must optimize for correct parameter target
         HOW: Check that auto-tuned model has parameters close to target
         WHAT: Expect parameter count within standard tolerance when hidden_dim=None
-
-        NOTE: With weight-based Fibonacci, all modes have identical parameter counts.
-        Auto-tuning works exactly the same for Fibonacci mode as standard mode.
         """
         if not TORCH_AVAILABLE:
             self.skipTest("PyTorch not available")
@@ -1019,26 +973,24 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         from models_tqf import TQFANN
         from config import TARGET_PARAMS, TARGET_PARAMS_TOLERANCE_PERCENT
 
-        # Auto-tune with Fibonacci mode
+        # Auto-tune
         model = TQFANN(
             R=20,
             hidden_dim=None,  # Trigger auto-tuning
-            fractal_iters=10,
-            fibonacci_mode='fibonacci'
+            fractal_iters=10
         )
 
         actual_params = model.count_parameters()
         target_params = TARGET_PARAMS
         deviation_pct = abs(actual_params - target_params) / target_params * 100
 
-        # With weight-based Fibonacci, use standard tolerance (not 15%)
         self.assertLess(deviation_pct, TARGET_PARAMS_TOLERANCE_PERCENT,
-                       f"Auto-tuned Fibonacci model should be within {TARGET_PARAMS_TOLERANCE_PERCENT}% "
+                       f"Auto-tuned model should be within {TARGET_PARAMS_TOLERANCE_PERCENT}% "
                        f"of target {target_params:,}, got {actual_params:,} ({deviation_pct:.1f}%)")
 
-    def test_parameter_estimation_matches_actual_fibonacci(self):
+    def test_parameter_estimation_matches_actual(self):
         """
-        WHY: Parameter estimator must accurately count Fibonacci mode parameters
+        WHY: Parameter estimator must accurately count parameters
         HOW: Compare estimated vs actual parameter counts
         WHAT: Expect <5% difference between estimated and actual
 
@@ -1058,8 +1010,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         model = TQFANN(
             R=R,
             hidden_dim=hidden_dim,
-            fractal_iters=fractal_iters,
-            fibonacci_mode='fibonacci'
+            fractal_iters=fractal_iters
         )
 
         actual_params = model.count_parameters()
@@ -1068,7 +1019,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         estimated_params = estimate_tqf_params(
             R=R,
             d=hidden_dim,
-            binning_method='dyadic',
             fractal_iters=fractal_iters
         )
 
@@ -1081,11 +1031,9 @@ class TestFibonacciModeDimensions(unittest.TestCase):
 
     def test_standard_mode_unchanged(self):
         """
-        WHY: Standard mode (fibonacci_mode='none') must remain unchanged
+        WHY: Standard mode must remain unchanged
         HOW: Verify fractal gates are shared, dimensions uniform
         WHAT: Expect single ModuleList of gates, all layers same dimension
-
-        REGRESSION: If standard mode affected by Fibonacci changes, backward incompatibility
         """
         if not TORCH_AVAILABLE:
             self.skipTest("PyTorch not available")
@@ -1095,14 +1043,10 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         model = TQFANN(
             R=20,
             hidden_dim=120,
-            fractal_iters=10,
-            fibonacci_mode='none'  # Standard mode
+            fractal_iters=10
         )
 
         radial_binner = model.radial_binner
-
-        # T24 binner handles Fibonacci internally, fib_scaler should be None
-        self.assertIsNone(radial_binner.fib_scaler, "T24 binner should not have fib_scaler")
 
         # Fractal gates should be simple 1D ModuleList (shared across layers)
         self.assertIsInstance(radial_binner.fractal_gates, nn.ModuleList)
@@ -1120,298 +1064,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
             linear = conv_layer[0]
             self.assertEqual(linear.in_features, 120)
             self.assertEqual(linear.out_features, 120)
-
-
-# ==============================================================================
-# TEST SUITE: PHI BINNING FEATURE TESTS
-# ==============================================================================
-
-class TestPhiBinningFeature(unittest.TestCase):
-    """
-    Test suite for the phi (golden ratio) binning feature.
-
-    Phi binning uses the golden ratio (phi ~ 1.618) for radial layer scaling
-    instead of dyadic (powers of 2). This results in:
-    - More radial layers (e.g., 7 vs 5 for R=20)
-    - Smoother transitions between radial shells
-    - Better alignment with Fibonacci-based features
-    """
-
-    def test_phi_binning_stored_in_radial_binner(self):
-        """
-        WHY: binning_method should be stored in SectorBasedRadialBinner
-        HOW: Create model with phi binning, check radial_binner.binning_method
-        WHAT: Expect 'phi' stored as instance variable
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Create model with phi binning enabled
-        model = TQFANN(
-            R=20,
-            hidden_dim=120,
-            use_phi_binning=True
-        )
-
-        # Verify binning_method is stored
-        self.assertEqual(model.radial_binner.binning_method, 'phi',
-                        "Phi binning should set binning_method='phi'")
-
-    def test_uniform_binning_stored_in_radial_binner(self):
-        """
-        WHY: Default (non-phi) binning should store 'uniform'
-        HOW: Create model without phi binning, check radial_binner.binning_method
-        WHAT: Expect 'uniform' stored as instance variable
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Create model with default (dyadic/uniform) binning
-        model = TQFANN(
-            R=20,
-            hidden_dim=120,
-            use_phi_binning=False
-        )
-
-        # Verify binning_method is stored
-        self.assertEqual(model.radial_binner.binning_method, 'uniform',
-                        "Default binning should set binning_method='uniform'")
-
-    def test_phi_binning_increases_layer_count(self):
-        """
-        WHY: Phi binning uses log_phi instead of log_2, resulting in more layers
-        HOW: Compare num_layers between phi and non-phi models
-        WHAT: Phi model should have more radial layers
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Create models with same R
-        model_dyadic = TQFANN(R=20, hidden_dim=120, use_phi_binning=False)
-        model_phi = TQFANN(R=20, hidden_dim=120, use_phi_binning=True)
-
-        # Phi binning should produce more radial layers due to slower growth rate
-        # log_phi(x) > log_2(x) for x > phi
-        self.assertGreater(model_phi.radial_binner.num_radial_layers,
-                          model_dyadic.radial_binner.num_radial_layers,
-                          "Phi binning should produce more radial layers than dyadic")
-
-    def test_phi_binning_forward_pass_succeeds(self):
-        """
-        WHY: Model with phi binning must produce valid output
-        HOW: Run forward pass with phi binning enabled
-        WHAT: Expect tensor output with correct shape
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Create model with phi binning
-        model = TQFANN(R=20, hidden_dim=120, use_phi_binning=True)
-        model.eval()
-
-        # Test forward pass
-        batch_size = 4
-        x = torch.randn(batch_size, 784)
-
-        with torch.no_grad():
-            output = model(x)
-
-        # Verify output shape
-        self.assertEqual(output.shape, (batch_size, 10),
-                        f"Expected output shape (4, 10), got {output.shape}")
-
-        # Verify no NaN values
-        self.assertFalse(torch.isnan(output).any(),
-                        "Output should not contain NaN values")
-
-    def test_phi_binning_with_fibonacci_mode(self):
-        """
-        WHY: Phi binning and Fibonacci mode should work together
-        HOW: Create model with both enabled
-        WHAT: Expect valid forward pass
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Create model with both features
-        model = TQFANN(
-            R=20,
-            hidden_dim=120,
-            use_phi_binning=True,
-            fibonacci_mode='fibonacci'
-        )
-        model.eval()
-
-        # Verify model has both features
-        self.assertEqual(model.radial_binner.binning_method, 'phi')
-        # T24 binner handles Fibonacci internally via fibonacci_mode attribute
-        self.assertEqual(model.radial_binner.fibonacci_mode, 'fibonacci')
-
-        # Test forward pass
-        x = torch.randn(4, 784)
-        with torch.no_grad():
-            output = model(x)
-
-        self.assertEqual(output.shape, (4, 10))
-        self.assertFalse(torch.isnan(output).any())
-
-    def test_phi_binning_instance_variable_stored(self):
-        """
-        WHY: use_phi_binning should be accessible on the model
-        HOW: Check model.use_phi_binning attribute
-        WHAT: Expect correct boolean value
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        model_phi = TQFANN(R=20, hidden_dim=120, use_phi_binning=True)
-        model_dyadic = TQFANN(R=20, hidden_dim=120, use_phi_binning=False)
-
-        self.assertTrue(model_phi.use_phi_binning)
-        self.assertFalse(model_dyadic.use_phi_binning)
-
-    def test_phi_binning_affects_parameter_estimation(self):
-        """
-        WHY: Phi binning affects layer count, which affects parameter count
-        HOW: Compare estimated parameters for phi vs dyadic
-        WHAT: Phi should estimate more parameters (more layers)
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from param_matcher import estimate_tqf_params
-
-        # Estimate parameters for both binning methods
-        params_dyadic = estimate_tqf_params(
-            R=20, d=120,
-            binning_method='dyadic', fractal_iters=10
-        )
-        params_phi = estimate_tqf_params(
-            R=20, d=120,
-            binning_method='phi', fractal_iters=10
-        )
-
-        # Phi binning has more layers, so should estimate more parameters
-        self.assertGreater(params_phi, params_dyadic,
-                          "Phi binning should estimate more parameters due to more layers")
-
-    def test_phi_binning_produces_different_radial_encodings(self):
-        """
-        WHY: Phi binning should produce different radial position encodings
-        HOW: Compare position encodings from phi vs uniform binning
-        WHAT: Phi binning should produce more radial layers with different encodings
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Create models with different binning methods
-        model_phi = TQFANN(R=10, hidden_dim=64, use_phi_binning=True)
-        model_uniform = TQFANN(R=10, hidden_dim=64, use_phi_binning=False)
-
-        # Get radial position encodings from both models
-        phi_enc = model_phi.radial_binner._radial_pos_enc
-        uniform_enc = model_uniform.radial_binner._radial_pos_enc
-
-        # Phi binning should produce more radial layers (log_phi grows slower than log_2)
-        self.assertGreater(phi_enc.shape[0], uniform_enc.shape[0],
-                          "Phi binning should produce more radial layers")
-
-        # Hidden dim should be same
-        self.assertEqual(phi_enc.shape[1], uniform_enc.shape[1],
-                        "Hidden dimension should be the same")
-
-        # Each encoding should be valid (no NaN)
-        self.assertFalse(torch.isnan(phi_enc).any(), "Phi encodings should be valid")
-        self.assertFalse(torch.isnan(uniform_enc).any(), "Uniform encodings should be valid")
-
-    def test_phi_binning_produces_different_forward_output(self):
-        """
-        WHY: Phi binning should affect forward pass output
-        HOW: Run same input through phi and uniform models, compare outputs
-        WHAT: Outputs should differ (phi binning has effect)
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Fix random seed for reproducibility
-        torch.manual_seed(42)
-
-        # Create models with different binning methods
-        model_phi = TQFANN(R=10, hidden_dim=64, use_phi_binning=True)
-        model_uniform = TQFANN(R=10, hidden_dim=64, use_phi_binning=False)
-
-        model_phi.eval()
-        model_uniform.eval()
-
-        # Same input for both
-        x = torch.randn(2, 784)
-
-        with torch.no_grad():
-            out_phi = model_phi(x)
-            out_uniform = model_uniform(x)
-
-        # Outputs should have same shape
-        self.assertEqual(out_phi.shape, out_uniform.shape)
-
-        # Outputs should be different (phi binning affects computation)
-        # Note: They could be similar due to random initialization but
-        # the radial encodings should cause some difference
-        diff = torch.abs(out_phi - out_uniform)
-        max_diff = diff.max().item()
-
-        self.assertGreater(max_diff, 1e-6,
-                          "Phi and uniform binning should produce different forward outputs")
-
-    def test_phi_binning_radial_position_encoding_frequencies(self):
-        """
-        WHY: Phi and uniform binning use different frequency bases for position encodings
-        HOW: Compare position encoding patterns between phi and uniform
-        WHAT: Encoding frequencies should differ (phi uses PHI base, uniform uses 2)
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN, compute_radial_position_encoding
-
-        # Create a model to get vertices
-        model = TQFANN(R=10, hidden_dim=64)
-        vertices = model.outer_vertices
-        num_layers = 5
-        hidden_dim = 64
-
-        # Compute position encodings for both methods
-        phi_enc = compute_radial_position_encoding(vertices, 'phi', num_layers, hidden_dim)
-        uniform_enc = compute_radial_position_encoding(vertices, 'uniform', num_layers, hidden_dim)
-
-        # Both should have same shape
-        self.assertEqual(phi_enc.shape, uniform_enc.shape)
-        self.assertEqual(phi_enc.shape[1], hidden_dim)
-
-        # The encodings should differ due to different frequency bases
-        # Phi uses base PHI ~1.618, uniform uses base 2
-        # This affects the sinusoidal frequency patterns
-        diff = torch.abs(phi_enc - uniform_enc)
-        mean_diff = diff.mean().item()
-
-        # Mean difference should be non-trivial (not numerically zero)
-        self.assertGreater(mean_diff, 0.01,
-                          "Phi and uniform position encodings should have different frequency patterns")
 
 
 # ==============================================================================

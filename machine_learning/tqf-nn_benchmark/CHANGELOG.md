@@ -6,6 +6,18 @@ All notable changes to these TQF-NN benchmark tools will be documented in this f
 
 ---
 
+## [1.0.4] - 2026-02-20
+
+### Changed
+- Default and max temperature values for TQF ℤ₆ orbit mixing feature based on experimental results.
+
+### Squashed
+- An equivariance loss feature bug that was blocking the loss function from being correctly applied during TQF-ANN training.
+
+### Removed
+- The Fibonacci weighting mode and golden ratio binning features. They simply did not improve TQF-ANN accuracy. In fact, they made TQF-ANN accuracy worse because they competed against fundamental features. So I removed them for now to avoid user confusion. There are plenty of other ways to experiment with the Fibonacci sequence and golden ratio, so I'll likely revisit these in the future.
+
+
 ## [1.0.3] - 2026-02-18
 
 ### Added

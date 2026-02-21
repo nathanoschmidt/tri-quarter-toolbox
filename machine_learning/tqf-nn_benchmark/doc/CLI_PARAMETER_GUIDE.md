@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.3<br>
-**Date:** February 18, 2026<br>
+**Version:** 1.0.4<br>
+**Date:** February 20, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -28,7 +28,6 @@
    - [8.3 TQF Fractal Geometry](#83-tqf-fractal-geometry)
    - [8.4 TQF Attention](#84-tqf-attention)
    - [8.5 TQF Loss and Regularization](#85-tqf-loss-and-regularization)
-   - [8.6 TQF Fibonacci Enhancements](#86-tqf-fibonacci-enhancements)
 9. [Complete Parameter Reference Table](#9-complete-parameter-reference-table)
 10. [Validation Rules and Constraints](#10-validation-rules-and-constraints)
 11. [Example Workflows](#11-example-workflows)
@@ -146,38 +145,6 @@ python main.py --models TQF-ANN --tqf-symmetry-level T24
 # TQF with no symmetry (ablation study)
 python main.py --models TQF-ANN --tqf-symmetry-level none
 
-```
-
-### Fibonacci Weight Scaling Examples
-
-```bash
-# Default: TQF-ANN with uniform weighting (none mode)
-python main.py --models TQF-ANN
-
-# Explicit uniform weighting (same as default)
-python main.py --models TQF-ANN --tqf-fibonacci-mode none
-
-# Linear weight scaling (ablation baseline)
-python main.py --models TQF-ANN --tqf-fibonacci-mode linear
-
-# Full Fibonacci weight scaling (per TQF specification)
-python main.py --models TQF-ANN --tqf-fibonacci-mode fibonacci
-
-# Speed optimization: Phi-scaled radial binning
-python main.py --models TQF-ANN --tqf-use-phi-binning
-
-# Combined: Fibonacci weights + Phi binning
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode fibonacci \
-  --tqf-use-phi-binning
-
-# Ablation study: Compare all Fibonacci modes (identical param counts)
-for mode in none linear fibonacci; do
-  python main.py --models TQF-ANN \
-    --tqf-fibonacci-mode $mode \
-    --num-seeds 5 \
-    --output-dir results/fibonacci_ablation_$mode
-done
 ```
 
 ---
@@ -1426,7 +1393,7 @@ Each higher level includes all lower levels. Temperature parameters control conf
 
 **Purpose**: Temperature for Z6 rotation confidence weighting. Lower = sharper (most confident rotation dominates).
 
-**Default**: `0.3` (from `TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
+**Default**: `0.5` (from `TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
 
 #### `--tqf-orbit-mixing-temp-reflection` (float)
 
@@ -1457,7 +1424,7 @@ python main.py --models TQF-ANN CNN-L5 --tqf-use-z6-orbit-mixing
 
 # Custom temperatures
 python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
-  --tqf-orbit-mixing-temp-rotation 0.5 \
+  --tqf-orbit-mixing-temp-rotation 0.3 \
   --tqf-orbit-mixing-temp-reflection 0.8 \
   --tqf-orbit-mixing-temp-inversion 1.0
 ```
@@ -1728,237 +1695,6 @@ python main.py --models TQF-ANN --tqf-verify-duality-interval 999 --num-epochs 5
 
 ---
 
-### 8.6 TQF Fibonacci Enhancements
-
-**New in v1.2.0**: The TQF-ANN architecture now includes Fibonacci-enhanced radial layer aggregation, leveraging the natural emergence of Fibonacci sequences in hexagonal lattice structures.
-
-**IMPORTANT**: This is **WEIGHT-BASED** scaling, not dimension scaling. All layers maintain constant `hidden_dim`. The Fibonacci sequence only affects feature aggregation weights. This ensures all modes have **IDENTICAL parameter counts** for fair comparison.
-
----
-
-#### `--tqf-fibonacci-mode` (str)
-
-**Purpose**: Controls Fibonacci weight scaling mode for feature aggregation during graph convolution.
-
-**Type**: `str`
-
-**Default**: `'none'` (from `TQF_FIBONACCI_DIMENSION_MODE_DEFAULT` in config.py)
-
-**Valid Options**:
-- `'none'` - Uniform weighting (standard 50/50 self/neighbor averaging)
-- `'linear'` - Linear weights [1, 2, 3, ...] for ablation comparison
-- `'fibonacci'` - Fibonacci weights [1, 1, 2, 3, 5, 8, ...] per Schmidt TQF spec
-
-**Mathematical Basis**:
-```
-Fibonacci sequence: F_{n+2} = F_{n+1} + F_n, starting with F_1=1, F_2=1
-Golden ratio convergence: lim(F_{n+1}/F_n) = φ = (1+√5)/2 ≈ 1.618
-
-Weight Application (in forward pass):
-  combined = (1.0 - fib_weight) * self_features + fib_weight * neighbor_features
-
-Inner Zone Mirroring:
-  Outer zone: normal Fibonacci sequence [1, 1, 2, 3, 5, ...]
-  Inner zone: reversed sequence [5, 3, 2, 1, 1, ...] for bijective duality
-```
-
-**Examples**:
-
-```bash
-# Uniform weighting (simplest baseline)
-python main.py --models TQF-ANN --tqf-fibonacci-mode none
-
-# Linear weights (ablation study baseline)
-python main.py --models TQF-ANN --tqf-fibonacci-mode linear
-
-# Fibonacci weights (full TQF specification, opt-in)
-python main.py --models TQF-ANN --tqf-fibonacci-mode fibonacci
-```
-
-**Mode Details**:
-
-##### Mode: `none` (Uniform Weighting)
-**Description**: Standard uniform weighting. Self and neighbor features averaged equally at each layer.
-
-**Characteristics**:
-- **Parameters**: IDENTICAL to other modes (weight-based, not dimension-based)
-- **Aggregation**: `combined = (self_features + neighbor_features) / 2.0`
-- **Weights**: [0.2, 0.2, 0.2, 0.2, 0.2] for 5 layers (all equal)
-- **Use Case**: Simplest baseline, backwards compatibility
-
-##### Mode: `linear` (Ablation Baseline)
-**Description**: Linear weight progression. Tests whether increasing weights help without Fibonacci structure.
-
-**Characteristics**:
-- **Parameters**: IDENTICAL to other modes
-- **Aggregation**: Linearly increasing weights [1, 2, 3, 4, 5, ...] (normalized)
-- **Weights**: [0.07, 0.13, 0.20, 0.27, 0.33] for 5 layers
-- **Use Case**: Ablation study to isolate effect of golden ratio structure
-
-**Example**:
-```bash
-# Ablation: compare linear vs fibonacci to test golden ratio hypothesis
-python main.py --models TQF-ANN --tqf-fibonacci-mode linear --num-seeds 5
-python main.py --models TQF-ANN --tqf-fibonacci-mode fibonacci --num-seeds 5
-```
-
-##### Mode: `fibonacci` (Full TQF Specification)
-**Description**: Fibonacci sequence weights with golden ratio convergence property. Implements self-similar hierarchical feature learning per Schmidt TQF specification.
-
-**Characteristics**:
-- **Parameters**: IDENTICAL to other modes
-- **Aggregation**: Fibonacci weights [1, 1, 2, 3, 5, 8, ...] (normalized)
-- **Weights**: [0.08, 0.08, 0.17, 0.25, 0.42] for 5 layers
-- **Golden Ratio**: F_{n+1}/F_n → φ ≈ 1.618 as n increases
-- **Use Case**: Full TQF specification compliance
-
-**Weight Computation**:
-```
-Raw Fibonacci: [1, 1, 2, 3, 5] for 5 layers
-Total: 1 + 1 + 2 + 3 + 5 = 12
-Normalized: [1/12, 1/12, 2/12, 3/12, 5/12] = [0.083, 0.083, 0.167, 0.250, 0.417]
-
-Inner zone uses reversed weights for bijective duality:
-Outer zone layer 0 weight = Inner zone layer 4 weight (and vice versa)
-```
-
-**Example**:
-```bash
-# Full Fibonacci mode
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode fibonacci \
-  --num-epochs 100 \
-  --num-seeds 5
-```
-
-**Comparison Summary**:
-| Mode | Weight Sequence | 5-Layer Weights (normalized) | Purpose |
-|------|----------------|------------------------------|---------|
-| `none` | [1, 1, 1, 1, 1] | [0.20, 0.20, 0.20, 0.20, 0.20] | Uniform baseline |
-| `linear` | [1, 2, 3, 4, 5] | [0.07, 0.13, 0.20, 0.27, 0.33] | Ablation study |
-| `fibonacci` | [1, 1, 2, 3, 5] | [0.08, 0.08, 0.17, 0.25, 0.42] | Full TQF spec |
-
-**Key Property**: All modes have **IDENTICAL parameter counts**. Only the feature aggregation weighting differs.
-
-**Validation**:
-- Must be in `['none', 'linear', 'fibonacci']`
-- Case-sensitive (use lowercase)
-- Invalid values trigger immediate error
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-use-phi-binning` (flag)
-
-**Purpose**: Use golden ratio (φ ≈ 1.618) scaled radial binning instead of dyadic (powers of 2).
-
-**Type**: `bool` (action='store_true')
-
-**Default**: `False` (dyadic binning)
-
-**Behavior**:
-
-**Standard Dyadic Binning** (default, `--tqf-use-phi-binning` NOT specified):
-```
-Bin boundaries: r_l = r · 2^l for l = 0, 1, 2, ..., L
-Growth: Exponential with base 2
-Number of bins: L ≈ log₂(R/r)
-
-For R=20, r=1:
-  Bins: [1, 2), [2, 4), [4, 8), [8, 16), [16, 20]
-  Total: 5 bins
-```
-
-**Phi-Scaled Binning** (`--tqf-use-phi-binning` specified):
-```
-Bin boundaries: r_l = r · φ^l for l = 0, 1, 2, ..., L
-Growth: Exponential with golden ratio φ = (1+√5)/2 ≈ 1.618
-Number of bins: L ≈ log_φ(R/r)
-
-For R=20, r=1:
-  Bins: [1.0, 1.6), [1.6, 2.6), [2.6, 4.2), [4.2, 6.9),
-        [6.9, 11.1), [11.1, 18.0), [18.0, 20.0]
-  Total: 7 bins
-```
-
-**Comparison**:
-
-| Aspect | Dyadic (2ˡ) | Phi (φˡ) | Notes |
-|--------|-------------|----------|-------|
-| Bin count (R=20) | 5 | 7 | Phi uses more bins |
-| Bin size growth | 2× per layer | 1.618× per layer | Phi more gradual |
-| Lattice alignment | Arbitrary | Natural (φ⁶-φ³-1=0) | Phi matches hexagonal |
-| Fractal preservation | Good | Better | Phi preserves D=2 |
-| Inference speed | Baseline | +6% faster | Optimized computation |
-| Validation accuracy | Baseline | Comparable | ~±0.2% difference |
-
-**When to Use**:
-- **Keep False (dyadic)**: Default, stable, well-tested
-- **Set True (phi)**: Speed optimization, mathematical elegance, research
-
-**Mathematical Properties**:
-
-**Golden Ratio**:
-```
-φ = (1 + √5) / 2 ≈ 1.618033988749...
-φ² = φ + 1  (fundamental recursion)
-1/φ = φ - 1 ≈ 0.618033988749...  (golden ratio conjugate)
-```
-
-**Connection to Hexagonal Symmetry**:
-```
-φ⁶ - φ³ - 1 = 0  (hexagonal golden ratio equation)
-
-This relates φ to 6-fold rotational symmetry!
-```
-
-**Logarithmic Spiral**:
-```
-In polar coordinates (r, θ):
-  r(θ) = φ^(θ/2π)  generates golden spiral
-
-Applied to hexagonal lattice at angles θ_k = k·60° for k=0,1,2,3,4,5
-creates phyllotaxis pattern (optimal packing, like sunflower seeds)
-```
-
-**Examples**:
-
-```bash
-# Phi-binning with Fibonacci-linear mode
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode linear \
-  --tqf-use-phi-binning
-
-# Phi-binning with attention mode (maximum optimizations)
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode fibonacci \
-  --tqf-use-phi-binning
-
-# Speed comparison benchmark
-# Run with dyadic binning
-time python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode linear \
-  --num-epochs 10
-
-# Run with phi-binning
-time python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode linear \
-  --tqf-use-phi-binning \
-  --num-epochs 10
-
-# Compare inference times in output logs
-```
-
-**Validation**:
-- Boolean flag (no value required)
-- Cannot conflict with other parameters
-- Valid for all `--tqf-fibonacci-mode` settings
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
 #### `--tqf-use-gradient-checkpointing` (flag)
 
 **Purpose**: Enable gradient checkpointing to reduce GPU memory usage during training at the cost of additional computation time.
@@ -2110,7 +1846,6 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-R` | int | 20 | [2, 100] | Truncation radius |
 | `--tqf-hidden-dim` | int/None | None | [8, 512] | Hidden dimension (auto if None) |
 | `--tqf-symmetry-level` | str | none | none, Z6, D6, T24 | Symmetry group (opt-in) |
-| `--tqf-fibonacci-mode` | str | none | none, linear, fibonacci | Fibonacci weight scaling mode |
 | `--tqf-z6-equivariance-weight` | float | None | [0.001, 0.05] | Z6 equivariance loss (enabled when provided) |
 | `--tqf-d6-equivariance-weight` | float | None | [0.001, 0.05] | D6 equivariance loss (enabled when provided) |
 | `--tqf-t24-orbit-invariance-weight` | float | None | [0.001, 0.02] | T24 orbit invariance loss (enabled when provided) |
@@ -2121,14 +1856,13 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-fractal-iterations` | int | 0 (disabled) | [1, 20] | Fractal estimation iterations (opt-in) |
 | `--tqf-self-similarity-weight` | float | 0.0 | [0.0, 10.0] | Self-similarity loss weight (opt-in) |
 | `--tqf-box-counting-weight` | float | 0.0 | [0.0, 10.0] | Box-counting loss weight (opt-in) |
-| `--tqf-use-phi-binning` | flag | False | - | Use phi-scaled radial binning |
 | `--tqf-use-gradient-checkpointing` | flag | False | - | Enable gradient checkpointing for memory savings |
 | `--tqf-hop-attention-temp` | float | 1.0 | [0.01, 10.0] | Hop attention temperature (1.0 = fast path) |
 | `--z6-data-augmentation` | flag | False (disabled) | - | Enable Z6 rotation data augmentation during training (all models) |
 | `--tqf-use-z6-orbit-mixing` | flag | False | - | Z6 rotation orbit mixing at evaluation |
 | `--tqf-use-d6-orbit-mixing` | flag | False | - | D6 reflection orbit mixing at evaluation |
 | `--tqf-use-t24-orbit-mixing` | flag | False | - | T24 zone-swap orbit mixing at evaluation |
-| `--tqf-orbit-mixing-temp-rotation` | float | 0.3 | [0.01, 2.0] | Z6 rotation averaging temperature |
+| `--tqf-orbit-mixing-temp-rotation` | float | 0.5 | [0.01, 2.0] | Z6 rotation averaging temperature |
 | `--tqf-orbit-mixing-temp-reflection` | float | 0.5 | [0.01, 2.0] | D6 reflection averaging temperature |
 | `--tqf-orbit-mixing-temp-inversion` | float | 0.7 | [0.01, 2.0] | T24 zone-swap averaging temperature |
 
@@ -2145,36 +1879,15 @@ All parameter validation is performed in `cli.py::_validate_args()`. Validation 
 3. **`--num-train` % 10 == 0**: Training samples must be divisible by 10 (balanced classes)
 4. **`--tqf-verify-duality-interval` <= `--num-epochs`**: Verification interval cannot exceed total epochs
 
-### TQF Fibonacci Parameters
+### Feature Conflict Warnings
 
-**`--tqf-fibonacci-mode` Validation:**
-```python
-VALID_FIBONACCI_MODES = ['none', 'linear', 'fibonacci']
+The following feature combinations are known to conflict and will produce a CLI warning when detected:
 
-if args.tqf_fibonacci_mode not in VALID_FIBONACCI_MODES:
-    raise ValueError(
-        f"--tqf-fibonacci-mode='{args.tqf_fibonacci_mode}' invalid. "
-        f"Must be one of {VALID_FIBONACCI_MODES}"
-    )
-```
+1. **Orbit mixing + equivariance loss**: Equivariance loss constrains training-time representations that orbit mixing needs to vary at evaluation time. Experimental results (symmetry_orbit_mark2, Feb 2026) show this combination reduces rotation accuracy from 67.42% to 62.83%. **Recommendation**: use orbit mixing OR equivariance loss, not both.
 
-**`--tqf-use-phi-binning` Validation:**
-```python
-# No specific validation needed (boolean flag)
-# But will warn if used without Fibonacci mode
+2. **Orbit mixing + Z6 data augmentation** (`--z6-data-augmentation`): Both apply rotational transformations, creating a "double rotation" effect. Orbit mixing alone achieves better rotation accuracy without the augmentation overhead. **Recommendation**: use orbit mixing without Z6 data augmentation.
 
-if args.tqf_use_phi_binning and args.tqf_fibonacci_mode == 'none':
-    warnings.warn(
-        "Phi-binning enabled without Fibonacci mode. "
-        "Consider using --tqf-fibonacci-mode linear for full enhancement.",
-        UserWarning
-    )
-```
-
-**Note on Parameter Counts:**
-All Fibonacci modes (`none`, `linear`, `fibonacci`) have **identical parameter counts**.
-The Fibonacci mode only affects feature aggregation weights, not network dimensions.
-No additional VRAM is required when switching between modes.
+3. **Orbit mixing + orbit pooling** (`--tqf-symmetry-level` != `none`): Orbit pooling destroys rotation-specific information that orbit mixing needs to distinguish between rotation variants. **Recommendation**: set `--tqf-symmetry-level none` when using orbit mixing.
 
 ### Automatic Handling
 
@@ -2288,126 +2001,6 @@ python main.py --num-epochs 100 --num-seeds 10 --num-train 60000 --num-val 5000 
 python main.py --device cpu --num-epochs 5 --num-train 500 --num-seeds 1
 ```
 
-### Workflow 9: Fibonacci Enhancement Ablation Study
-
-**Goal**: Compare all three Fibonacci modes to quantify performance gains.
-
-**Setup**:
-- Dataset: 50,000 training, 2,000 validation, 1,200 rotated test
-- Seeds: 5 runs per mode for statistical significance
-- Epochs: 80 with early stopping (patience=15)
-
-```bash
-#!/bin/bash
-# fibonacci_ablation.sh
-
-MODES=("none" "linear" "fibonacci")
-OUTPUT_BASE="results/fibonacci_ablation"
-
-for MODE in "${MODES[@]}"; do
-  echo "====================================="
-  echo "Running TQF-ANN with fibonacci_mode=$MODE"
-  echo "====================================="
-
-  python main.py \
-    --models TQF-ANN \
-    --tqf-fibonacci-mode $MODE \
-    --tqf-symmetry-level D6 \
-    --num-seeds 5 \
-    --seed-start 42 \
-    --num-epochs 80 \
-    --batch-size 64 \
-    --learning-rate 0.0003 \
-    --num-train 50000 \
-    --num-val 2000 \
-    --num-test-rot 1200 \
-    --patience 15
-
-  echo ""
-  echo "Completed fibonacci_mode=$MODE"
-  echo ""
-done
-
-# Compare results
-echo "====================================="
-echo "RESULTS SUMMARY"
-echo "====================================="
-
-for MODE in "${MODES[@]}"; do
-  echo "Mode: $MODE"
-  grep "Final Val Acc" $OUTPUT_BASE/$MODE/summary.txt
-  grep "Rotated Test Acc" $OUTPUT_BASE/$MODE/summary.txt
-  echo ""
-done
-```
-
-**Expected Results**:
-```
-Mode: none
-Final Val Acc:     88.90 ± 0.15%
-Rotated Test Acc:  88.10 ± 0.20%
-
-Mode: linear
-Final Val Acc:     90.40 ± 0.12%  (+1.50%)
-Rotated Test Acc:  89.30 ± 0.18%  (+1.20%)
-
-Mode: fibonacci
-Final Val Acc:     92.10 ± 0.10%  (+3.20%)
-Rotated Test Acc:  91.50 ± 0.15%  (+3.40%)
-```
-
----
-
-### Workflow 10: Full TQF-ANN Comparison: Fibonacci Weight Modes
-
-**Goal**: Comprehensive comparison of all three Fibonacci weight modes.
-
-**Note**: All modes have IDENTICAL parameter counts. Only feature aggregation weighting differs.
-
-```bash
-# Uniform weighting (default, fibonacci_mode='none')
-python main.py \
-  --models TQF-ANN \
-  --tqf-fibonacci-mode none \
-  --tqf-symmetry-level D6 \
-  --num-seeds 10 \
-  --num-epochs 100
-
-# Linear weighting (fibonacci_mode='linear')
-python main.py \
-  --models TQF-ANN \
-  --tqf-fibonacci-mode linear \
-  --tqf-symmetry-level D6 \
-  --num-seeds 10 \
-  --num-epochs 100
-
-# Fibonacci weighting (fibonacci_mode='fibonacci')
-python main.py \
-  --models TQF-ANN \
-  --tqf-fibonacci-mode fibonacci \
-  --tqf-symmetry-level D6 \
-  --num-seeds 10 \
-  --num-epochs 100
-```
-
-**Expected Metrics Comparison**:
-
-| Metric | Legacy (none) | v1.2.0 (linear) | Δ | p-value |
-|--------|---------------|-----------------|---|---------|
-| Val Accuracy | 88.90±0.15% | 90.40±0.12% | +1.50% | <0.001 *** |
-| Test Accuracy | 90.00±0.20% | 91.50±0.15% | +1.50% | <0.001 *** |
-| Rotated Accuracy | 88.10±0.20% | 89.30±0.18% | +1.20% | <0.001 *** |
-| Rotation Inv Error | 0.0020±0.0005 | 0.0018±0.0004 | -10% | <0.05 * |
-| Parameters | 647,234 | 651,105 | +3,871 | N/A |
-| Inference Time (ms) | 32.1±0.5 | 32.3±0.6 | +0.6% | 0.12 NS |
-| Training Time (min) | 95.2±2.1 | 96.1±2.3 | +0.9% | 0.25 NS |
-
-*** = p < 0.001 (highly significant)
-* = p < 0.05 (significant)
-NS = not significant
-
----
-
 ## 12. Performance Tuning Guide
 
 ### For Faster Experiments
@@ -2497,69 +2090,6 @@ NS = not significant
    ```bash
    python main.py --tqf-fractal-iterations 10 --tqf-self-similarity-weight 0.2
    ```
-
-### Fibonacci Mode Selection Guide
-
-**Important**: All Fibonacci modes have **IDENTICAL parameter counts**. The mode only affects feature aggregation weights, not network dimensions.
-
-**Decision Tree**:
-
-```
-What's your use case?
-├─ SIMPLEST BASELINE
-│   └─ Use --tqf-fibonacci-mode none (uniform weighting, default)
-│
-├─ ABLATION STUDY (test if increasing weights help)
-│   └─ Use --tqf-fibonacci-mode linear (linear weights)
-│
-├─ FULL TQF SPECIFICATION (golden ratio structure)
-│   └─ Use --tqf-fibonacci-mode fibonacci (Fibonacci weights)
-│
-└─ BACKWARDS COMPATIBILITY (pre-v1.2.0 behavior)
-    └─ Use --tqf-fibonacci-mode none
-```
-
-**Recommended Configurations**:
-
-**Simplest Baseline (Default)**:
-```bash
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode none \
-  --tqf-symmetry-level D6
-# Uniform weighting, simplest behavior
-```
-
-**Full TQF Specification**:
-```bash
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode fibonacci \
-  --tqf-symmetry-level D6 \
-  --num-epochs 100 \
-  --num-seeds 10
-# Golden ratio weights per Schmidt spec
-```
-
-**Speed-Critical Applications**:
-```bash
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode fibonacci \
-  --tqf-use-phi-binning \
-  --tqf-symmetry-level Z6  # Z6 faster than D6
-# Optimized for inference speed
-```
-
-**Ablation Studies**:
-```bash
-# Compare all modes systematically (identical param counts)
-for mode in none linear fibonacci; do
-  python main.py --models TQF-ANN \
-    --tqf-fibonacci-mode $mode \
-    --num-seeds 5 \
-    --output-dir results/ablation_$mode
-done
-```
-
----
 
 ## 13. Troubleshooting
 
@@ -2734,47 +2264,6 @@ ERROR: Invalid command-line arguments detected:
    python main.py --help
    ```
 
-### Issue: "Invalid fibonacci mode"
-
-**Error Message**:
-```
-ValueError: --tqf-fibonacci-mode='Linear' invalid. Must be one of ['none', 'linear', 'fibonacci']
-```
-
-**Cause**: Incorrect capitalization or spelling of fibonacci mode.
-
-**Solution**:
-```bash
-# Wrong (capital L)
-python main.py --models TQF-ANN --tqf-fibonacci-mode Linear
-
-# Correct (lowercase)
-python main.py --models TQF-ANN --tqf-fibonacci-mode linear
-```
-
----
-
-### Issue: "Phi-binning warning"
-
-**Warning Message**:
-```
-WARNING: Phi-binning enabled without Fibonacci mode. Consider using --tqf-fibonacci-mode linear for full Fibonacci enhancement.
-```
-
-**Cause**: Using `--tqf-use-phi-binning` with `--tqf-fibonacci-mode none`.
-
-**Not an Error**: This is a valid configuration, just potentially sub-optimal.
-
-**To Suppress**:
-```bash
-# Use Fibonacci mode as suggested
-python main.py --models TQF-ANN \
-  --tqf-fibonacci-mode linear \
-  --tqf-use-phi-binning
-```
-
----
-
 ## Appendix A: Default Values Summary
 
 All default values are defined in `config.py`:
@@ -2800,7 +2289,6 @@ NUM_TEST_UNROT_DEFAULT = 8000
 TQF_TRUNCATION_R_DEFAULT = 20
 TQF_HIDDEN_DIMENSION_DEFAULT = None  # Auto-tuned to ~650k params
 TQF_SYMMETRY_LEVEL_DEFAULT = 'none'
-TQF_FIBONACCI_DIMENSION_MODE_DEFAULT = 'none'
 Z6_DATA_AUGMENTATION_DEFAULT = False
 
 # TQF fractal parameters (all disabled/opt-in by default)
@@ -2977,8 +2465,8 @@ python main.py --models TQF-ANN --results-dir /tmp/my_results
 ---
 **`QED`**
 
-**Last Updated:** February 18, 2026<br>
-**Version:** 1.0.3<br>
+**Last Updated:** February 20, 2026<br>
+**Version:** 1.0.4<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

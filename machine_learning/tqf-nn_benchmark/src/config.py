@@ -822,57 +822,6 @@ TQF_DUALITY_TOLERANCE_DEFAULT: float = 0.01
 #      Decision: 10 epochs balances diagnostic frequency with computational efficiency.
 TQF_VERIFY_DUALITY_INTERVAL_DEFAULT: int = 10
 
-# TQF_FIBONACCI_DIMENSION_MODE_DEFAULT
-# ------------------------------------
-# WHAT: Fibonacci weight scaling mode for feature aggregation weighting.
-#
-# HOW: Controls how self vs neighbor features are weighted during aggregation:
-#      - 'none': Uniform weighting (standard 50/50 averaging)
-#      - 'linear': Linear weights [1,2,3,...] for ablation comparison
-#      - 'fibonacci': Fibonacci weights [1,1,2,3,5,8,...] per Schmidt TQF spec
-#      - Default: 'none'
-#      - CLI override: --tqf-fibonacci-mode {none,linear,fibonacci}
-#
-# IMPORTANT: This is WEIGHT-based scaling, NOT dimension scaling.
-#      All layers maintain constant hidden_dim. Only the aggregation weights differ.
-#      This ensures all modes have IDENTICAL parameter counts for fair comparison.
-#
-# WHY: Implements self-similar hierarchical feature learning through Fibonacci-
-#      weighted feature aggregation. Fibonacci weighting matches the fractal
-#      self-similar structure of the hexagonal lattice graph.
-#      Scientific rationale:
-#      1. Natural progression: F_0=1, F_1=1, F_2=2, F_3=3, F_5=5, F_8=8, ...
-#      2. Golden ratio convergence: F_{n+1}/F_n -> phi = (1+sqrt(5))/2
-#      3. Self-similarity: Each layer's weight relates to previous via phi
-#      Modes:
-#      - 'none': Standard uniform weighting (simplest)
-#      - 'linear': Linear weight increase (ablation baseline for comparison)
-#      - 'fibonacci': Fibonacci sequence weights (full TQF specification)
-#      Inner zone uses inverse (mirrored) weights for bijective duality.
-TQF_FIBONACCI_DIMENSION_MODE_DEFAULT: str = 'none'
-
-# TQF_USE_PHI_BINNING_DEFAULT
-# ---------------------------
-# WHAT: Whether to use phi-based (golden ratio) binning for lattice vertex indexing.
-#
-# HOW: Enable/disable Fibonacci-based vertex binning using golden ratio phi = (1+sqrt(5))/2.
-#      - Default: False
-#      - CLI override: --tqf-use-phi-binning / --no-tqf-use-phi-binning
-#      - When True: Vertices indexed using phi-spiral pattern (Fibonacci lattice)
-#      - When False: Standard radial indexing (simpler, faster)
-#
-# WHY: Phi-binning provides more uniform distribution of vertices in hyperbolic space,
-#      potentially improving geometric properties. However, adds complexity and some
-#      computational overhead. Scientific considerations:
-#      1. Fibonacci spirals are optimal for sphere packing (minimal overlap)
-#      2. But MNIST is simple enough that standard radial indexing works fine
-#      3. Phi-binning is experimental feature for advanced geometric experiments
-#      Empirical findings:
-#      - False: Simpler, faster, sufficient for MNIST (accuracy ~95%)
-#      - True: More uniform geometry, negligible accuracy difference (~0.1%)
-#      Decision: False by default (simpler and faster). Enable for advanced studies.
-TQF_USE_PHI_BINNING_DEFAULT: bool = False
-
 # Z6_DATA_AUGMENTATION_DEFAULT
 # -----------------------------
 # WHAT: Whether to apply Z6-aligned rotation augmentation during training.
@@ -897,16 +846,17 @@ Z6_DATA_AUGMENTATION_DEFAULT: bool = False
 # WHAT: Temperature for Z6 rotation confidence weighting in orbit mixing.
 #
 # HOW: Controls sharpness of max-logit weighting across 6 rotation variants.
-#      - Default: 0.3 (sharp — most confident rotation dominates)
+#      - Default: 0.5 (experimentally optimal for rotation accuracy)
 #      - CLI override: --tqf-orbit-mixing-temp-rotation
 #      - Range: [0.01, 2.0]
 #      - Lower = sharper (best rotation dominates), Higher = more uniform averaging
 #
 # WHY: Z6 rotations are input-space transformations that produce the most diverse
-#      predictions. Sharp weighting (low temperature) lets the best-aligned rotation
-#      dominate, avoiding dilution from poorly-aligned rotations.
-#      Decision: 0.3 balances diversity benefit vs. noise suppression.
-TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT: float = 0.3
+#      predictions. Experimental results (symmetry_orbit_mark2, Feb 2026) show
+#      T=0.5 achieves the best rotation accuracy (67.42%), outperforming both
+#      sharper (T=0.3) and softer (T=1.0 → 67.27%, T=2.0 → 65.45%) settings.
+#      Decision: 0.5 is the experimentally validated optimum.
+TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT: float = 0.5
 
 # TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT
 # -----------------------------------------
@@ -1202,8 +1152,6 @@ assert TQF_HIDDEN_DIM_MIN <= TQF_HIDDEN_DIMENSION_DEFAULT <= TQF_HIDDEN_DIM_MAX,
     f"Hidden dimension must be in [{TQF_HIDDEN_DIM_MIN}, {TQF_HIDDEN_DIM_MAX}]"
 assert TQF_SYMMETRY_LEVEL_DEFAULT in ['none', 'Z6', 'D6', 'T24'], \
     "Invalid symmetry level"
-assert TQF_FIBONACCI_DIMENSION_MODE_DEFAULT in ['none', 'linear', 'fibonacci'], \
-    "Invalid Fibonacci dimension mode"
 assert TQF_FRACTAL_ITERATIONS_DEFAULT >= 0, \
     "Fractal iterations must be non-negative (0 = disabled)"
 assert 2 <= TQF_BOX_COUNTING_SCALES_DEFAULT <= 20, \

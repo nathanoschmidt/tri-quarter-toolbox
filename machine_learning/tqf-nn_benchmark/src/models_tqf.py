@@ -141,7 +141,7 @@ from typing import List, Tuple, Optional, Dict, Union, Callable
 
 from config import (
     TQF_TRUNCATION_R_DEFAULT, TQF_RADIUS_R_FIXED, TQF_SYMMETRY_LEVEL_DEFAULT,
-    TQF_FRACTAL_ITERATIONS_DEFAULT, TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
+    TQF_FRACTAL_ITERATIONS_DEFAULT,
     DROPOUT_DEFAULT, TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
     TQF_HOP_ATTENTION_TEMP_DEFAULT,
     TQF_FRACTAL_DIM_TOLERANCE_DEFAULT, TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
@@ -165,31 +165,19 @@ from symmetry_ops import (
     T24Operation
 )
 
-# Golden ratio for Fibonacci scaling
-PHI: float = (1.0 + math.sqrt(5.0)) / 2.0
-
-
 def compute_radial_layer_indices(
     vertices: List['ExplicitLatticeVertex'],
-    binning_method: str,
     num_layers: int
 ) -> torch.Tensor:
     """
-    Compute radial layer index for each vertex based on binning method.
+    Compute radial layer index for each vertex using dyadic binning.
 
-    Phi binning uses golden ratio (phi ~ 1.618) for radial shell boundaries,
-    resulting in more fine-grained shells compared to dyadic (powers of 2).
-
-    Shell boundaries:
-    - Phi: r_k = phi^k for k = 0, 1, 2, ...
-    - Dyadic/Uniform: r_k = 2^k for k = 0, 1, 2, ...
-
+    Uses powers-of-2 (dyadic) radial shell boundaries: r_k = 2^k.
     Each vertex is assigned to the layer index based on which shell its
     radial distance falls into.
 
     Args:
         vertices: List of ExplicitLatticeVertex objects with norm attribute
-        binning_method: 'phi' for golden ratio, 'uniform'/'dyadic' for powers of 2
         num_layers: Number of radial layers (determines max layer index)
 
     Returns:
@@ -207,19 +195,11 @@ def compute_radial_layer_indices(
             layer_indices[i] = 0
             continue
 
-        # Compute layer index based on binning method
-        if binning_method == 'phi':
-            # Phi binning: layer = floor(log_phi(norm))
-            # log_phi(x) = log(x) / log(phi)
-            # Normalize to [0, num_layers-1] range
-            log_ratio = math.log(v.norm) / math.log(PHI)
-        else:
-            # Dyadic/uniform binning: layer = floor(log_2(norm))
-            log_ratio = math.log2(v.norm) if v.norm > 0 else 0
+        # Dyadic binning: layer = floor(log_2(norm))
+        log_ratio = math.log2(v.norm) if v.norm > 0 else 0
 
         # Normalize to [0, num_layers-1] using max_norm scaling
-        max_log = (math.log(max_norm) / math.log(PHI) if binning_method == 'phi'
-                   else math.log2(max_norm)) if max_norm > 1 else 1.0
+        max_log = math.log2(max_norm) if max_norm > 1 else 1.0
 
         if max_log > 0:
             normalized = log_ratio / max_log
@@ -235,7 +215,6 @@ def compute_radial_layer_indices(
 
 def compute_radial_position_encoding(
     vertices: List['ExplicitLatticeVertex'],
-    binning_method: str,
     num_layers: int,
     hidden_dim: int
 ) -> torch.Tensor:
@@ -243,8 +222,8 @@ def compute_radial_position_encoding(
     Compute radial position encodings based on binning method.
 
     Creates learnable-compatible position encodings that capture radial
-    structure using phi or dyadic scaling. These encodings can be added
-    to vertex features to provide radial position information.
+    structure using dyadic scaling. These encodings can be added to vertex
+    features to provide radial position information.
 
     The encoding uses sinusoidal functions at different frequencies based
     on the radial layer, similar to transformer positional encodings but
@@ -252,7 +231,6 @@ def compute_radial_position_encoding(
 
     Args:
         vertices: List of ExplicitLatticeVertex objects
-        binning_method: 'phi' for golden ratio, 'uniform'/'dyadic' for powers of 2
         num_layers: Number of radial layers
         hidden_dim: Dimension of the encoding (matches hidden_dim)
 
@@ -262,19 +240,15 @@ def compute_radial_position_encoding(
     num_vertices = len(vertices)
 
     # Get layer indices for each vertex
-    layer_indices = compute_radial_layer_indices(vertices, binning_method, num_layers)
+    layer_indices = compute_radial_layer_indices(vertices, num_layers)
 
     # Create position encoding using sinusoidal functions
     # This allows the network to distinguish vertices at different radial distances
     position_enc = torch.zeros(num_vertices, hidden_dim)
 
-    # Compute frequency divisors (similar to transformer positional encoding)
-    # Using different base for phi vs dyadic binning
-    base = PHI if binning_method == 'phi' else 2.0
-
     for i in range(hidden_dim):
-        # Frequency decreases with dimension index
-        freq = 1.0 / (base ** (i / hidden_dim * num_layers))
+        # Frequency decreases with dimension index (dyadic base)
+        freq = 1.0 / (2.0 ** (i / hidden_dim * num_layers))
 
         if i % 2 == 0:
             # Even dimensions: sin
@@ -329,121 +303,6 @@ class LabelSmoothingCrossEntropy(nn.Module):
             loss: torch.Tensor = F.nll_loss(log_probs, target)
 
         return loss
-
-
-class FibonacciWeightScaler:
-    """
-    Fibonacci weight scaling for self-similar hierarchical feature learning.
-
-    IMPORTANT: This class provides WEIGHTS, not dimension scaling.
-    All layers maintain constant dimension (base_dim). The Fibonacci sequence
-    is used only to weight feature aggregation during forward propagation.
-
-    This design ensures:
-    - Fibonacci mode has IDENTICAL parameter count to standard mode
-    - Only the feature weighting strategy differs, not network capacity
-    - True "apples-to-apples" comparison between modes
-
-    Modes:
-        - 'none': Uniform weights (no Fibonacci weighting)
-        - 'linear': Linear weights (1, 2, 3, 4, ...)
-        - 'fibonacci': Fibonacci weights (1, 1, 2, 3, 5, 8, ...)
-
-    The weights are normalized to sum to 1.0 for stable aggregation.
-
-    Inner Zone Mirroring:
-        - When inverse=True, the weight sequence is reversed
-        - This ensures bijective duality between outer and inner zones
-    """
-
-    def __init__(self, num_layers: int, base_dim: int, mode: str = 'none', inverse: bool = False):
-        """
-        Initialize Fibonacci weight scaler.
-
-        Args:
-            num_layers: Number of layers to generate weights for
-            base_dim: Base dimension (constant for all layers)
-            mode: Weighting mode ('none', 'linear', or 'fibonacci')
-            inverse: If True, reverse the sequence for inner zone mirroring
-        """
-        self.num_layers: int = num_layers
-        self.base_dim: int = base_dim
-        self.mode: str = mode
-        self.inverse: bool = inverse
-
-        # Generate Fibonacci sequence for weights
-        if mode == 'fibonacci':
-            self.fib_seq: List[int] = self._generate_fibonacci(num_layers + 2)
-        elif mode == 'linear':
-            self.fib_seq: List[int] = list(range(1, num_layers + 3))
-        else:
-            self.fib_seq: List[int] = [1] * (num_layers + 2)
-
-        # Compute normalized weights
-        self._compute_normalized_weights()
-
-    def _generate_fibonacci(self, n: int) -> List[int]:
-        """Generate first n Fibonacci numbers."""
-        if n <= 0:
-            return []
-        elif n == 1:
-            return [1]
-        elif n == 2:
-            return [1, 1]
-        fib: List[int] = [1, 1]
-        for i in range(2, n):
-            fib.append(fib[i-1] + fib[i-2])
-        return fib
-
-    def _compute_normalized_weights(self) -> None:
-        """Compute normalized weights that sum to 1.0."""
-        # Get raw weights for each layer
-        raw_weights: List[float] = []
-        for i in range(self.num_layers):
-            safe_idx: int = min(max(0, i), len(self.fib_seq) - 1)
-            if self.inverse:
-                mirrored_idx: int = self.num_layers - 1 - safe_idx
-                mirrored_idx = min(max(0, mirrored_idx), len(self.fib_seq) - 1)
-                raw_weights.append(float(self.fib_seq[mirrored_idx]))
-            else:
-                raw_weights.append(float(self.fib_seq[safe_idx]))
-
-        # Normalize to sum to 1.0
-        total: float = sum(raw_weights) if raw_weights else 1.0
-        self.normalized_weights: List[float] = [w / total for w in raw_weights]
-
-    def get_dimension(self, layer_idx: int) -> int:
-        """
-        Get dimension for layer output.
-
-        IMPORTANT: Always returns base_dim regardless of mode.
-        Fibonacci mode affects weights, not dimensions.
-
-        Args:
-            layer_idx: Layer index (unused, kept for API compatibility)
-
-        Returns:
-            base_dim (constant for all layers)
-        """
-        return self.base_dim
-
-    def get_weight(self, layer_idx: int) -> float:
-        """
-        Get normalized Fibonacci weight for layer.
-
-        Args:
-            layer_idx: Layer index (0 to num_layers-1)
-
-        Returns:
-            Normalized weight for this layer (sums to 1.0 across all layers)
-        """
-        if layer_idx < 0 or layer_idx >= len(self.normalized_weights):
-            return 1.0 / self.num_layers  # Default uniform weight
-        return self.normalized_weights[layer_idx]
-
-    def get_all_weights(self) -> List[float]:
-        """Get normalized weights for all layers."""
-        return self.normalized_weights.copy()
 
 
 class EnhancedPreEncoder(nn.Module):
@@ -607,8 +466,8 @@ class T24EquivariantHybridBinner(nn.Module):
 
     def __init__(
         self, R: float, hidden_dim: int, symmetry_level: str, num_layers: int,
-        use_dual_metric: bool, binning_method: str, hop_attention_temp: float,
-        fractal_iters: int, fibonacci_mode: str,
+        use_dual_metric: bool, hop_attention_temp: float,
+        fractal_iters: int,
         outer_vertices: List[ExplicitLatticeVertex],
         inner_vertices: List[ExplicitLatticeVertex],
         outer_adjacency: Dict[int, List[int]],
@@ -625,10 +484,8 @@ class T24EquivariantHybridBinner(nn.Module):
             symmetry_level: Symmetry group ('none', 'Z6', 'D6', 'T24')
             num_layers: Number of graph convolution layers
             use_dual_metric: Whether to use dual metric
-            binning_method: Binning method (e.g., 'phi')
             hop_attention_temp: Temperature for hop attention (unused, for API compat)
             fractal_iters: Number of fractal iterations
-            fibonacci_mode: Fibonacci weighting mode ('none', 'linear', 'fibonacci')
             outer_vertices: List of outer zone vertices
             inner_vertices: List of inner zone vertices
             outer_adjacency: Adjacency dict for outer zone
@@ -644,8 +501,6 @@ class T24EquivariantHybridBinner(nn.Module):
         self.num_conv_layers: int = num_layers
         self.use_dual_metric: bool = use_dual_metric
         self.fractal_iters: int = fractal_iters
-        self.binning_method: str = binning_method
-        self.fibonacci_mode: str = fibonacci_mode
         self.dropout: float = dropout
 
         # Store vertices for reference
@@ -656,7 +511,6 @@ class T24EquivariantHybridBinner(nn.Module):
         self.vertices: List[ExplicitLatticeVertex] = outer_vertices  # Use outer for reference
         self.adjacency_dict: Dict[int, List[int]] = outer_adjacency
         self.hop_attention_temp: float = hop_attention_temp
-        self.fib_scaler = None  # T24 handles Fibonacci internally, no separate scaler
 
         # Create discrete_metric-like object for verification compatibility
         class _DiscreteMetricCompat:
@@ -664,21 +518,21 @@ class T24EquivariantHybridBinner(nn.Module):
                 self.adjacency = adjacency
         self.discrete_metric = _DiscreteMetricCompat(outer_adjacency)
 
-        # Compute number of radial layers based on R and binning method
-        self.num_radial_layers: int = self._compute_num_radial_layers(R, binning_method)
+        # Compute number of radial layers based on R
+        self.num_radial_layers: int = self._compute_num_radial_layers(R)
         L = self.num_radial_layers
 
         # =====================================================================
         # BUILD VERTEX-TO-BIN MAPPING
         # =====================================================================
         # Maps each vertex to its (sector, layer) bin for aggregation
-        self._build_vertex_to_bin_mapping(outer_vertices, inner_vertices, binning_method)
+        self._build_vertex_to_bin_mapping(outer_vertices, inner_vertices)
 
         # =====================================================================
         # BUILD T24-SYMMETRIC ADJACENCY
         # =====================================================================
         # Adjacency operates on (sector, layer) bins, not individual vertices
-        self._build_t24_symmetric_adjacency(L, fibonacci_mode, num_layers)
+        self._build_t24_symmetric_adjacency(L, num_layers)
 
         # =====================================================================
         # SHARED CONVOLUTION LAYERS (T24-equivariant)
@@ -701,7 +555,7 @@ class T24EquivariantHybridBinner(nn.Module):
         ])
 
         # Radial position encoding (sector-independent for T24 equivariance)
-        radial_enc = self._create_radial_position_encoding(L, hidden_dim, binning_method)
+        radial_enc = self._create_radial_position_encoding(L, hidden_dim)
         self.register_buffer('_radial_pos_enc', radial_enc)
 
         self.final_dim: int = hidden_dim
@@ -711,20 +565,14 @@ class T24EquivariantHybridBinner(nn.Module):
         """Backward compatibility: alias for num_conv_layers."""
         return self.num_conv_layers
 
-    def _compute_num_radial_layers(self, R: float, binning_method: str) -> int:
-        """Compute number of radial layers based on R and binning method."""
-        if binning_method == 'phi':
-            # Phi binning: layers = ceil(log_phi(R))
-            return max(3, int(math.ceil(math.log(R) / math.log(PHI))) + 1)
-        else:
-            # Dyadic binning: layers = ceil(log2(R))
-            return max(3, int(math.ceil(math.log2(R))) + 1)
+    def _compute_num_radial_layers(self, R: float) -> int:
+        """Compute number of radial layers based on R using dyadic binning."""
+        return max(3, int(math.ceil(math.log2(R))) + 1)
 
     def _build_vertex_to_bin_mapping(
         self,
         outer_vertices: List[ExplicitLatticeVertex],
         inner_vertices: List[ExplicitLatticeVertex],
-        binning_method: str
     ) -> None:
         """
         Build mapping from vertices to (sector, layer) bins.
@@ -734,7 +582,7 @@ class T24EquivariantHybridBinner(nn.Module):
         L = self.num_radial_layers
 
         # Compute layer indices for outer vertices
-        outer_layer_indices = compute_radial_layer_indices(outer_vertices, binning_method, L)
+        outer_layer_indices = compute_radial_layer_indices(outer_vertices, L)
 
         # Build bin counts for outer zone: (6, L) matrix
         # bin_counts[s, l] = number of vertices in sector s, layer l
@@ -745,7 +593,7 @@ class T24EquivariantHybridBinner(nn.Module):
             outer_bin_counts[s, l] += 1
 
         # Compute layer indices for inner vertices
-        inner_layer_indices = compute_radial_layer_indices(inner_vertices, binning_method, L)
+        inner_layer_indices = compute_radial_layer_indices(inner_vertices, L)
 
         # Build bin counts for inner zone
         inner_bin_counts = torch.zeros(6, L, dtype=torch.float32)
@@ -767,7 +615,7 @@ class T24EquivariantHybridBinner(nn.Module):
         self.register_buffer('_inner_sector_indices', inner_sector_indices)
 
     def _build_t24_symmetric_adjacency(
-        self, L: int, fibonacci_mode: str, num_layers: int
+        self, L: int, num_layers: int
     ) -> None:
         """
         Build T24-symmetric adjacency for (sector, layer) bins.
@@ -779,24 +627,10 @@ class T24EquivariantHybridBinner(nn.Module):
         The adjacency is the same for all sectors (Z6 equivariance) and both
         zones (Z2 inversion equivariance), so we only store one copy.
         """
-        # Create Fibonacci scaler for radial weights
-        if fibonacci_mode in ['fibonacci', 'linear']:
-            fib_scaler = FibonacciWeightScaler(
-                num_layers=num_layers,
-                base_dim=self.hidden_dim,
-                mode=fibonacci_mode,
-                inverse=False
-            )
-        else:
-            fib_scaler = None
-
         # Precompute weighted adjacency for each conv layer
         for layer_idx in range(num_layers):
-            # Fibonacci weight for this layer
-            if fib_scaler is not None:
-                fib_w = fib_scaler.get_weight(layer_idx)
-            else:
-                fib_w = 0.5
+            # Uniform weight for neighbor aggregation
+            fib_w = 0.5
 
             # Build radial adjacency (L x L) - connections to adjacent layers
             radial_adj = torch.zeros(L, L, dtype=torch.float32)
@@ -825,14 +659,13 @@ class T24EquivariantHybridBinner(nn.Module):
         self.angular_weight = 0.1  # Small weight for angular mixing
 
     def _create_radial_position_encoding(
-        self, L: int, hidden_dim: int, binning_method: str
+        self, L: int, hidden_dim: int
     ) -> torch.Tensor:
         """Create radial position encoding for (L, H) tensor."""
         position_enc = torch.zeros(L, hidden_dim)
-        base = PHI if binning_method == 'phi' else 2.0
 
         for i in range(hidden_dim):
-            freq = 1.0 / (base ** (i / hidden_dim * L))
+            freq = 1.0 / (2.0 ** (i / hidden_dim * L))
             layer_indices = torch.arange(L, dtype=torch.float32)
             if i % 2 == 0:
                 position_enc[:, i] = torch.sin(layer_indices * freq)
@@ -1454,8 +1287,8 @@ class BijectionDualOutputHead(nn.Module):
             outer_feats: torch.Tensor = self.aggregate_features_by_sector(all_vertex_feats, vertices)
 
         # Cache sector features for equivariance loss computation
-        # (detached to prevent gradient tracking)
-        self._cached_sector_feats: torch.Tensor = outer_feats.detach()
+        # NOTE: Must NOT detach — equivariance losses need gradient flow through these features
+        self._cached_sector_feats: torch.Tensor = outer_feats
 
         # Outer zone classification
         outer_logits_per_sector: torch.Tensor = self.classification_head(outer_feats)
@@ -1885,10 +1718,6 @@ class TQFANN(nn.Module):
         Enable dual metric for radial binning (default: True)
     fractal_iters : int
         Number of fractal self-similarity iterations (default: 5)
-    fibonacci_mode : str
-        Fibonacci dimension scaling mode: 'none', 'linear', or 'fibonacci' (default: 'none')
-    use_phi_binning : bool
-        Use golden ratio for radial binning (default: False)
     dropout : float
         Dropout probability (default: 0.2)
     verify_geometry : bool
@@ -1921,8 +1750,6 @@ class TQFANN(nn.Module):
         use_dual_output: bool = True,
         use_dual_metric: bool = True,
         fractal_iters: int = TQF_FRACTAL_ITERATIONS_DEFAULT,
-        fibonacci_mode: str = TQF_FIBONACCI_DIMENSION_MODE_DEFAULT,
-        use_phi_binning: bool = False,
         dropout: float = DROPOUT_DEFAULT,
         verify_geometry: bool = False,
         geometry_reg_weight: float = TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
@@ -1950,13 +1777,9 @@ class TQFANN(nn.Module):
         # Auto-tune hidden_dim if not provided
         if hidden_dim is None:
             from param_matcher import tune_d_for_params
-            # Determine binning method before auto-tuning
-            temp_binning_method = 'phi' if use_phi_binning else 'dyadic'
             hidden_dim = tune_d_for_params(
                 R=int(R),
-                binning_method=temp_binning_method,
                 fractal_iters=fractal_iters,
-                fibonacci_mode=fibonacci_mode
             )
 
         # Store configuration
@@ -1975,8 +1798,6 @@ class TQFANN(nn.Module):
         self.use_dual_output: bool = use_dual_output
         self.use_dual_metric: bool = use_dual_metric
         self.fractal_iters: int = fractal_iters
-        self.fibonacci_mode: str = fibonacci_mode
-        self.use_phi_binning: bool = use_phi_binning
         self.dropout: float = dropout
         self.verify_geometry: bool = verify_geometry
         self.fractal_dim_tol: float = fractal_dim_tol
@@ -2033,23 +1854,12 @@ class TQFANN(nn.Module):
             if vid in inner_vertex_ids
         }
 
-        # Determine number of layers based on lattice size and binning method
-        # Phi binning uses log_phi (golden ratio) for more gradual radial growth
-        # This results in more layers (e.g., 7 vs 5 for R=20) with smoother transitions
-        if use_phi_binning:
-            # Golden ratio binning: L ~ log_phi(|V|) - 2
-            # PHI ~ 1.618, so log_phi(x) = log(x) / log(phi)
-            num_radial_layers: int = max(3, int(math.log(len(self.vertices)) / math.log(PHI)) - 2)
-        else:
-            # Standard dyadic binning: L ~ log_2(|V|) - 2
-            num_radial_layers: int = max(3, int(math.log2(len(self.vertices))) - 2)
+        # Determine number of layers based on lattice size (dyadic binning)
+        num_radial_layers: int = max(3, int(math.log2(len(self.vertices))) - 2)
 
         # Build model components
         self.pre_encoder = EnhancedPreEncoder(in_features, hidden_dim)
         self.boundary_encoder = RayOrganizedBoundaryEncoder(hidden_dim, fractal_iters)
-
-        # Fibonacci mode uses weight-based scaling (constant dimensions)
-        binning_method: str = 'phi' if use_phi_binning else 'uniform'
 
         # T24-Equivariant Hybrid Binner
         # Ultimate optimization with (B, 2, 6, L, H) tensor layout:
@@ -2060,8 +1870,8 @@ class TQFANN(nn.Module):
         self.radial_binner = T24EquivariantHybridBinner(
             R=R, hidden_dim=hidden_dim, symmetry_level=symmetry_level,
             num_layers=num_radial_layers, use_dual_metric=use_dual_metric,
-            binning_method=binning_method, hop_attention_temp=hop_attention_temp,
-            fractal_iters=fractal_iters, fibonacci_mode=fibonacci_mode,
+            hop_attention_temp=hop_attention_temp,
+            fractal_iters=fractal_iters,
             outer_vertices=self.outer_zone_vertices,
             inner_vertices=self.inner_zone_vertices,
             outer_adjacency=self.adjacency_outer,
@@ -2348,8 +2158,8 @@ class TQFANN(nn.Module):
             color_classes[color].append(vertex.vertex_id)
 
         # Verify independence
-        is_valid: bool = verify_trihexagonal_six_coloring_independence(
-            color_classes, self.adjacency
+        is_valid, _ = verify_trihexagonal_six_coloring_independence(
+            self.vertices, self.adjacency_full
         )
 
         if verbose:
@@ -2697,8 +2507,9 @@ class TQFANN(nn.Module):
         logits: torch.Tensor = self.dual_output.confidence_weighted_ensemble(outer_logits, inner_logits)
 
         # Cache sector features for equivariance loss computation and orbit mixing
-        self.dual_output._cached_sector_feats = outer_sector_feats.detach()
-        self.dual_output._cached_inner_sector_feats = inner_sector_feats.detach()
+        # NOTE: Must NOT detach — equivariance losses need gradient flow through these features
+        self.dual_output._cached_sector_feats = outer_sector_feats
+        self.dual_output._cached_inner_sector_feats = inner_sector_feats
 
         # Handle optional losses
         inv_loss: Optional[torch.Tensor] = None
@@ -2815,7 +2626,7 @@ class TQFANN(nn.Module):
 
 if __name__ == "__main__":
     print("TQF-ANN Module - Full T24 Symmetry Implementation")
-    model: TQFANN = TQFANN(R=20, hidden_dim=80, fractal_iters=10, fibonacci_mode='none')
+    model: TQFANN = TQFANN(R=20, hidden_dim=80, fractal_iters=10)
     print(f"Parameters: {model.count_parameters():,}")
     x = torch.randn(1, 784)
     out = model(x)

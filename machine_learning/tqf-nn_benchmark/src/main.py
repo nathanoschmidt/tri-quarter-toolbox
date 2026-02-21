@@ -197,10 +197,6 @@ def main():
             'self_similarity_weight': tqf_self_sim_weight,
             'box_counting_weight': tqf_box_count_weight,
 
-            # Fibonacci Enhancement
-            'fibonacci_mode': args.tqf_fibonacci_mode,
-            'use_phi_binning': args.tqf_use_phi_binning,
-
             # Attention/Mixing
             'hop_attention_temp': args.tqf_hop_attention_temp,
 
@@ -211,7 +207,6 @@ def main():
             # Dual Metrics (hardcoded - not exposed as CLI params per design)
             'use_dual_output': True,
             'use_dual_metric': True,
-            # Note: binning_method derived internally from use_phi_binning
 
             # Memory Optimization
             'use_gradient_checkpointing': args.tqf_use_gradient_checkpointing,

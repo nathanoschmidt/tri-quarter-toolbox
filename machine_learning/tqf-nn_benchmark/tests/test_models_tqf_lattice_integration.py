@@ -105,8 +105,7 @@ class TestTQFANNLatticeConstruction(unittest.TestCase):
             R=5.0,
             hidden_dim=32,
             fractal_iters=2,
-            fibonacci_mode='none'
-        )
+                    )
 
     def test_lattice_vertices_created(self) -> None:
         """Test that explicit lattice vertices are created."""
@@ -157,7 +156,7 @@ class TestTQFANNSectorPartitions(unittest.TestCase):
 
     def setUp(self) -> None:
         """Create test model."""
-        self.model = TQFANN(R=6.0, hidden_dim=32, fractal_iters=2, fibonacci_mode='none')
+        self.model = TQFANN(R=6.0, hidden_dim=32, fractal_iters=2)
 
     def test_six_sectors_created(self) -> None:
         """Test that exactly 6 angular sectors are created."""
@@ -197,7 +196,7 @@ class TestTQFANNAdjacencyIntegration(unittest.TestCase):
 
     def setUp(self) -> None:
         """Create test model with T24 binner."""
-        self.model = TQFANN(R=5.0, hidden_dim=32, fractal_iters=2, fibonacci_mode='none')
+        self.model = TQFANN(R=5.0, hidden_dim=32, fractal_iters=2)
 
     def test_adjacency_dict_exists(self) -> None:
         """Test that adjacency dictionary exists."""
@@ -224,11 +223,6 @@ class TestTQFANNAdjacencyIntegration(unittest.TestCase):
         self.assertTrue(hasattr(self.model.radial_binner, 'discrete_metric'))
         self.assertIsNotNone(self.model.radial_binner.discrete_metric)
 
-    def test_neighbor_map_built(self) -> None:
-        """Test that neighbor map is built."""
-        self.assertTrue(hasattr(self.model.radial_binner, 'neighbor_map'))
-        self.assertIsInstance(self.model.radial_binner.neighbor_map, dict)
-
 
 @unittest.skipIf(not TORCH_AVAILABLE, "PyTorch not available")
 class TestTQFANNPhasePairs(unittest.TestCase):
@@ -236,7 +230,7 @@ class TestTQFANNPhasePairs(unittest.TestCase):
 
     def setUp(self) -> None:
         """Create test model."""
-        self.model = TQFANN(R=4.0, hidden_dim=32, fractal_iters=2, fibonacci_mode='none')
+        self.model = TQFANN(R=4.0, hidden_dim=32, fractal_iters=2)
 
     def test_all_vertices_have_phase_pairs(self) -> None:
         """Test that all vertices have phase_pair attribute."""
@@ -268,7 +262,7 @@ class TestTQFANNSixColoring(unittest.TestCase):
 
     def setUp(self) -> None:
         """Create test model."""
-        self.model = TQFANN(R=6.0, hidden_dim=32, fractal_iters=2, fibonacci_mode='none')
+        self.model = TQFANN(R=6.0, hidden_dim=32, fractal_iters=2)
 
     def test_six_coloring_verification_exists(self) -> None:
         """Test that six-coloring verification method exists."""
@@ -286,64 +280,6 @@ class TestTQFANNSixColoring(unittest.TestCase):
 
 
 @unittest.skipIf(not TORCH_AVAILABLE, "PyTorch not available")
-class TestTQFANNGraphConvolution(unittest.TestCase):
-    """Test graph neural network integration (Step 4)."""
-
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(
-            R=5.0,
-            hidden_dim=32,
-            fractal_iters=2,
-            fibonacci_mode='none'
-        )
-
-    def test_radial_binner_has_aggregate_method(self) -> None:
-        """Test that RadialBinner has neighbor aggregation method."""
-        self.assertTrue(hasattr(self.model.radial_binner, 'aggregate_neighbors_via_adjacency'))
-        self.assertTrue(callable(self.model.radial_binner.aggregate_neighbors_via_adjacency))
-
-    def test_neighbor_aggregation_shape(self) -> None:
-        """Test that neighbor aggregation preserves tensor shape."""
-        batch_size = 2
-        num_vertices = len(self.model.vertices)
-        hidden_dim = 32
-
-        # Create dummy features
-        feats = torch.randn(batch_size, num_vertices, hidden_dim)
-
-        # Aggregate neighbors
-        aggregated = self.model.radial_binner.aggregate_neighbors_via_adjacency(feats)
-
-        # Should preserve shape
-        self.assertEqual(aggregated.shape, feats.shape)
-
-    def test_neighbor_aggregation_changes_features(self) -> None:
-        """Test that neighbor aggregation actually changes features."""
-        batch_size = 2
-        num_vertices = len(self.model.vertices)
-        hidden_dim = 32
-
-        # Create dummy features
-        feats = torch.randn(batch_size, num_vertices, hidden_dim)
-        feats_copy = feats.clone()
-
-        # Aggregate neighbors
-        aggregated = self.model.radial_binner.aggregate_neighbors_via_adjacency(feats)
-
-        # Should NOT be identical (unless all vertices isolated, which won't happen)
-        difference = torch.norm(aggregated - feats_copy).item()
-        self.assertGreater(difference, 0.0, "Aggregation should change features")
-
-    def test_graph_conv_uses_lattice_adjacency(self) -> None:
-        """Test that graph convolution uses actual lattice adjacency."""
-        # This is verified by checking that aggregate_neighbors_via_adjacency
-        # uses self.adjacency_dict, which we've already tested
-        self.assertIsNotNone(self.model.radial_binner.adjacency_dict)
-        self.assertGreater(len(self.model.radial_binner.adjacency_dict), 0)
-
-
-@unittest.skipIf(not TORCH_AVAILABLE, "PyTorch not available")
 class TestTQFANNDualOutputGeodesic(unittest.TestCase):
     """Test geodesic distance verification in dual output (Step 5)."""
 
@@ -353,7 +289,6 @@ class TestTQFANNDualOutputGeodesic(unittest.TestCase):
             R=5.0,
             hidden_dim=32,
             fractal_iters=2,
-            fibonacci_mode='none',
             use_dual_output=True
         )
 
@@ -425,8 +360,7 @@ class TestTQFANNForwardPass(unittest.TestCase):
             R=4.0,
             hidden_dim=32,
             fractal_iters=2,
-            fibonacci_mode='none'
-        )
+                    )
         self.model.eval()
 
     def test_forward_pass_basic(self) -> None:
@@ -474,7 +408,7 @@ class TestTQFANNVerificationMethods(unittest.TestCase):
 
     def setUp(self) -> None:
         """Create test model."""
-        self.model = TQFANN(R=5.0, hidden_dim=32, fractal_iters=2, fibonacci_mode='none')
+        self.model = TQFANN(R=5.0, hidden_dim=32, fractal_iters=2)
 
     def test_verify_dualities_method(self) -> None:
         """Test duality verification method."""

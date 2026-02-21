@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.3<br>
-**Date:** February 18, 2026<br>
+**Version:** 1.0.4<br>
+**Date:** February 20, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -259,7 +259,7 @@ Some common flags to remember:
 - `--tqf-verify-geometry`
 - `--compile`                        (Linux only)
 
-For the full list of command parameters (including weights, TQF lattice radius, Fibonacci modes, etc.), see [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
+For the full list of command parameters (including weights, TQF lattice radius, symmetry levels, etc.), see [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
 
 ---
 
@@ -353,26 +353,11 @@ python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
 ```bash
 # Custom confidence weighting temperatures
 python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
-  --tqf-orbit-mixing-temp-rotation 0.3 \
+  --tqf-orbit-mixing-temp-rotation 0.5 \
   --tqf-orbit-mixing-temp-reflection 0.5 \
   --tqf-orbit-mixing-temp-inversion 0.7
 ```
 Lower temperatures produce sharper weighting (most confident variant dominates); higher temperatures approach uniform averaging.
-
-### Fibonacci Mode Comparison
-
-```bash
-# Compare all three Fibonacci modes (weight-based scaling)
-for mode in none linear fibonacci; do
-  python src/main.py --models TQF-ANN --tqf-fibonacci-mode $mode --num-seeds 3
-done
-```
-
-**What this does:**
-- none:      Uniform weights — baseline behavior
-- linear:    Linear weighting (1,2,3,…) across radial zones
-- fibonacci: Full Fibonacci sequence weighting (1,1,2,3,5,…) — strongest hierarchical bias
-- All modes keep ~same parameter count (weight scaling, not dimension scaling)
 
 ### Manual Hyperparameter Sweep (Simple Loop Example)
 
@@ -462,7 +447,6 @@ You're ready—get your gameface on and get to training!
    Try useful ones to experiment with:
    - `--tqf-symmetry-level T24` (full inversive hexagonal symmetry)
    - `--tqf-inversion-loss-weight 0.001 --tqf-t24-orbit-invariance-weight 0.005`
-   - `--tqf-fibonacci-mode fibonacci`
    - `--batch-size 128 --learning-rate 0.0005`
    - `--device cpu` (fallback when testing without GPU)
 
@@ -501,8 +485,8 @@ You're ready—get your gameface on and get to training!
 
 **`QED`**
 
-**Last Updated:** February 18, 2026<br>
-**Version:** 1.0.3<br>
+**Last Updated:** February 20, 2026<br>
+**Version:** 1.0.4<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

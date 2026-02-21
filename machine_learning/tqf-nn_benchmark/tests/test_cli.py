@@ -15,8 +15,7 @@ Key Test Coverage:
   - Lattice Configuration: --tqf-R (truncation radius) range validation (2-100)
   - Architecture: --tqf-hidden-dim range validation
   - Symmetry Levels: Z6, D6, T24, none (group theory validation)
-  - Fibonacci Modes: none, linear, fibonacci (golden ratio scaling)
-  - Binning Schemes: --tqf-use-phi-binning (phi vs dyadic)
+  - Binning Schemes: dyadic radial binning
 - Loss Function Weights (Opt-In Features):
   - Equivariance: --tqf-z6-equivariance-weight, --tqf-d6-equivariance-weight
   - Invariance: --tqf-t24-orbit-invariance-weight
@@ -39,7 +38,6 @@ Test Organization:
 - TestParseArgsTQFSpecific: TQF-specific parameter validation
 - TestSetupLogging: Logging configuration
 - TestDeviceSelection: Hardware device selection
-- TestPhiBinningArgument: Golden ratio binning tests
 - TestComplexArgumentCombinations: Multi-parameter scenarios
 - TestInversionLossCLIFlags: Inversion loss weight validation
 - TestCombinedLossFlags: Multiple loss function weight scenarios
@@ -560,46 +558,6 @@ class TestParseArgsTQFSpecific:
             assert args.tqf_hidden_dim == 512
             assert TQF_HIDDEN_DIM_MIN <= args.tqf_hidden_dim <= TQF_HIDDEN_DIM_MAX
 
-    def test_tqf_fibonacci_mode_none(self) -> None:
-        """
-        WHY: 'none' is valid fibonacci mode (no scaling)
-        HOW: Parse with --tqf-fibonacci-mode none
-        WHAT: Expect 'none' in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-fibonacci-mode', 'none']):
-            args = parse_args()
-            assert args.tqf_fibonacci_mode == 'none'
-
-    def test_tqf_fibonacci_mode_linear(self) -> None:
-        """
-        WHY: 'linear' is valid fibonacci mode (recommended)
-        HOW: Parse with --tqf-fibonacci-mode linear
-        WHAT: Expect 'linear' in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-fibonacci-mode', 'linear']):
-            args = parse_args()
-            assert args.tqf_fibonacci_mode == 'linear'
-
-    def test_tqf_fibonacci_mode_fibonacci(self) -> None:
-        """
-        WHY: 'fibonacci' is valid fibonacci mode (max performance)
-        HOW: Parse with --tqf-fibonacci-mode fibonacci
-        WHAT: Expect 'fibonacci' in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-fibonacci-mode', 'fibonacci']):
-            args = parse_args()
-            assert args.tqf_fibonacci_mode == 'fibonacci'
-
-    def test_tqf_fibonacci_mode_invalid_fails(self) -> None:
-        """
-        WHY: Invalid fibonacci mode should be rejected
-        HOW: Parse with --tqf-fibonacci-mode invalid
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-fibonacci-mode', 'invalid']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
     def test_z6_equivariance_weight_default_none(self) -> None:
         """
         WHY: Z6 equivariance loss should be disabled by default
@@ -818,70 +776,6 @@ class TestDeviceSelection:
         with patch('sys.argv', ['test_cli.py', '--device', 'invalid']):
             with pytest.raises(SystemExit):
                 parse_args()
-
-
-class TestPhiBinningArgument:
-    """Test suite for --tqf-use-phi-binning argument.
-
-    Phi binning uses golden ratio (phi ~ 1.618) for radial layer scaling instead
-    of dyadic (powers of 2). This results in more radial layers with smoother
-    transitions between them.
-    """
-
-    def test_tqf_use_phi_binning_default_false(self) -> None:
-        """
-        WHY: Phi binning is opt-in, dyadic binning is the default
-        HOW: Parse without --tqf-use-phi-binning
-        WHAT: Expect False (dyadic binning)
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_use_phi_binning == False
-
-    def test_tqf_use_phi_binning_enabled(self) -> None:
-        """
-        WHY: User can enable phi (golden ratio) radial binning
-        HOW: Parse with --tqf-use-phi-binning
-        WHAT: Expect True
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-use-phi-binning']):
-            args = parse_args()
-            assert args.tqf_use_phi_binning == True
-
-    def test_tqf_use_phi_binning_with_fibonacci_mode(self) -> None:
-        """
-        WHY: Phi binning and Fibonacci mode work together (both golden ratio related)
-        HOW: Parse with --tqf-use-phi-binning and --tqf-fibonacci-mode fibonacci
-        WHAT: Expect both enabled
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-use-phi-binning',
-                                '--tqf-fibonacci-mode', 'fibonacci']):
-            args = parse_args()
-            assert args.tqf_use_phi_binning == True
-            assert args.tqf_fibonacci_mode == 'fibonacci'
-
-    def test_tqf_use_phi_binning_with_symmetry_levels(self) -> None:
-        """
-        WHY: Phi binning should work with all symmetry levels
-        HOW: Parse with --tqf-use-phi-binning and various symmetry levels
-        WHAT: Expect successful parse with each symmetry level
-        """
-        for symmetry in ['none', 'Z6', 'D6', 'T24']:
-            with patch('sys.argv', ['test_cli.py', '--tqf-use-phi-binning',
-                                    '--tqf-symmetry-level', symmetry]):
-                args = parse_args()
-                assert args.tqf_use_phi_binning == True
-                assert args.tqf_symmetry_level == symmetry
-
-    def test_tqf_use_phi_binning_matches_config_default(self) -> None:
-        """
-        WHY: CLI default should match config constant
-        HOW: Compare parsed default to TQF_USE_PHI_BINNING_DEFAULT
-        WHAT: Expect equal values
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_use_phi_binning == config.TQF_USE_PHI_BINNING_DEFAULT
 
 
 class TestComplexArgumentCombinations:
@@ -1157,13 +1051,13 @@ class TestOrbitMixingFlags:
 
     def test_default_temperatures(self) -> None:
         """
-        WHY: Default temperatures should match spec (rotation=0.3, reflection=0.5, inversion=0.7)
+        WHY: Default temperatures should match spec (rotation=0.5, reflection=0.5, inversion=0.7)
         HOW: Parse without specifying temperatures
         WHAT: Expect correct default values
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
             args = parse_args()
-            assert args.tqf_orbit_mixing_temp_rotation == 0.3
+            assert args.tqf_orbit_mixing_temp_rotation == 0.5
             assert args.tqf_orbit_mixing_temp_reflection == 0.5
             assert args.tqf_orbit_mixing_temp_inversion == 0.7
 
@@ -1195,12 +1089,12 @@ class TestOrbitMixingFlags:
 
     def test_temperature_validation_too_high(self) -> None:
         """
-        WHY: Temperature above 2.0 should be rejected
-        HOW: Parse with temperature = 3.0
+        WHY: Temperature above 10.0 should be rejected
+        HOW: Parse with temperature = 15.0
         WHAT: Expect SystemExit from validation
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-orbit-mixing-temp-inversion', '3.0']):
+                               '--tqf-orbit-mixing-temp-inversion', '15.0']):
             with pytest.raises(SystemExit):
                 parse_args()
 
