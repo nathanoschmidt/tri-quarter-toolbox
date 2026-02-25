@@ -11,8 +11,8 @@
 
 **`QED`**
 
-**Last Updated:** February 20, 2026<br>
-**Version:** 1.0.4<br>
+**Last Updated:** February 24, 2026<br>
+**Version:** 1.0.5<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

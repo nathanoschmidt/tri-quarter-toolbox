@@ -6,6 +6,14 @@ All notable changes to these TQF-NN benchmark tools will be documented in this f
 
 ---
 
+## [1.0.5] - 2026-02-24
+
+### Changed
+- Increased TQF ℤ₆ equivariance weight max from 0.05 to 2.0.
+
+### Squashed
+- A seed message output/logging feature typo bug.
+
 ## [1.0.4] - 2026-02-20
 
 ### Changed

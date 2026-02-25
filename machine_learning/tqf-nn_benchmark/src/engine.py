@@ -861,7 +861,7 @@ def run_single_seed_experiment(
 
     # Print seed header
     if verbose and OUTPUT_FORMATTERS_AVAILABLE:
-        print_seed_header(model_name, seed_idx, total_seeds, seed)
+        print_seed_header(seed=seed, total_seeds=total_seeds, model_name=model_name, seed_idx=seed_idx)
 
     # Create model
     model: nn.Module = get_model(model_name, **model_config)

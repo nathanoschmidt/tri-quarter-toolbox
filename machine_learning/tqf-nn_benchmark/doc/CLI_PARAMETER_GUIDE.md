@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.4<br>
-**Date:** February 20, 2026<br>
+**Version:** 1.0.5<br>
+**Date:** February 24, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -1514,9 +1514,9 @@ python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.1
 
 **Type**: `float` (optional)
 
-**Default**: **DISABLED** (None). Provide a value in range [0.001, 0.05] to enable.
+**Default**: **DISABLED** (None). Provide a value in range [0.001, 2.0] to enable.
 
-**Valid Range**: `[0.001, 0.05]` when enabled
+**Valid Range**: `[0.001, 2.0]` when enabled
 
 **Examples**:
 
@@ -1535,7 +1535,7 @@ python main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.03
 - Opt-in feature disabled by default
 
 **Validation**:
-- When provided, must be in range `[0.001, 0.05]`
+- When provided, must be in range `[0.001, 2.0]`
 
 **Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
 
@@ -1846,7 +1846,7 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-R` | int | 20 | [2, 100] | Truncation radius |
 | `--tqf-hidden-dim` | int/None | None | [8, 512] | Hidden dimension (auto if None) |
 | `--tqf-symmetry-level` | str | none | none, Z6, D6, T24 | Symmetry group (opt-in) |
-| `--tqf-z6-equivariance-weight` | float | None | [0.001, 0.05] | Z6 equivariance loss (enabled when provided) |
+| `--tqf-z6-equivariance-weight` | float | None | [0.001, 2.0] | Z6 equivariance loss (enabled when provided) |
 | `--tqf-d6-equivariance-weight` | float | None | [0.001, 0.05] | D6 equivariance loss (enabled when provided) |
 | `--tqf-t24-orbit-invariance-weight` | float | None | [0.001, 0.02] | T24 orbit invariance loss (enabled when provided) |
 | `--tqf-inversion-loss-weight` | float | None | [0.0, 10.0] | Inversion duality loss (enabled when provided) |
@@ -2465,8 +2465,8 @@ python main.py --models TQF-ANN --results-dir /tmp/my_results
 ---
 **`QED`**
 
-**Last Updated:** February 20, 2026<br>
-**Version:** 1.0.4<br>
+**Last Updated:** February 24, 2026<br>
+**Version:** 1.0.5<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

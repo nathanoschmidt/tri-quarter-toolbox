@@ -271,7 +271,7 @@ def print_seed_header(
         width: Header width
     """
     print_section_header(
-        f"{model_name} >>> SEED {seed_idx} (#{seed} of {total_seeds}): {seed} >>> EXECUTING",
+        f"{model_name} >>> SEED {seed} (#{seed_idx} of {total_seeds}) >>> EXECUTING",
         char=MAJOR_SEP_CHAR,
         width=width
     )
@@ -444,7 +444,7 @@ def print_seed_results_summary(
         show_per_angle: Whether to show per-angle accuracy breakdown
     """
     print(f"\n{make_separator(MINOR_SEP_CHAR, width)}")
-    print(f" {model_name} >>> SEED {seed_idx} (#{seed} of {total_seeds}): {seed} >>> RESULTS")
+    print(f" {model_name} >>> SEED {seed} (#{seed_idx} of {total_seeds}) >>> RESULTS")
     print(f"{make_separator(MINOR_SEP_CHAR, width)}")
 
     # =========================================================================

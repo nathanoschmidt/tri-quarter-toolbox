@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.4<br>
-**Date:** February 20, 2026<br>
+**Version:** 1.0.5<br>
+**Date:** February 24, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -306,8 +306,8 @@ See some of our future TODO items in [`FUTURE_TODO.md`](FUTURE_TODO.md).
 
 **`QED`**
 
-**Last Updated:** February 20, 2026<br>
-**Version:** 1.0.4<br>
+**Last Updated:** February 24, 2026<br>
+**Version:** 1.0.5<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 
