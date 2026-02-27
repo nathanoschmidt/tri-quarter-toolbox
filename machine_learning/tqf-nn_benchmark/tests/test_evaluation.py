@@ -81,7 +81,8 @@ from evaluation import (
     estimate_model_flops,
     adaptive_orbit_mixing,
     classify_from_sector_features,
-    evaluate_with_orbit_mixing
+    evaluate_with_orbit_mixing,
+    compute_orbit_consistency_loss
 )
 import config
 
@@ -670,6 +671,364 @@ class TestEvaluateWithOrbitMixing:
 
         assert loss >= 0.0, f"Loss should be non-negative, got {loss}"
         assert 0.0 <= acc <= 100.0, f"Accuracy should be in [0, 100], got {acc}"
+
+
+class TestAdaptiveOrbitMixingEnhancements:
+    """Test new Z6 orbit mixing enhancement modes in adaptive_orbit_mixing."""
+
+    def _make_logits(self, n_variants: int = 6, batch: int = 4, classes: int = 10) -> List[torch.Tensor]:
+        """Return deterministic logit variants for testing."""
+        torch.manual_seed(42)
+        return [torch.randn(batch, classes) for _ in range(n_variants)]
+
+    # ── confidence_mode='margin' ──────────────────────────────────────────────
+
+    def test_margin_confidence_returns_correct_shape(self) -> None:
+        """
+        WHY: margin confidence mode must return same shape as max_logit mode
+        HOW: Call adaptive_orbit_mixing with confidence_mode='margin'
+        WHAT: Output shape (B, C) unchanged
+        """
+        logits = self._make_logits()
+        result = adaptive_orbit_mixing(logits, confidence_mode='margin')
+        assert result.shape == (4, 10), f"Expected (4, 10), got {result.shape}"
+
+    def test_margin_confidence_differs_from_max_logit(self) -> None:
+        """
+        WHY: margin and max_logit confidence modes should produce different outputs
+             (otherwise the feature has no effect)
+        HOW: Compare outputs for a fixed input
+        WHAT: Tensors are not identical
+        """
+        logits = self._make_logits()
+        out_max = adaptive_orbit_mixing(logits, confidence_mode='max_logit')
+        out_margin = adaptive_orbit_mixing(logits, confidence_mode='margin')
+        assert not torch.allclose(out_max, out_margin), \
+            "margin and max_logit should give different results"
+
+    def test_margin_confidence_finite_output(self) -> None:
+        """
+        WHY: margin mode must not produce NaN/Inf even with near-uniform logits
+        HOW: Use logits with very small spread
+        WHAT: All finite values
+        """
+        logits = [torch.zeros(4, 10) + 0.01 * i for i in range(6)]
+        result = adaptive_orbit_mixing(logits, confidence_mode='margin')
+        assert torch.isfinite(result).all(), "margin mode produced non-finite output"
+
+    # ── aggregation_mode='probs' ──────────────────────────────────────────────
+
+    def test_probs_aggregation_returns_correct_shape(self) -> None:
+        """
+        WHY: probs aggregation mode must preserve output shape
+        HOW: Call with aggregation_mode='probs'
+        WHAT: Shape is (B, C)
+        """
+        logits = self._make_logits()
+        result = adaptive_orbit_mixing(logits, aggregation_mode='probs')
+        assert result.shape == (4, 10)
+
+    def test_probs_aggregation_differs_from_logits(self) -> None:
+        """
+        WHY: probs mode aggregates in probability space, changing the result
+        HOW: Compare probs vs logits mode on same input
+        WHAT: Outputs are not identical
+        """
+        logits = self._make_logits()
+        out_logits = adaptive_orbit_mixing(logits, aggregation_mode='logits')
+        out_probs = adaptive_orbit_mixing(logits, aggregation_mode='probs')
+        assert not torch.allclose(out_logits, out_probs), \
+            "probs and logits aggregation should produce different results"
+
+    def test_probs_aggregation_output_in_0_1(self) -> None:
+        """
+        WHY: Weighted sum of probabilities must lie in [0, 1]
+        HOW: Check all output values
+        WHAT: All values ∈ [0, 1]
+        """
+        logits = self._make_logits()
+        result = adaptive_orbit_mixing(logits, aggregation_mode='probs')
+        assert (result >= 0).all() and (result <= 1).all(), \
+            f"probs aggregation output out of [0,1]: min={result.min()}, max={result.max()}"
+
+    # ── aggregation_mode='log_probs' ──────────────────────────────────────────
+
+    def test_log_probs_aggregation_returns_correct_shape(self) -> None:
+        """
+        WHY: log_probs mode must preserve output shape
+        HOW: Call with aggregation_mode='log_probs'
+        WHAT: Shape is (B, C)
+        """
+        logits = self._make_logits()
+        result = adaptive_orbit_mixing(logits, aggregation_mode='log_probs')
+        assert result.shape == (4, 10)
+
+    def test_log_probs_aggregation_output_negative(self) -> None:
+        """
+        WHY: Weighted log-probs should be ≤ 0 (log-softmax values ≤ 0)
+        HOW: Check all output values
+        WHAT: All values ≤ 0
+        """
+        logits = self._make_logits()
+        result = adaptive_orbit_mixing(logits, aggregation_mode='log_probs')
+        assert (result <= 0).all(), \
+            f"log_probs aggregation should be ≤ 0; max={result.max()}"
+
+    def test_log_probs_differs_from_logits_and_probs(self) -> None:
+        """
+        WHY: log_probs mode should produce output distinct from both other modes
+        HOW: Compare all three modes
+        WHAT: log_probs output ≠ logits output and ≠ probs output
+        """
+        logits = self._make_logits()
+        out_logits = adaptive_orbit_mixing(logits, aggregation_mode='logits')
+        out_probs = adaptive_orbit_mixing(logits, aggregation_mode='probs')
+        out_log = adaptive_orbit_mixing(logits, aggregation_mode='log_probs')
+        assert not torch.allclose(out_log, out_logits)
+        assert not torch.allclose(out_log, out_probs)
+
+    # ── top_k filtering ───────────────────────────────────────────────────────
+
+    def test_top_k_returns_correct_shape(self) -> None:
+        """
+        WHY: top_k filtering must not change output shape
+        HOW: Call with top_k=3 on 6 variants
+        WHAT: Shape remains (B, C)
+        """
+        logits = self._make_logits(n_variants=6)
+        result = adaptive_orbit_mixing(logits, top_k=3)
+        assert result.shape == (4, 10)
+
+    def test_top_k_differs_from_full_ensemble(self) -> None:
+        """
+        WHY: Dropping 3 variants should change the output
+        HOW: Compare top_k=3 vs top_k=None
+        WHAT: Results differ
+        """
+        logits = self._make_logits(n_variants=6)
+        out_full = adaptive_orbit_mixing(logits, top_k=None)
+        out_topk = adaptive_orbit_mixing(logits, top_k=3)
+        assert not torch.allclose(out_full, out_topk), \
+            "top_k=3 should differ from using all 6 variants"
+
+    def test_top_k_equal_to_n_same_as_full(self) -> None:
+        """
+        WHY: top_k=N (all variants) should be equivalent to top_k=None
+        HOW: Compare top_k=6 vs top_k=None for 6 variants
+        WHAT: Results are identical
+        """
+        logits = self._make_logits(n_variants=6)
+        out_full = adaptive_orbit_mixing(logits, top_k=None)
+        out_topk = adaptive_orbit_mixing(logits, top_k=6)
+        assert torch.allclose(out_full, out_topk), \
+            "top_k=6 on 6 variants should be identical to top_k=None"
+
+    def test_top_k_one_variant_reduces_to_single(self) -> None:
+        """
+        WHY: top_k=1 should produce the same as calling with just the best variant
+        HOW: The most confident variant should dominate completely
+        WHAT: Result is finite and valid
+        """
+        logits = self._make_logits(n_variants=6)
+        result = adaptive_orbit_mixing(logits, top_k=1, temperature=0.01)
+        assert result.shape == (4, 10)
+        assert torch.isfinite(result).all()
+
+    # ── adaptive_temp=True ────────────────────────────────────────────────────
+
+    def test_adaptive_temp_returns_correct_shape(self) -> None:
+        """
+        WHY: adaptive_temp must preserve output shape
+        HOW: Call with adaptive_temp=True
+        WHAT: Shape is (B, C)
+        """
+        logits = self._make_logits()
+        result = adaptive_orbit_mixing(logits, adaptive_temp=True)
+        assert result.shape == (4, 10)
+
+    def test_adaptive_temp_differs_from_fixed_temp(self) -> None:
+        """
+        WHY: adaptive_temp should produce different output than fixed temperature
+        HOW: Compare adaptive_temp=True vs False on same input
+        WHAT: Outputs differ
+        """
+        logits = self._make_logits()
+        out_fixed = adaptive_orbit_mixing(logits, adaptive_temp=False)
+        out_adaptive = adaptive_orbit_mixing(logits, adaptive_temp=True, adaptive_temp_alpha=2.0)
+        assert not torch.allclose(out_fixed, out_adaptive), \
+            "adaptive_temp should produce different output than fixed temp"
+
+    def test_adaptive_temp_finite_output(self) -> None:
+        """
+        WHY: Adaptive temperature must not produce NaN/Inf
+        HOW: Use varied logits with adaptive_temp=True, alpha=1.0
+        WHAT: All finite values
+        """
+        logits = self._make_logits()
+        result = adaptive_orbit_mixing(logits, adaptive_temp=True, adaptive_temp_alpha=1.0)
+        assert torch.isfinite(result).all(), "adaptive_temp produced non-finite output"
+
+    def test_adaptive_temp_single_variant_no_error(self) -> None:
+        """
+        WHY: adaptive_temp with N=1 should be a no-op (single variant returns early)
+        HOW: Pass a list of 1 tensor
+        WHAT: Returns that tensor unchanged (no division by zero)
+        """
+        logits = self._make_logits(n_variants=1)
+        result = adaptive_orbit_mixing(logits, adaptive_temp=True)
+        assert torch.allclose(result, logits[0])
+
+    # ── combined modes ────────────────────────────────────────────────────────
+
+    def test_margin_log_probs_top_k_combined(self) -> None:
+        """
+        WHY: All new modes can be combined; must produce finite output
+        HOW: margin + log_probs + top_k=4 + adaptive_temp
+        WHAT: Shape (B, C) and all finite
+        """
+        logits = self._make_logits(n_variants=6)
+        result = adaptive_orbit_mixing(
+            logits,
+            confidence_mode='margin',
+            aggregation_mode='log_probs',
+            top_k=4,
+            adaptive_temp=True,
+            adaptive_temp_alpha=1.0
+        )
+        assert result.shape == (4, 10)
+        assert torch.isfinite(result).all()
+
+
+class TestComputeOrbitConsistencyLoss:
+    """Test orbit consistency self-distillation loss function."""
+
+    def _make_tqf_model(self):
+        """Return a minimal TQF-ANN model for testing."""
+        from models_tqf import TQFANN
+        model = TQFANN(R=2)
+        model.eval()
+        return model
+
+    def _make_inputs(self, batch: int = 4) -> torch.Tensor:
+        """Return flat MNIST-shaped inputs."""
+        torch.manual_seed(0)
+        return torch.randn(batch, 784)
+
+    def test_non_tqf_model_returns_none(self) -> None:
+        """
+        WHY: Non-TQF models have no dual_output; function must return None cleanly
+        HOW: Pass a plain Linear model
+        WHAT: Return value is None
+        """
+        model = nn.Linear(784, 10)
+        inputs = self._make_inputs()
+        base_logits = model(inputs)
+        result = compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations=1)
+        assert result is None, f"Expected None for non-TQF model, got {result}"
+
+    def test_tqf_model_returns_scalar_tensor(self) -> None:
+        """
+        WHY: TQF models should get a scalar loss tensor back
+        HOW: Run with TQFANN(R=2) and 2 extra rotations
+        WHAT: Returns a 0-dimensional finite tensor
+        """
+        model = self._make_tqf_model()
+        inputs = self._make_inputs()
+        with torch.no_grad():
+            base_logits = model(inputs, return_inv_loss=False)
+        # Re-run with gradients for consistency loss (as training would)
+        base_logits = model(inputs, return_inv_loss=False)
+        result = compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations=2)
+        assert result is not None
+        assert result.shape == () or result.numel() == 1, \
+            f"Expected scalar tensor, got shape {result.shape}"
+        assert torch.isfinite(result), f"Loss should be finite, got {result}"
+
+    def test_loss_is_non_negative(self) -> None:
+        """
+        WHY: KL divergence is always ≥ 0; the mean over variants must be ≥ 0
+        HOW: Run orbit consistency loss on TQF model
+        WHAT: Loss ≥ 0
+        """
+        model = self._make_tqf_model()
+        inputs = self._make_inputs()
+        base_logits = model(inputs, return_inv_loss=False)
+        result = compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations=2)
+        assert result is not None
+        assert result.item() >= 0.0, f"KL loss should be ≥ 0, got {result.item()}"
+
+    def test_num_rotations_1(self) -> None:
+        """
+        WHY: num_rotations=1 is the minimum valid value and must still work
+        HOW: Pass num_rotations=1
+        WHAT: Returns finite scalar ≥ 0
+        """
+        model = self._make_tqf_model()
+        inputs = self._make_inputs()
+        base_logits = model(inputs, return_inv_loss=False)
+        result = compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations=1)
+        assert result is not None
+        assert torch.isfinite(result)
+        assert result.item() >= 0.0
+
+    def test_num_rotations_5(self) -> None:
+        """
+        WHY: num_rotations=5 is the maximum (all Z6 non-identity angles sampled)
+        HOW: Pass num_rotations=5
+        WHAT: Returns finite scalar ≥ 0
+        """
+        model = self._make_tqf_model()
+        inputs = self._make_inputs()
+        base_logits = model(inputs, return_inv_loss=False)
+        result = compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations=5)
+        assert result is not None
+        assert torch.isfinite(result)
+        assert result.item() >= 0.0
+
+    def test_loss_has_gradient(self) -> None:
+        """
+        WHY: Orbit consistency loss must be differentiable (for backprop in training)
+        HOW: Check that .requires_grad is True on the returned tensor
+        WHAT: result.requires_grad is True
+        """
+        model = self._make_tqf_model()
+        inputs = self._make_inputs()
+        base_logits = model(inputs, return_inv_loss=False)
+        result = compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations=2)
+        assert result is not None
+        assert result.requires_grad, "Orbit consistency loss must be differentiable"
+
+    def test_loss_zero_for_perfectly_consistent_model(self) -> None:
+        """
+        WHY: If all rotation variants produce identical logits, KL divergence = 0
+        HOW: Monkey-patch model to always return a constant tensor (no rotation effect)
+        WHAT: Loss is ~0
+        """
+        model = self._make_tqf_model()
+
+        constant_logits = torch.ones(4, 10)
+
+        # Patch forward to ignore input and always return constant_logits
+        original_forward = model.forward
+
+        def patched_forward(x, return_inv_loss=True):
+            return constant_logits.clone()
+
+        model.forward = patched_forward  # type: ignore[method-assign]
+        inputs = self._make_inputs()
+        base_logits = patched_forward(inputs)
+
+        # For the loss function, we need base_logits in the computation graph
+        # Use constant tensor with grad attached
+        base_logits_grad = constant_logits.detach().requires_grad_(True)
+        result = compute_orbit_consistency_loss(model, inputs, base_logits_grad, num_rotations=2)
+
+        model.forward = original_forward  # type: ignore[method-assign]
+
+        assert result is not None
+        # KL(p || p) = 0 for all samples → total loss should be ~0
+        assert result.item() < 1e-4, \
+            f"Expected loss ≈ 0 for perfectly consistent model, got {result.item()}"
 
 
 def run_tests(verbosity: int = 2):

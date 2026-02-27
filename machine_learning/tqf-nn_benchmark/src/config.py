@@ -567,129 +567,6 @@ TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 #      via CLI when rotation invariance is specifically required.
 TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'
 
-# TQF_FRACTAL_ITERATIONS_DEFAULT
-# ------------------------------
-# WHAT: Number of iterations for fractal self-similarity calculations.
-#
-# HOW: Fractal dimension estimation via self-similarity analysis. More iterations
-#      = more accurate dimension estimate but slower computation.
-#      - Default: 0 (DISABLED, opt-in via CLI)
-#      - CLI override: --tqf-fractal-iterations N
-#      - Used in: Self-similarity loss, fractal regularization, boundary encoding
-#      - Typical range when enabled: 1-20 (1 = minimal, 5 = balanced, 10 = fine, 20 = maximum)
-#
-# WHY: Fractal regularization is an ADVANCED feature that encourages multi-scale structure
-#      in learned representations. The radial dual lattice has inherent fractal properties
-#      (self-similar at different scales). By measuring and penalizing deviations from
-#      expected fractal dimension, we guide the network to preserve geometric structure.
-#
-#      DISABLED BY DEFAULT because:
-#      1. Most users don't need fractal regularization for basic training
-#      2. Adds computational overhead (creates N fractal mixer/gate layers)
-#      3. Requires careful tuning of fractal loss weights to be effective
-#      4. Best used for advanced geometric experiments or research
-#
-#      When enabled (via --tqf-fractal-iterations N):
-#      - Creates N fractal mixer layers in BoundaryEncoder
-#      - Creates min(3, N) fractal gate layers in conv operations
-#      - Enables multi-scale self-similarity in forward pass
-#      - Recommended starting value: 5 (balanced accuracy/speed)
-#
-#      Decision: Default to 0 (disabled) for simplicity. Users explicitly enable when needed.
-TQF_FRACTAL_ITERATIONS_DEFAULT: int = 0
-
-# TQF_FRACTAL_DIM_TOLERANCE_DEFAULT
-# ---------------------------------
-# WHAT: Tolerance for fractal dimension verification checks.
-#       Internal constant — not exposed as a CLI parameter.
-#       (Formerly --tqf-fractal-dim-tolerance; consolidated to reduce CLI surface area.
-#        Related to --tqf-fractal-iterations which controls whether fractal features are active.)
-#
-# HOW: Acceptable deviation between measured and theoretical fractal dimensions.
-#      If |measured - theoretical| > tolerance, emit warning (but don't halt training).
-#      - Default: 0.08 (8% relative error)
-#      - Used in: Fractal regularization verification
-#      - Not a loss weight: This is a DIAGNOSTIC threshold, not an optimization target
-#
-# WHY: Fractal dimension is a geometric property of the TQF lattice. Theoretical
-#      dimension is 1.585 (log(3)/log(2), Sierpinski triangle dimension).
-#      During training, measured dimension should stay close to theoretical value.
-#      With 8% tolerance: acceptable range is [1.458, 1.712].
-#      Large deviations indicate:
-#      1. Broken geometric structure (lattice topology corrupted)
-#      2. Numerical instabilities (distance computations overflow/underflow)
-#      3. Implementation errors in dual metric formulas
-#      8% tolerance catches meaningful geometry drift (~0.1 deviation) while
-#      allowing normal numerical variance from box-counting estimation.
-TQF_FRACTAL_DIM_TOLERANCE_DEFAULT: float = 0.08
-
-# TQF_THEORETICAL_FRACTAL_DIM_DEFAULT
-# -----------------------------------
-# WHAT: Theoretical fractal dimension of the TQF radial dual triangular lattice.
-#
-# HOW: Expected value for fractal dimension measurements via box-counting or
-#      correlation dimension algorithms on the lattice geometry.
-#      - Default: 1.585 (log(3)/log(2), Sierpinski triangle dimension)
-#      - Used in: Verification checks against measured fractal dimension
-#      - Acceptable range based on lattice structure: ~1.5-1.8
-#
-# WHY: The TQF radial dual triangular lattice exhibits fractal properties due to:
-#      1. Self-similar structure at multiple scales (fractal iterations)
-#      2. Hierarchical organization (radial bins with iterative refinement)
-#      3. Triangular tessellation (related to Sierpinski triangle D ~ 1.585)
-#      The value 1.585 = log(3)/log(2) is mathematically significant:
-#      - Sierpinski triangle fractal dimension
-#      - Natural dimension for triangular self-similar structures
-#      - Aligns with TQF's triangular lattice foundation
-#      During training, measured dimension should stay within tolerance of this value.
-#      Deviations indicate geometric degradation or numerical issues.
-#      Decision: 1.585 based on Sierpinski triangle (triangular lattice archetype).
-TQF_THEORETICAL_FRACTAL_DIM_DEFAULT: float = 1.585
-
-# TQF_FRACTAL_EPSILON_DEFAULT
-# ---------------------------
-# WHAT: Small constant to prevent log(0) in fractal dimension calculations.
-#
-# HOW: Added to box-counting denominators: log(count + epsilon) to avoid division
-#      by zero or log of zero.
-#      - Default: 1e-8 (numerical stability constant)
-#      - Not tunable: This is a numerical safeguard, not a hyperparameter
-#      - Affects: Fractal dimension computation stability
-#
-# WHY: Box-counting algorithm divides space into boxes of decreasing size and counts
-#      non-empty boxes. For very small boxes, count might be 0, causing log(0) = -inf.
-#      Epsilon = 1e-8 prevents this without significantly affecting results (1e-8 is
-#      negligible compared to typical counts of 10-1000). This is standard practice
-#      in fractal dimension estimation algorithms.
-#      Decision: 1e-8 is small enough to be numerically transparent while preventing NaN.
-TQF_FRACTAL_EPSILON_DEFAULT: float = 1e-8
-
-# TQF_BOX_COUNTING_SCALES_DEFAULT
-# -------------------------------
-# WHAT: Number of scale levels for box-counting fractal dimension estimation.
-#       Internal constant — not exposed as a CLI parameter.
-#       (Formerly --tqf-box-counting-scales; consolidated to reduce CLI surface area.
-#        Related to --tqf-box-counting-weight which controls whether box-counting loss is active.)
-#
-# HOW: Box sizes range from coarse (large boxes) to fine (small boxes) over this
-#      many logarithmically-spaced levels. More scales = more accurate dimension.
-#      - Default: 10 scales
-#      - Typical range: 5-15 (5 = coarse, 15 = fine)
-#      - Computation: O(scales * num_vertices) per iteration
-#
-# WHY: Box-counting method estimates fractal dimension by plotting log(count) vs.
-#      log(1/box_size). More scales give better linear regression fit (more data points).
-#      Scientific considerations:
-#      1. Too few scales (3-4): Poor fit, inaccurate dimension estimate
-#      2. Optimal scales (8-12): Good fit, stable dimension
-#      3. Too many scales (20+): Computational waste, marginal accuracy gains
-#      Empirical tuning:
-#      - 5 scales: Fast but dimension estimate varies by 0.1-0.2
-#      - 10 scales: Balanced, dimension estimate stable to 0.05
-#      - 15 scales: Negligible improvement over 10, 50% slower
-#      Decision: 10 scales provides reliable dimension estimates without excessive cost.
-TQF_BOX_COUNTING_SCALES_DEFAULT: int = 10
-
 ###################################################################################
 # TQF REGULARIZATION WEIGHTS ######################################################
 ###################################################################################
@@ -716,72 +593,12 @@ TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
 # Note: TQF equivariance/invariance/duality loss weights have been removed from
 # config.py as these features are disabled by default. Users enable them by
 # providing the weight value directly via CLI (e.g., --tqf-z6-equivariance-weight 0.01).
-# See cli.py for valid ranges: Z6/D6 [0.001, 0.05], T24 [0.001, 0.02], Inversion [0.0, 10.0].
+# See cli.py for valid ranges: Z6 [0.001, 2.0], D6 [0.001, 0.05], T24 [0.001, 0.02], Inversion [0.0, 10.0].
 
-# TQF_SELF_SIMILARITY_WEIGHT_DEFAULT
-# ----------------------------------
-# WHAT: Weight for fractal self-similarity regularization loss.
-#
-# HOW: Encourages learned representations to exhibit fractal self-similarity at
-#      multiple scales. Measures correlation between features at different resolutions.
-#      - Default: 0.0 (disabled, opt-in via CLI)
-#      - CLI override: --tqf-self-similarity-weight F
-#      - Recommended range when enabled: 0.0001 to 0.001
-#
-# WHY: The radial dual lattice has inherent fractal structure (self-similar triangles
-#      at all scales). Self-similarity loss encourages network to preserve this property.
-#      Benefits when enabled:
-#      1. Multi-scale robustness (same features at different zoom levels)
-#      2. Efficient representation (hierarchical structure)
-#      3. Better generalization (fractal patterns are universal)
-#      Default 0.0 allows baseline training without fractal constraints.
-#      Enable via CLI when fractal self-similarity is specifically required.
-TQF_SELF_SIMILARITY_WEIGHT_DEFAULT: float = 0.0
-
-# TQF_BOX_COUNTING_WEIGHT_DEFAULT
-# -------------------------------
-# WHAT: Weight for box-counting fractal dimension regularization loss.
-#
-# HOW: Penalizes deviation between measured and theoretical fractal dimensions.
-#      Loss = |measured_dimension - theoretical_dimension|.
-#      - Default: 0.0 (disabled, opt-in via CLI)
-#      - CLI override: --tqf-box-counting-weight F
-#      - Recommended range when enabled: 0.0001 to 0.001
-#
-# WHY: Complementary to self-similarity loss. While self-similarity measures correlation,
-#      box-counting measures actual fractal dimension. Scientific rationale:
-#      1. Box-counting is rigorous mathematical definition of fractal dimension
-#      2. Guides learned representations toward expected dimension (1.585)
-#      3. Provides diagnostic signal for geometric degradation
-#      Default 0.0 allows baseline training without fractal dimension constraints.
-#      Enable via CLI when fractal dimension preservation is specifically required.
-TQF_BOX_COUNTING_WEIGHT_DEFAULT: float = 0.0
 
 ###################################################################################
 # TQF DUAL METRICS PARAMETERS #####################################################
 ###################################################################################
-
-# TQF_HOP_ATTENTION_TEMP_DEFAULT
-# ------------------------------
-# WHAT: Temperature for multi-hop attention mechanism in geodesic distance computation.
-#
-# HOW: Controls attention sharpness when aggregating information across lattice hops.
-#      Higher temp = more uniform attention, lower temp = more focused on short paths.
-#      - Default: 0.5
-#      - CLI override: --tqf-hop-attention-temp F
-#      - Range: (0, 1] where 0.1 = very focused, 1.0 = uniform
-#
-# WHY: Multi-hop attention weights paths of different lengths in the lattice graph.
-#      Scientific rationale:
-#      1. Low temp (0.1): Focus on shortest paths (local geometry)
-#      2. Medium temp (0.5): Balance short and long paths (multi-scale)
-#      3. High temp (1.0): Treat all paths equally (global averaging)
-#      Empirical tuning:
-#      - 0.1: Too local, misses long-range dependencies
-#      - 0.5: Balanced, captures both local and global structure
-#      - 1.0: Uniform weighting, fastest (bypasses attention computation)
-#      Decision: 1.0 for performance (bypasses expensive attention path). Use 0.5 via CLI if needed.
-TQF_HOP_ATTENTION_TEMP_DEFAULT: float = 1.0
 
 # TQF_DUALITY_TOLERANCE_DEFAULT
 # -----------------------------
@@ -889,6 +706,122 @@ TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT: float = 0.5
 #      Decision: 0.7 gives gentle contribution without diluting primary predictions.
 TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT: float = 0.7
 
+# TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT
+# -----------------------------------------
+# WHAT: Confidence scoring mode for orbit mixing weight computation.
+#
+# HOW: Controls how each orbit variant's "confidence" is measured before temperature
+#      scaling and softmax weighting.
+#      - 'max_logit': uses the raw max logit value (original behaviour)
+#      - 'margin': uses top-1 minus top-2 logit gap (more discriminative — a variant
+#        with a large gap is genuinely confident; a high max with a close second is not)
+#      - Default: 'max_logit' (backward-compatible)
+#      - CLI override: --tqf-z6-orbit-mixing-confidence-mode {max_logit,margin}
+TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT: str = 'max_logit'
+
+# TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT
+# ------------------------------------------
+# WHAT: Aggregation space for combining weighted orbit variant predictions.
+#
+# HOW: Controls what is averaged across the weighted orbit ensemble.
+#      - 'logits': weighted sum of raw logits (original behaviour)
+#      - 'probs': weighted sum of softmax probabilities (bounded, no scale blowup)
+#      - 'log_probs': weighted sum in log-probability space (geometric mean /
+#        product-of-experts — requires broad agreement for high confidence)
+#      - Default: 'logits' (backward-compatible)
+#      - CLI override: --tqf-z6-orbit-mixing-aggregation-mode {logits,probs,log_probs}
+TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT: str = 'logits'
+
+# TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT
+# --------------------------------
+# WHAT: Number of highest-confidence orbit variants to include in the ensemble.
+#
+# HOW: When set, only the top-K variants (by confidence score) are included;
+#      the rest are discarded before weighting.
+#      - None: use all 6 variants (default, backward-compatible)
+#      - 2-6: keep only the top-K most confident variants
+#      - CLI override: --tqf-z6-orbit-mixing-top-k INT
+TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT: None = None  # type: ignore[assignment]
+
+# TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT / _ALPHA_DEFAULT
+# --------------------------------------------------------
+# WHAT: Per-sample adaptive temperature scaling for orbit mixing.
+#
+# HOW: When enabled, the temperature is scaled per sample based on the orbit
+#      entropy (disagreement across variants). High disagreement → softer weighting;
+#      low disagreement → sharper weighting.
+#      T_eff = T_base * (1 + alpha * orbit_entropy / log(N))
+#      - Default: False (fixed temperature, backward-compatible)
+#      - CLI override: --tqf-z6-orbit-mixing-adaptive-temp
+#      - alpha controls sensitivity; range [0.1, 10.0]. Default: 1.0
+TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT: bool = False
+TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT: float = 1.0
+
+# TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT
+# ----------------------------------------
+# WHAT: Interpolation mode for image rotation in orbit mixing.
+#
+# HOW: Passed to F.grid_sample when rotating input images.
+#      - 'bilinear': standard bilinear interpolation (default, backward-compatible)
+#      - 'bicubic': higher-quality cubic interpolation; better edge preservation
+#      - CLI override: --tqf-z6-orbit-mixing-rotation-mode {bilinear,bicubic}
+TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT: str = 'bilinear'
+
+# TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT
+# -----------------------------------------------
+# WHAT: Padding mode for image rotation — controls how corners are filled.
+#
+# HOW: Passed to F.grid_sample when rotating input images.
+#      - 'zeros': fill rotated corners with 0 (default, backward-compatible)
+#      - 'border': replicate edge pixels into corners; avoids artificial
+#        black-region artefacts that can confuse the model
+#      - CLI override: --tqf-z6-orbit-mixing-rotation-padding-mode {zeros,border}
+TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT: str = 'zeros'
+
+# TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT
+# ----------------------------------------
+# WHAT: Pad the image before rotating, then crop back to 28x28.
+#
+# HOW: When > 0, the image is padded to (28+2*pad)×(28+2*pad) with reflect
+#      padding before rotation, then center-cropped back to 28×28. This prevents
+#      any zero-filled corner artefacts from appearing in the rotated output.
+#      - 0: disabled (no padding, rotate in place — default, backward-compatible)
+#      - 4: typical useful value (adds 4px on each side)
+#      - CLI override: --tqf-z6-orbit-mixing-rotation-pad INT
+TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT: int = 0
+
+# TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT
+# ----------------------------------------
+# WHAT: Enable non-rotation training augmentation (random crop + brightness jitter).
+#
+# HOW: When True, adds random crop (pad=2, 28×28 crop) and slight brightness /
+#      contrast jitter (±10%) to the training transform. Works independently of
+#      Z6 rotation augmentation — can be used with or without it.
+#      - Default: False (disabled, backward-compatible)
+#      - CLI override: --tqf-z6-non-rotation-augmentation
+TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT: bool = False
+
+# TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_DEFAULT / _ROTATIONS_DEFAULT
+# ----------------------------------------------------------
+# WHAT: Training-time orbit consistency self-distillation loss.
+#
+# HOW: During training, run num_rotations additional Z6-rotated forward passes,
+#      compute the soft orbit-mixed ensemble, and minimise KL(ensemble || each
+#      rotation's softmax). This teaches the model to produce consistent predictions
+#      across rotations in output space — different from equivariance losses which
+#      operate on intermediate features.
+#      - None: disabled (no extra forward passes — default, backward-compatible)
+#      - float in [0.0001, 1.0]: weight for the consistency loss term
+#      - CLI override: --tqf-z6-orbit-consistency-weight FLOAT
+#      - num_rotations: how many Z6 rotations to sample per training batch [1, 5]
+#      - CLI override: --tqf-z6-orbit-consistency-rotations INT
+#
+# WHY: Unlike equivariance loss (which constrains intermediate features), this
+#      loss only requires that the final output distribution is consistent across
+#      rotations — a strictly weaker and more learnable constraint.
+TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_DEFAULT: None = None  # type: ignore[assignment]
+TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT: int = 2
+
 ###################################################################################
 # NUMERIC RANGE CONSTANTS #########################################################
 ###################################################################################
@@ -932,24 +865,21 @@ TQF_R_MIN: int = 2  # Must be > inversion radius (r=1)
 TQF_R_MAX: int = 100
 TQF_HIDDEN_DIM_MIN: int = 8
 TQF_HIDDEN_DIM_MAX: int = 512
-TQF_FRACTAL_ITERATIONS_MIN: int = 1
-TQF_FRACTAL_ITERATIONS_MAX: int = 20
-# TQF_FRACTAL_DIM_TOLERANCE range constants removed — no longer CLI-tunable
-# (consolidated as internal constant TQF_FRACTAL_DIM_TOLERANCE_DEFAULT=0.08)
-TQF_SELF_SIMILARITY_WEIGHT_MIN: float = 0.0
-TQF_SELF_SIMILARITY_WEIGHT_MAX: float = 10.0
-TQF_BOX_COUNTING_WEIGHT_MIN: float = 0.0
-TQF_BOX_COUNTING_WEIGHT_MAX: float = 10.0
-# TQF_BOX_COUNTING_SCALES range constants removed — no longer CLI-tunable
-# (consolidated as internal constant TQF_BOX_COUNTING_SCALES_DEFAULT=10)
-
-# TQF attention ranges
-TQF_HOP_ATTENTION_TEMP_MIN: float = 0.01
-TQF_HOP_ATTENTION_TEMP_MAX: float = 10.0
-
 # TQF orbit mixing temperature ranges
 TQF_ORBIT_MIXING_TEMP_MIN: float = 0.01
 TQF_ORBIT_MIXING_TEMP_MAX: float = 2.0
+
+# TQF orbit mixing enhancement ranges
+TQF_Z6_ORBIT_MIXING_TOP_K_MIN: int = 2
+TQF_Z6_ORBIT_MIXING_TOP_K_MAX: int = 6
+TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN: float = 0.1
+TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX: float = 10.0
+TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN: int = 0
+TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX: int = 8
+TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MIN: float = 0.0001
+TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MAX: float = 1.0
+TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN: int = 1
+TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MAX: int = 5
 
 # TQF loss weight ranges
 TQF_GEOMETRY_REG_WEIGHT_MIN: float = 0.0
@@ -1152,22 +1082,9 @@ assert TQF_HIDDEN_DIM_MIN <= TQF_HIDDEN_DIMENSION_DEFAULT <= TQF_HIDDEN_DIM_MAX,
     f"Hidden dimension must be in [{TQF_HIDDEN_DIM_MIN}, {TQF_HIDDEN_DIM_MAX}]"
 assert TQF_SYMMETRY_LEVEL_DEFAULT in ['none', 'Z6', 'D6', 'T24'], \
     "Invalid symmetry level"
-assert TQF_FRACTAL_ITERATIONS_DEFAULT >= 0, \
-    "Fractal iterations must be non-negative (0 = disabled)"
-assert 2 <= TQF_BOX_COUNTING_SCALES_DEFAULT <= 20, \
-    "Box-counting scales must be in [2, 20] (internal constant, not CLI-tunable)"
-
-# TQF attention assertions
-assert TQF_HOP_ATTENTION_TEMP_MIN <= TQF_HOP_ATTENTION_TEMP_DEFAULT <= TQF_HOP_ATTENTION_TEMP_MAX, \
-    f"Hop attention temp must be in [{TQF_HOP_ATTENTION_TEMP_MIN}, {TQF_HOP_ATTENTION_TEMP_MAX}]"
-
 # Regularization weight assertions
 assert TQF_GEOMETRY_REG_WEIGHT_MIN <= TQF_GEOMETRY_REG_WEIGHT_DEFAULT <= TQF_GEOMETRY_REG_WEIGHT_MAX, \
     f"Geometry reg weight must be in [{TQF_GEOMETRY_REG_WEIGHT_MIN}, {TQF_GEOMETRY_REG_WEIGHT_MAX}]"
-assert TQF_SELF_SIMILARITY_WEIGHT_MIN <= TQF_SELF_SIMILARITY_WEIGHT_DEFAULT <= TQF_SELF_SIMILARITY_WEIGHT_MAX, \
-    f"Self-similarity weight must be in [{TQF_SELF_SIMILARITY_WEIGHT_MIN}, {TQF_SELF_SIMILARITY_WEIGHT_MAX}]"
-assert TQF_BOX_COUNTING_WEIGHT_MIN <= TQF_BOX_COUNTING_WEIGHT_DEFAULT <= TQF_BOX_COUNTING_WEIGHT_MAX, \
-    f"Box-counting weight must be in [{TQF_BOX_COUNTING_WEIGHT_MIN}, {TQF_BOX_COUNTING_WEIGHT_MAX}]"
 
 # Orbit mixing temperature assertions
 assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \

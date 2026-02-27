@@ -93,15 +93,15 @@ if TORCH_AVAILABLE:
 class TestTQFANNIntegration(unittest.TestCase):
     """Test end-to-end TQF-ANN integration with all corrections."""
 
-    def setUp(self) -> None:
-        """Create a small TQF-ANN for testing."""
-        self.model = TQFANN(
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create a small TQF-ANN once for all tests in this class."""
+        cls.model = TQFANN(
             in_features=784,
             hidden_dim=32,
             num_classes=10,
             R=5.0,  # Small for fast tests
             symmetry_level='Z6',
-            fractal_iters=2  # Reduced for speed
         )
 
     def test_model_has_explicit_vertices(self) -> None:
@@ -294,14 +294,14 @@ class TestTQFANNSymmetryLevels(unittest.TestCase):
 
     def test_symmetry_none(self) -> None:
         """Test TQF-ANN with no symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='none', fractal_iters=1)
+        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='none')
         x = torch.randn(2, 784)
         logits = model(x)
         self.assertEqual(logits.shape, (2, 10))
 
     def test_symmetry_z6(self) -> None:
         """Test TQF-ANN with Z6 rotational symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='Z6', fractal_iters=1)
+        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='Z6')
         x = torch.randn(2, 784)
         logits = model(x)
         self.assertEqual(logits.shape, (2, 10))
@@ -311,14 +311,14 @@ class TestTQFANNSymmetryLevels(unittest.TestCase):
 
     def test_symmetry_d6(self) -> None:
         """Test TQF-ANN with D6 dihedral symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='D6', fractal_iters=1)
+        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='D6')
         x = torch.randn(2, 784)
         logits = model(x)
         self.assertEqual(logits.shape, (2, 10))
 
     def test_symmetry_t24(self) -> None:
         """Test TQF-ANN with T24 full symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='T24', fractal_iters=1)
+        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='T24')
         x = torch.randn(2, 784)
         logits = model(x)
         self.assertEqual(logits.shape, (2, 10))
@@ -329,18 +329,18 @@ class TestTQFANNScalability(unittest.TestCase):
 
     def test_small_lattice(self) -> None:
         """Test with small R=3."""
-        model = TQFANN(R=3.0, hidden_dim=16, fractal_iters=1)
+        model = TQFANN(R=3.0, hidden_dim=16)
         self.assertGreater(len(model.vertices), 6)  # More than just boundary
 
     def test_medium_lattice(self) -> None:
         """Test with medium R=8."""
-        model = TQFANN(R=8.0, hidden_dim=16, fractal_iters=1)
+        model = TQFANN(R=8.0, hidden_dim=16)
         self.assertGreater(len(model.vertices), 100)
 
     def test_vertex_count_scales_quadratically(self) -> None:
         """Test that vertex count scales approximately as R^2."""
-        model_small = TQFANN(R=5.0, hidden_dim=16, fractal_iters=1)
-        model_large = TQFANN(R=10.0, hidden_dim=16, fractal_iters=1)
+        model_small = TQFANN(R=5.0, hidden_dim=16)
+        model_large = TQFANN(R=10.0, hidden_dim=16)
 
         count_small = len(model_small.vertices)
         count_large = len(model_large.vertices)
@@ -354,13 +354,13 @@ class TestTQFANNScalability(unittest.TestCase):
 class TestTQFANNForwardPassCorrections(unittest.TestCase):
     """Test that forward pass uses TQF corrections properly."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(
             R=5.0,
             hidden_dim=16,
-            fractal_iters=1,
-                    )
+        )
 
     def test_graph_convolution_uses_adjacency(self) -> None:
         """Test that RadialBinner uses actual lattice adjacency."""
@@ -440,17 +440,18 @@ class TestTQFANNForwardPassCorrections(unittest.TestCase):
 class TestT24SymmetryGroup(unittest.TestCase):
     """Test T24 = D6 x Z2 Inversive Hexagonal Dihedral Symmetry Group implementation."""
 
-    def setUp(self) -> None:
-        """Create TQF-ANN models with different symmetry levels."""
-        self.model_z6 = TQFANN(
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create TQF-ANN models once for all tests in this class."""
+        cls.model_z6 = TQFANN(
             hidden_dim=32, R=5.0, symmetry_level='Z6',
-            fractal_iters=2,         )
-        self.model_d6 = TQFANN(
+        )
+        cls.model_d6 = TQFANN(
             hidden_dim=32, R=5.0, symmetry_level='D6',
-            fractal_iters=2,         )
-        self.model_t24 = TQFANN(
+        )
+        cls.model_t24 = TQFANN(
             hidden_dim=32, R=5.0, symmetry_level='T24',
-            fractal_iters=2,         )
+        )
 
     def test_t24_verification_method_exists(self) -> None:
         """Test that T24 verification method is available."""
@@ -572,16 +573,16 @@ class TestSymmetryOperationsIntegration(unittest.TestCase):
     WHAT: Tests for Phase 2 (model integration) and Phase 3 (loss functions).
     """
 
-    def setUp(self) -> None:
-        """Create small TQF-ANN for testing."""
-        self.model = TQFANN(
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create small TQF-ANN once for all tests in this class."""
+        cls.model = TQFANN(
             in_features=784,
             hidden_dim=32,
             num_classes=10,
             R=5.0,
             symmetry_level='D6',
-            fractal_iters=2,
-                    )
+        )
 
     def test_feature_caching(self) -> None:
         """

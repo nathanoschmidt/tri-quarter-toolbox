@@ -6,6 +6,41 @@ All notable changes to these TQF-NN benchmark tools will be documented in this f
 
 ---
 
+## [1.1.0] - 2026-02-26
+
+### Added
+
+**ℤ₆ Orbit Mixing Quality Enhancements (evaluation-time, opt-in)**
+
+All new CLI flags require `--tqf-use-z6-orbit-mixing` and default to the existing behaviour when omitted.
+
+- `--tqf-z6-orbit-mixing-confidence-mode` — choose variant confidence scoring: `max_logit` (default, unchanged) or `margin` (top-1 minus top-2 logit). Rewards rotation variants where the leading class is decisive.
+- `--tqf-z6-orbit-mixing-aggregation-mode` — choose ensemble averaging space: `logits` (default, unchanged), `probs` (probability space), or `log_probs` (log-probability / geometric mean / product-of-experts).
+- `--tqf-z6-orbit-mixing-top-k` — keep only the K most confident rotation variants before the weighted average (range [2, 6]; default: all 6). Intended to filter noisy low-confidence rotations.
+- `--tqf-z6-orbit-mixing-adaptive-temp` — enable per-sample adaptive temperature scaling based on orbit entropy. High-entropy samples (variants similarly confident) receive a higher temperature for smoother averaging. Controlled by `--tqf-z6-orbit-mixing-adaptive-temp-alpha` (range [0.1, 10.0]; default: 1.0).
+- `--tqf-z6-orbit-mixing-rotation-mode` — interpolation mode for rotation: `bilinear` (default, unchanged) or `bicubic` (sharper, slightly slower).
+- `--tqf-z6-orbit-mixing-rotation-padding-mode` — boundary handling for rotation: `zeros` (default, unchanged) or `border` (clamp to edge pixel — avoids dark rotation corners).
+- `--tqf-z6-orbit-mixing-rotation-pad` — reflect-pad the image before rotation and center-crop back to 28×28 afterwards, eliminating zero-corner artefacts (range [0, 8]; default: 0 = disabled).
+
+**Training-Time Augmentation and Loss Additions (opt-in)**
+
+- `--tqf-z6-non-rotation-augmentation` — lightweight non-rotation training augmentation: random pad-and-crop (±2 px) plus ColorJitter (brightness/contrast ±10%). Independent of and composable with `--z6-data-augmentation`. Implemented in `NonRotationAugmentation` class in `prepare_datasets.py`.
+- `--tqf-z6-orbit-consistency-weight` — ℤ₆ orbit consistency self-distillation loss (disabled by default). Penalises rotation-inconsistent predictions via KL divergence from a stop-gradient ensemble soft target. Added to total loss: `total_loss = ce_loss + weight × consistency_loss`. Range [0.0001, 1.0].
+- `--tqf-z6-orbit-consistency-rotations` — number of extra Z6 rotation passes per batch for the consistency loss (range [1, 5]; default: 2). Each extra pass requires one additional full forward pass.
+
+**Performance Optimizations**
+
+- ℤ₆ orbit mixing now batches all 6 rotation variants into a single forward pass instead of 6 serial passes (~4–5× eval speedup); the orbit consistency loss does the same for its extra training-step rotations. Several additional micro-optimizations were also applied: affine rotation grids cached by `(angle, H, W)`, D₆ inverse permutations pre-computed at module load, CPU tensor transfers batched per-batch rather than per-sample, and inference timing reuses a single pre-allocated input.
+- Filename metadata (base image ID and rotation angle) in `CustomMNIST` is now parsed once at dataset initialisation and cached in `_metadata`, eliminating repeated `os.path.basename` and string-split calls from the rotation invariance evaluation hot loop.
+
+### Changed
+- CLI parameter help output messaging to improve readability and exemplify the TQF ℤ₆ orbit mixing feature.
+
+### Removed
+- The TQF-specific fractal/self-similarity and hop attemption temperature features (`--tqf-fractal-iterations`, `--tqf-self-similarity-weight`, `--tqf-box-counting-weight`, and `--tqf-hop-attention-temp`) because experiments indicated they are simply not helpful for the rotated MNIST problem domain.
+
+---
+
 ## [1.0.5] - 2026-02-24
 
 ### Changed

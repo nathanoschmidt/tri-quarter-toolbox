@@ -228,29 +228,6 @@ class TestVectorizedBoxCounting(unittest.TestCase):
             f"Vectorized: {vectorized_tensor.tolist()}, Reference: {reference_tensor.tolist()}"
         )
 
-    def test_box_counting_in_fractal_dimension(self) -> None:
-        """
-        WHY: Fractal dimension computation must work with vectorized box counting.
-        HOW: Run compute_box_counting_fractal_dimension and verify valid output.
-        WHAT: Should return reasonable fractal dimension value.
-        """
-        from models_tqf import TQFANN
-
-        model = TQFANN(R=10, hidden_dim=32)
-
-        # Create test features
-        features = torch.randn(4, 6, 32)
-
-        # Compute fractal dimension
-        fractal_dim = model.dual_output.compute_box_counting_fractal_dimension(features)
-
-        # Should return a scalar
-        self.assertEqual(fractal_dim.dim(), 0, "Fractal dimension should be scalar")
-
-        # Should be a reasonable value (typically 1.0-3.0 for feature distributions)
-        self.assertGreater(fractal_dim.item(), 0.0, "Fractal dimension should be positive")
-        self.assertLess(fractal_dim.item(), 10.0, "Fractal dimension should be reasonable")
-
 
 class TestPyTorchCrossEntropyLoss(unittest.TestCase):
     """Test PyTorch built-in CrossEntropyLoss with label smoothing."""
@@ -356,11 +333,6 @@ class TestCachedHasattrChecks(unittest.TestCase):
             "_has_dual_output mismatch"
         )
         self.assertEqual(
-            engine._has_fractal_loss,
-            hasattr(model, 'compute_fractal_loss'),
-            "_has_fractal_loss mismatch"
-        )
-        self.assertEqual(
             engine._has_verify_self_duality,
             hasattr(model, 'verify_self_duality'),
             "_has_verify_self_duality mismatch"
@@ -385,7 +357,6 @@ class TestCachedHasattrChecks(unittest.TestCase):
         self.assertFalse(engine._supports_inv_loss)
         self.assertFalse(engine._has_sector_features)
         self.assertFalse(engine._has_dual_output)
-        self.assertFalse(engine._has_fractal_loss)
         self.assertFalse(engine._has_verify_self_duality)
 
 

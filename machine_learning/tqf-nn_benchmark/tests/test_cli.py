@@ -20,10 +20,8 @@ Key Test Coverage:
   - Equivariance: --tqf-z6-equivariance-weight, --tqf-d6-equivariance-weight
   - Invariance: --tqf-t24-orbit-invariance-weight
   - Inversion: --tqf-inversion-loss-weight
-  - Fractal: --tqf-box-counting-weight, --tqf-box-counting-scales
   - Geometry: --tqf-geometry-reg-weight
 - Advanced Features:
-  - Fractal Iterations: --tqf-fractal-iterations (opt-in)
   - Geometry Verification: --tqf-verify-geometry flag
 - Complex Argument Combinations: Multiple TQF parameters together
 - Boundary Value Testing: Min/max values for all numeric parameters
@@ -88,7 +86,6 @@ from cli import (
     WEIGHT_DECAY_MIN, WEIGHT_DECAY_MAX,
     TQF_R_MIN, TQF_R_MAX,
     TQF_HIDDEN_DIM_MIN, TQF_HIDDEN_DIM_MAX,
-    TQF_BOX_COUNTING_WEIGHT_MIN, TQF_BOX_COUNTING_WEIGHT_MAX,
 )
 import config
 
@@ -662,59 +659,8 @@ class TestParseArgsTQFSpecific:
             assert args.tqf_d6_equivariance_weight == 0.01
             assert args.tqf_t24_orbit_invariance_weight == 0.005
 
-    def test_tqf_box_counting_weight_default(self) -> None:
-        """
-        WHY: Box-counting weight has a sensible default for fractal loss
-        HOW: Parse without --tqf-box-counting-weight
-        WHAT: Expect config.TQF_BOX_COUNTING_WEIGHT_DEFAULT
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_box_counting_weight == config.TQF_BOX_COUNTING_WEIGHT_DEFAULT
-
-    def test_tqf_box_counting_weight_custom_value(self) -> None:
-        """
-        WHY: User can specify custom box-counting weight
-        HOW: Parse with --tqf-box-counting-weight 0.005
-        WHAT: Expect 0.005 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-weight', '0.005']):
-            args = parse_args()
-            assert args.tqf_box_counting_weight == 0.005
-
-    def test_tqf_box_counting_weight_zero_valid(self) -> None:
-        """
-        WHY: Zero weight disables box-counting loss (valid use case)
-        HOW: Parse with --tqf-box-counting-weight 0.0
-        WHAT: Expect 0.0 in args (no error)
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-weight', '0.0']):
-            args = parse_args()
-            assert args.tqf_box_counting_weight == 0.0
-            assert TQF_BOX_COUNTING_WEIGHT_MIN <= args.tqf_box_counting_weight <= TQF_BOX_COUNTING_WEIGHT_MAX
-
-    def test_tqf_box_counting_weight_below_min_fails(self) -> None:
-        """
-        WHY: Negative box-counting weight is invalid
-        HOW: Parse with --tqf-box-counting-weight -0.1
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-weight', '-0.1']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
-    def test_tqf_box_counting_weight_above_max_fails(self) -> None:
-        """
-        WHY: Excessively high box-counting weight is invalid
-        HOW: Parse with --tqf-box-counting-weight 15.0 (above max of 10.0)
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-box-counting-weight', '15.0']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
-    # NOTE: --tqf-box-counting-scales tests removed — parameter consolidated as
-    # internal constant TQF_BOX_COUNTING_SCALES_DEFAULT=10 in config.py
+    # NOTE: --tqf-box-counting-weight and --tqf-box-counting-scales tests removed —
+    # fractal loss features removed from codebase
 
 
 
@@ -792,7 +738,6 @@ class TestComplexArgumentCombinations:
             '--models', 'TQF-ANN',
             '--tqf-R', '20',
             '--tqf-symmetry-level', 'D6',
-            '--tqf-fractal-iterations', '10',
             '--tqf-geometry-reg-weight', '0.5'
         ]
         with patch('sys.argv', argv):
@@ -800,37 +745,7 @@ class TestComplexArgumentCombinations:
             assert args.models == ['TQF-ANN']
             assert args.tqf_R == 20
             assert args.tqf_symmetry_level == 'D6'
-            assert args.tqf_fractal_iterations == 10
             assert args.tqf_geometry_reg_weight == 0.5
-
-    def test_tqf_fractal_iterations_disabled_by_default(self) -> None:
-        """
-        WHY: --tqf-fractal-iterations should be disabled by default (opt-in feature)
-        HOW: Parse without specifying the parameter
-        WHAT: Expect tqf_fractal_iterations to be None (disabled)
-        """
-        argv: List[str] = [
-            'test_cli.py',
-            '--models', 'TQF-ANN'
-        ]
-        with patch('sys.argv', argv):
-            args = parse_args()
-            assert args.tqf_fractal_iterations is None  # Disabled by default
-
-    def test_tqf_fractal_iterations_enabled_when_provided(self) -> None:
-        """
-        WHY: User should be able to explicitly enable fractal iterations
-        HOW: Parse with --tqf-fractal-iterations value
-        WHAT: Expect value to be set correctly
-        """
-        argv: List[str] = [
-            'test_cli.py',
-            '--models', 'TQF-ANN',
-            '--tqf-fractal-iterations', '7'
-        ]
-        with patch('sys.argv', argv):
-            args = parse_args()
-            assert args.tqf_fractal_iterations == 7  # Enabled when provided
 
     def test_tqf_verify_geometry_flag_parsing(self) -> None:
         """
@@ -1151,12 +1066,6 @@ class TestCLIConfigRangeConstantConsistency:
         pairs = [
             'TQF_R_MIN', 'TQF_R_MAX',
             'TQF_HIDDEN_DIM_MIN', 'TQF_HIDDEN_DIM_MAX',
-            'TQF_FRACTAL_ITERATIONS_MIN', 'TQF_FRACTAL_ITERATIONS_MAX',
-            # TQF_FRACTAL_DIM_TOLERANCE range constants removed (internal, not CLI-tunable)
-            'TQF_SELF_SIMILARITY_WEIGHT_MIN', 'TQF_SELF_SIMILARITY_WEIGHT_MAX',
-            'TQF_BOX_COUNTING_WEIGHT_MIN', 'TQF_BOX_COUNTING_WEIGHT_MAX',
-            # TQF_BOX_COUNTING_SCALES range constants removed (internal, not CLI-tunable)
-            'TQF_HOP_ATTENTION_TEMP_MIN', 'TQF_HOP_ATTENTION_TEMP_MAX',
         ]
         for name in pairs:
             cli_val = getattr(cli, name)
@@ -1218,6 +1127,365 @@ class TestCLIConfigRangeConstantConsistency:
             config_val = getattr(config, name)
             assert cli_val == config_val, \
                 f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
+
+
+class TestZ6OrbitMixingEnhancements:
+    """Tests for the mark3 Z6 orbit mixing enhancement flags.
+
+    These flags extend the base --tqf-use-z6-orbit-mixing feature with:
+    - confidence mode (max_logit | margin)
+    - aggregation mode (logits | probs | log_probs)
+    - top-K variant selection
+    - adaptive temperature scaling
+    - higher-quality rotation (bicubic, border padding, pad-rotate-crop)
+    - non-rotation training augmentation
+    - orbit consistency self-distillation loss
+    """
+
+    # ── Defaults ────────────────────────────────────────────────────────────────
+
+    def test_z6_confidence_mode_default(self) -> None:
+        """
+        WHY: confidence_mode should default to 'max_logit' (backward compat)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_confidence_mode == 'max_logit'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_confidence_mode == 'max_logit'
+
+    def test_z6_aggregation_mode_default(self) -> None:
+        """
+        WHY: aggregation_mode should default to 'logits' (backward compat)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_aggregation_mode == 'logits'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_aggregation_mode == 'logits'
+
+    def test_z6_top_k_default_none(self) -> None:
+        """
+        WHY: top_k should default to None (use all 6 variants)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_top_k is None
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_top_k is None
+
+    def test_z6_adaptive_temp_default_false(self) -> None:
+        """
+        WHY: adaptive_temp should default to False (backward compat)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_adaptive_temp is False
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_adaptive_temp is False
+
+    def test_z6_adaptive_temp_alpha_default(self) -> None:
+        """
+        WHY: adaptive_temp_alpha should default to 1.0
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_adaptive_temp_alpha == 1.0
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_adaptive_temp_alpha == 1.0
+
+    def test_z6_rotation_mode_default(self) -> None:
+        """
+        WHY: rotation_mode should default to 'bilinear' (backward compat)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_rotation_mode == 'bilinear'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_rotation_mode == 'bilinear'
+
+    def test_z6_rotation_padding_mode_default(self) -> None:
+        """
+        WHY: rotation_padding_mode should default to 'zeros' (backward compat)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_rotation_padding_mode == 'zeros'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_rotation_padding_mode == 'zeros'
+
+    def test_z6_rotation_pad_default_zero(self) -> None:
+        """
+        WHY: rotation_pad should default to 0 (no padding; backward compat)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_mixing_rotation_pad == 0
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_rotation_pad == 0
+
+    def test_z6_non_rotation_aug_default_false(self) -> None:
+        """
+        WHY: non-rotation augmentation should default to False
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_non_rotation_augmentation is False
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_non_rotation_augmentation is False
+
+    def test_z6_orbit_consistency_weight_default_none(self) -> None:
+        """
+        WHY: orbit_consistency_weight should default to None (feature disabled)
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_consistency_weight is None
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_consistency_weight is None
+
+    def test_z6_orbit_consistency_rotations_default(self) -> None:
+        """
+        WHY: orbit_consistency_rotations should default to 2
+        HOW: Parse without the flag
+        WHAT: Expect args.tqf_z6_orbit_consistency_rotations == 2
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_consistency_rotations == 2
+
+    # ── Accepted values ─────────────────────────────────────────────────────────
+
+    def test_z6_confidence_mode_margin(self) -> None:
+        """
+        WHY: 'margin' is a valid confidence mode
+        HOW: Parse with --tqf-z6-orbit-mixing-confidence-mode margin
+        WHAT: Expect args.tqf_z6_orbit_mixing_confidence_mode == 'margin'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-confidence-mode', 'margin']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_confidence_mode == 'margin'
+
+    def test_z6_aggregation_mode_probs(self) -> None:
+        """
+        WHY: 'probs' is a valid aggregation mode
+        HOW: Parse with --tqf-z6-orbit-mixing-aggregation-mode probs
+        WHAT: Expect args.tqf_z6_orbit_mixing_aggregation_mode == 'probs'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-aggregation-mode', 'probs']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_aggregation_mode == 'probs'
+
+    def test_z6_aggregation_mode_log_probs(self) -> None:
+        """
+        WHY: 'log_probs' is a valid aggregation mode
+        HOW: Parse with --tqf-z6-orbit-mixing-aggregation-mode log_probs
+        WHAT: Expect args.tqf_z6_orbit_mixing_aggregation_mode == 'log_probs'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-aggregation-mode', 'log_probs']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_aggregation_mode == 'log_probs'
+
+    def test_z6_top_k_valid_value(self) -> None:
+        """
+        WHY: top_k=4 is a valid selection (>= 2 and <= 6)
+        HOW: Parse with --tqf-z6-orbit-mixing-top-k 4 --tqf-use-z6-orbit-mixing
+        WHAT: Expect args.tqf_z6_orbit_mixing_top_k == 4
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-use-z6-orbit-mixing',
+                               '--tqf-z6-orbit-mixing-top-k', '4']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_top_k == 4
+
+    def test_z6_adaptive_temp_enabled(self) -> None:
+        """
+        WHY: User should be able to enable adaptive temperature
+        HOW: Parse with --tqf-z6-orbit-mixing-adaptive-temp
+        WHAT: Expect args.tqf_z6_orbit_mixing_adaptive_temp is True
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-adaptive-temp']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_adaptive_temp is True
+
+    def test_z6_rotation_mode_bicubic(self) -> None:
+        """
+        WHY: 'bicubic' is a valid rotation mode
+        HOW: Parse with --tqf-z6-orbit-mixing-rotation-mode bicubic
+        WHAT: Expect args.tqf_z6_orbit_mixing_rotation_mode == 'bicubic'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-rotation-mode', 'bicubic']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_rotation_mode == 'bicubic'
+
+    def test_z6_rotation_padding_mode_border(self) -> None:
+        """
+        WHY: 'border' is a valid padding mode
+        HOW: Parse with --tqf-z6-orbit-mixing-rotation-padding-mode border
+        WHAT: Expect args.tqf_z6_orbit_mixing_rotation_padding_mode == 'border'
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-rotation-padding-mode', 'border']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_rotation_padding_mode == 'border'
+
+    def test_z6_rotation_pad_valid(self) -> None:
+        """
+        WHY: pad=4 is a valid rotation pad value (0-8)
+        HOW: Parse with --tqf-z6-orbit-mixing-rotation-pad 4
+        WHAT: Expect args.tqf_z6_orbit_mixing_rotation_pad == 4
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-rotation-pad', '4']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_mixing_rotation_pad == 4
+
+    def test_z6_non_rotation_aug_enabled(self) -> None:
+        """
+        WHY: User should be able to enable non-rotation augmentation
+        HOW: Parse with --tqf-z6-non-rotation-augmentation
+        WHAT: Expect args.tqf_z6_non_rotation_augmentation is True
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-non-rotation-augmentation']):
+            args = parse_args()
+            assert args.tqf_z6_non_rotation_augmentation is True
+
+    def test_z6_orbit_consistency_weight_valid(self) -> None:
+        """
+        WHY: User should be able to enable orbit consistency loss
+        HOW: Parse with --tqf-z6-orbit-consistency-weight 0.01
+        WHAT: Expect args.tqf_z6_orbit_consistency_weight == 0.01
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-consistency-weight', '0.01']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_consistency_weight == pytest.approx(0.01)
+
+    def test_z6_orbit_consistency_rotations_valid(self) -> None:
+        """
+        WHY: User should be able to set orbit consistency rotation count
+        HOW: Parse with --tqf-z6-orbit-consistency-rotations 3
+        WHAT: Expect args.tqf_z6_orbit_consistency_rotations == 3
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-consistency-rotations', '3']):
+            args = parse_args()
+            assert args.tqf_z6_orbit_consistency_rotations == 3
+
+    # ── Validation: out-of-range ─────────────────────────────────────────────────
+
+    def test_z6_top_k_too_low_rejected(self) -> None:
+        """
+        WHY: top_k < 2 should be rejected (need at least 2 variants to be useful)
+        HOW: Parse with --tqf-z6-orbit-mixing-top-k 1 --tqf-use-z6-orbit-mixing
+        WHAT: Expect SystemExit from validation
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-use-z6-orbit-mixing',
+                               '--tqf-z6-orbit-mixing-top-k', '1']):
+            with pytest.raises(SystemExit):
+                parse_args()
+
+    def test_z6_adaptive_temp_alpha_too_low_rejected(self) -> None:
+        """
+        WHY: adaptive_temp_alpha below 0.1 should be rejected
+        HOW: Parse with --tqf-z6-orbit-mixing-adaptive-temp-alpha 0.05
+        WHAT: Expect SystemExit from validation
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-adaptive-temp-alpha', '0.05']):
+            with pytest.raises(SystemExit):
+                parse_args()
+
+    def test_z6_rotation_pad_too_high_rejected(self) -> None:
+        """
+        WHY: rotation_pad > 8 should be rejected
+        HOW: Parse with --tqf-z6-orbit-mixing-rotation-pad 10
+        WHAT: Expect SystemExit from validation
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-mixing-rotation-pad', '10']):
+            with pytest.raises(SystemExit):
+                parse_args()
+
+    def test_z6_orbit_consistency_weight_too_low_rejected(self) -> None:
+        """
+        WHY: orbit_consistency_weight must be >= 0.0001
+        HOW: Parse with --tqf-z6-orbit-consistency-weight 0.00001
+        WHAT: Expect SystemExit from validation
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-consistency-weight', '0.00001']):
+            with pytest.raises(SystemExit):
+                parse_args()
+
+    def test_z6_orbit_consistency_rotations_too_high_rejected(self) -> None:
+        """
+        WHY: orbit_consistency_rotations must be <= 5
+        HOW: Parse with --tqf-z6-orbit-consistency-rotations 6
+        WHAT: Expect SystemExit from validation
+        """
+        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
+                               '--tqf-z6-orbit-consistency-rotations', '6']):
+            with pytest.raises(SystemExit):
+                parse_args()
+
+    # ── Constant consistency ─────────────────────────────────────────────────────
+
+    def test_z6_enhancement_default_constants_match_config(self) -> None:
+        """
+        WHY: All mark3 default values must equal config.py defaults
+        HOW: Import constants from both cli and config, compare
+        WHAT: All Z6 enhancement defaults match
+        """
+        import cli
+        defaults = [
+            'TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT',
+            'TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT',
+            'TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT',
+        ]
+        for name in defaults:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val!r}) != config.{name} ({config_val!r})"
+
+    def test_z6_enhancement_range_constants_match_config(self) -> None:
+        """
+        WHY: All mark3 range constants must equal config.py ranges
+        HOW: Import constants from both cli and config, compare
+        WHAT: All Z6 enhancement range constants match
+        """
+        import cli
+        ranges = [
+            'TQF_Z6_ORBIT_MIXING_TOP_K_MIN', 'TQF_Z6_ORBIT_MIXING_TOP_K_MAX',
+            'TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN',
+            'TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX',
+            'TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN',
+            'TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX',
+            'TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MIN',
+            'TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MAX',
+            'TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN',
+            'TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MAX',
+        ]
+        for name in ranges:
+            cli_val = getattr(cli, name)
+            config_val = getattr(config, name)
+            assert cli_val == config_val, \
+                f"cli.{name} ({cli_val!r}) != config.{name} ({config_val!r})"
 
 
 def run_tests(verbosity: int = 2):

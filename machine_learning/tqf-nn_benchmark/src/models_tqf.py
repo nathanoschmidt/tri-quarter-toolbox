@@ -141,12 +141,7 @@ from typing import List, Tuple, Optional, Dict, Union, Callable
 
 from config import (
     TQF_TRUNCATION_R_DEFAULT, TQF_RADIUS_R_FIXED, TQF_SYMMETRY_LEVEL_DEFAULT,
-    TQF_FRACTAL_ITERATIONS_DEFAULT,
     DROPOUT_DEFAULT, TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-    TQF_HOP_ATTENTION_TEMP_DEFAULT,
-    TQF_FRACTAL_DIM_TOLERANCE_DEFAULT, TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-    TQF_BOX_COUNTING_WEIGHT_DEFAULT, TQF_BOX_COUNTING_SCALES_DEFAULT,
-    TQF_THEORETICAL_FRACTAL_DIM_DEFAULT, TQF_FRACTAL_EPSILON_DEFAULT
 )
 
 from dual_metrics import (
@@ -367,17 +362,15 @@ class RayOrganizedBoundaryEncoder(nn.Module):
     - Creates geometrically meaningful boundary initialization
     """
 
-    def __init__(self, hidden_dim: int, fractal_iters: int):
+    def __init__(self, hidden_dim: int):
         """
         Initialize boundary encoder.
 
         Args:
             hidden_dim: Hidden dimension for features
-            fractal_iters: Number of fractal mixing iterations
         """
         super().__init__()
         self.hidden_dim: int = hidden_dim
-        self.fractal_iters: int = fractal_iters
         self.num_boundary_vertices: int = 6
 
         # Radial projection for circular symmetry
@@ -396,12 +389,6 @@ class RayOrganizedBoundaryEncoder(nn.Module):
         ], dim=1)
         self.register_buffer('phase_encodings', phase_pattern)
 
-        # Fractal mixing for self-similar refinement
-        self.fractal_mixer = nn.ModuleList([
-            nn.Sequential(nn.Linear(6, 6), nn.Tanh())
-            for _ in range(fractal_iters)
-        ])
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Map features to 6 boundary vertices.
@@ -418,14 +405,8 @@ class RayOrganizedBoundaryEncoder(nn.Module):
         # Compute Fourier coefficients for 6 rays
         fourier_coeffs: torch.Tensor = torch.matmul(radial_feats, self.fourier_basis)
 
-        # Apply fractal mixing (iterative refinement)
-        fractal_feats: torch.Tensor = fourier_coeffs
-        for mixer in self.fractal_mixer:
-            refined: torch.Tensor = mixer(fractal_feats)
-            fractal_feats = fractal_feats + refined
-
         # Apply phase encodings to create vertex features
-        boundary_feats: torch.Tensor = torch.einsum('bs,sd->bsd', fractal_feats, self.phase_encodings)
+        boundary_feats: torch.Tensor = torch.einsum('bs,sd->bsd', fourier_coeffs, self.phase_encodings)
         return boundary_feats
 
 
@@ -466,8 +447,7 @@ class T24EquivariantHybridBinner(nn.Module):
 
     def __init__(
         self, R: float, hidden_dim: int, symmetry_level: str, num_layers: int,
-        use_dual_metric: bool, hop_attention_temp: float,
-        fractal_iters: int,
+        use_dual_metric: bool,
         outer_vertices: List[ExplicitLatticeVertex],
         inner_vertices: List[ExplicitLatticeVertex],
         outer_adjacency: Dict[int, List[int]],
@@ -484,8 +464,6 @@ class T24EquivariantHybridBinner(nn.Module):
             symmetry_level: Symmetry group ('none', 'Z6', 'D6', 'T24')
             num_layers: Number of graph convolution layers
             use_dual_metric: Whether to use dual metric
-            hop_attention_temp: Temperature for hop attention (unused, for API compat)
-            fractal_iters: Number of fractal iterations
             outer_vertices: List of outer zone vertices
             inner_vertices: List of inner zone vertices
             outer_adjacency: Adjacency dict for outer zone
@@ -500,7 +478,6 @@ class T24EquivariantHybridBinner(nn.Module):
         self.symmetry_level: str = symmetry_level
         self.num_conv_layers: int = num_layers
         self.use_dual_metric: bool = use_dual_metric
-        self.fractal_iters: int = fractal_iters
         self.dropout: float = dropout
 
         # Store vertices for reference
@@ -510,7 +487,6 @@ class T24EquivariantHybridBinner(nn.Module):
         # Backward compatibility: combined vertices list and adjacency_dict
         self.vertices: List[ExplicitLatticeVertex] = outer_vertices  # Use outer for reference
         self.adjacency_dict: Dict[int, List[int]] = outer_adjacency
-        self.hop_attention_temp: float = hop_attention_temp
 
         # Create discrete_metric-like object for verification compatibility
         class _DiscreteMetricCompat:
@@ -546,12 +522,6 @@ class T24EquivariantHybridBinner(nn.Module):
                 nn.Dropout(dropout)
             )
             for _ in range(num_layers)
-        ])
-
-        # Shared fractal gates
-        self.fractal_gates = nn.ModuleList([
-            nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.Sigmoid())
-            for _ in range(min(3, fractal_iters))
         ])
 
         # Radial position encoding (sector-independent for T24 equivariance)
@@ -769,16 +739,7 @@ class T24EquivariantHybridBinner(nn.Module):
             feats = transformed.reshape(B, 2, 6, L, H) + residual
 
         # =================================================================
-        # STEP 4: Apply fractal gates
-        # =================================================================
-        feats_flat = feats.reshape(B * 2 * 6 * L, H)
-        for gate in self.fractal_gates:
-            gate_val = gate(feats_flat)
-            feats_flat = feats_flat * gate_val
-        feats = feats_flat.reshape(B, 2, 6, L, H)
-
-        # =================================================================
-        # STEP 5: Aggregate radial layers to get sector features
+        # STEP 4: Aggregate radial layers to get sector features
         # =================================================================
         # Mean over radial dimension: (B, 2, 6, L, H) -> (B, 2, 6, H)
         sector_feats = feats.mean(dim=3)
@@ -815,9 +776,7 @@ class BijectionDualOutputHead(nn.Module):
 
     def __init__(
         self, hidden_dim: int, num_classes: int = 10, r_sq: float = 1.0,
-        verify_geometry: bool = False, fractal_iters: int = 10,
-        self_similarity_weight: float = 0.1, fractal_dim_tol: float = 0.05,
-        box_counting_weight: float = 0.01, box_counting_scales: int = 5,
+        verify_geometry: bool = False,
         inversion_map: Optional[Dict[int, int]] = None,
         outer_vertices: Optional[List[ExplicitLatticeVertex]] = None,
         inner_vertices: Optional[List[ExplicitLatticeVertex]] = None,
@@ -832,11 +791,6 @@ class BijectionDualOutputHead(nn.Module):
             num_classes: Number of output classes
             r_sq: Inversion radius squared (fixed at 1.0)
             verify_geometry: Whether to compute geometry loss
-            fractal_iters: Number of fractal iterations
-            self_similarity_weight: Weight for self-similarity loss
-            fractal_dim_tol: Tolerance for fractal dimension
-            box_counting_weight: Weight for box counting loss
-            box_counting_scales: Number of box counting scales
             inversion_map: Geometric bijection from outer to inner vertices
             outer_vertices: List of outer zone vertices (excluding boundary, for inversion)
             inner_vertices: List of inner zone vertices (excluding boundary, for inversion)
@@ -881,18 +835,6 @@ class BijectionDualOutputHead(nn.Module):
         # Learnable sector weights for Z6-equivariant aggregation
         self.sector_weights: nn.Parameter = nn.Parameter(torch.ones(self.num_sectors) / self.num_sectors)
 
-        # Fractal dimension verification parameters
-        self.fractal_iters: int = fractal_iters
-        self.fractal_dim_tol: float = fractal_dim_tol
-        self.self_similarity_weight: float = self_similarity_weight
-        self.box_counting_weight: float = box_counting_weight
-        self.box_counting_scales: int = box_counting_scales
-        self.theoretical_fractal_dim: float = TQF_THEORETICAL_FRACTAL_DIM_DEFAULT
-        self.fractal_epsilon: float = TQF_FRACTAL_EPSILON_DEFAULT
-
-        # Track last measured fractal dimension for diagnostics
-        self._last_measured_fractal_dim: Optional[float] = None
-        self._fractal_dim_warning_issued: bool = False
 
     def _precompute_inversion_indices(self) -> None:
         """
@@ -1372,296 +1314,6 @@ class BijectionDualOutputHead(nn.Module):
 
         return geom_loss
 
-    def compute_self_similarity_loss(self, features: torch.Tensor) -> torch.Tensor:
-        """
-        Compute self-similarity loss for fractal regularization.
-
-        Measures how well features exhibit self-similarity across scales by comparing
-        features at different resolutions. The TQF lattice has inherent fractal structure
-        (self-similar triangles at all scales), and this loss encourages the network
-        to preserve this property.
-
-        Method:
-        1. Create downsampled versions of features (coarse scale)
-        2. Upsample back to original resolution
-        3. Measure correlation/similarity between original and reconstructed
-        4. Repeat for multiple scales based on fractal_iters
-
-        Args:
-            features: Input features (batch, num_points, feature_dim)
-                     Typically sector-aggregated features (batch, 6, hidden_dim)
-
-        Returns:
-            Self-similarity loss (scalar tensor), weighted by self_similarity_weight
-        """
-        if self.self_similarity_weight == 0.0:
-            return torch.tensor(0.0, device=features.device, dtype=features.dtype)
-
-        batch_size: int = features.size(0)
-        num_points: int = features.size(1)
-        feat_dim: int = features.size(2)
-
-        total_loss: torch.Tensor = torch.tensor(0.0, device=features.device, dtype=features.dtype)
-        num_scales: int = min(self.fractal_iters, 3)  # Limit to 3 scales for efficiency
-
-        for scale in range(1, num_scales + 1):
-            # Downsample by averaging adjacent features
-            downsample_factor: int = 2 ** scale
-            if num_points < downsample_factor:
-                continue
-
-            # Reshape for downsampling: group features and average
-            downsampled_points: int = num_points // downsample_factor
-            if downsampled_points == 0:
-                continue
-
-            # Truncate to divisible size
-            truncated: torch.Tensor = features[:, :downsampled_points * downsample_factor, :]
-            # Reshape and average
-            reshaped: torch.Tensor = truncated.view(batch_size, downsampled_points, downsample_factor, feat_dim)
-            coarse: torch.Tensor = reshaped.mean(dim=2)  # (batch, downsampled_points, feat_dim)
-
-            # Upsample back via repetition
-            upsampled: torch.Tensor = coarse.repeat_interleave(downsample_factor, dim=1)
-            # Match size with truncated original
-            upsampled = upsampled[:, :truncated.size(1), :]
-
-            # Self-similarity: features at different scales should be correlated
-            # Normalize both for correlation computation
-            orig_norm: torch.Tensor = F.normalize(truncated, dim=-1)
-            up_norm: torch.Tensor = F.normalize(upsampled, dim=-1)
-
-            # Cosine similarity loss (1 - similarity means dissimilar = high loss)
-            similarity: torch.Tensor = (orig_norm * up_norm).sum(dim=-1).mean()
-            scale_loss: torch.Tensor = 1.0 - similarity
-
-            # Weight by scale (finer scales matter more)
-            total_loss = total_loss + scale_loss / scale
-
-        # Apply self-similarity weight
-        weighted_loss: torch.Tensor = self.self_similarity_weight * total_loss
-
-        return weighted_loss
-
-    def compute_box_counting_loss(self, features: torch.Tensor) -> torch.Tensor:
-        """
-        Compute box-counting fractal dimension loss.
-
-        Penalizes deviation between measured fractal dimension and theoretical
-        dimension (1.585 for TQF lattice). This encourages the network to maintain
-        the expected fractal structure during training.
-
-        Loss = box_counting_weight * |measured_dimension - theoretical_dimension|
-
-        Args:
-            features: Input features (batch, num_points, feature_dim)
-
-        Returns:
-            Box-counting loss (scalar tensor), weighted by box_counting_weight
-        """
-        if self.box_counting_weight == 0.0:
-            return torch.tensor(0.0, device=features.device, dtype=features.dtype)
-
-        # Compute measured fractal dimension
-        measured_dim: torch.Tensor = self.compute_box_counting_fractal_dimension(features)
-
-        # Loss is absolute deviation from theoretical dimension
-        dim_deviation: torch.Tensor = torch.abs(measured_dim - self.theoretical_fractal_dim)
-
-        # Apply box-counting weight
-        weighted_loss: torch.Tensor = self.box_counting_weight * dim_deviation
-
-        return weighted_loss
-
-    def compute_fractal_loss(self, features: torch.Tensor) -> torch.Tensor:
-        """
-        Compute combined fractal regularization loss.
-
-        Combines self-similarity loss and box-counting dimension loss into
-        a single fractal regularization term.
-
-        Args:
-            features: Input features (batch, num_points, feature_dim)
-
-        Returns:
-            Combined fractal loss (scalar tensor)
-        """
-        self_sim_loss: torch.Tensor = self.compute_self_similarity_loss(features)
-        box_count_loss: torch.Tensor = self.compute_box_counting_loss(features)
-
-        return self_sim_loss + box_count_loss
-
-    def compute_box_counting_fractal_dimension(
-        self, features: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Compute fractal dimension of feature distribution using box-counting method.
-
-        The box-counting dimension is computed by:
-        1. Normalizing features to unit hypercube [0, 1]^d
-        2. Counting non-empty boxes at multiple scales
-        3. Estimating dimension from log-log slope: D = -log(N) / log(epsilon)
-
-        For TQF lattice features, the expected dimension is ~1.585 (Sierpinski-like)
-        due to the triangular self-similar structure.
-
-        Args:
-            features: Input features (batch, num_points, feature_dim)
-                     Typically sector-aggregated features (batch, 6, hidden_dim)
-
-        Returns:
-            Estimated fractal dimension as scalar tensor
-        """
-        # Flatten batch dimension for box counting
-        batch_size: int = features.size(0)
-        num_points: int = features.size(1)
-        feat_dim: int = features.size(2)
-
-        # Normalize features to [0, 1] range per batch
-        feat_flat: torch.Tensor = features.view(batch_size, -1)  # (batch, num_points * feat_dim)
-        feat_min: torch.Tensor = feat_flat.min(dim=1, keepdim=True)[0]
-        feat_max: torch.Tensor = feat_flat.max(dim=1, keepdim=True)[0]
-        feat_range: torch.Tensor = feat_max - feat_min + self.fractal_epsilon
-        feat_normalized: torch.Tensor = (feat_flat - feat_min) / feat_range  # (batch, num_points * feat_dim)
-        feat_normalized = feat_normalized.view(batch_size, num_points, feat_dim)
-
-        # Box counting at multiple scales
-        log_scales: List[float] = []
-        log_counts: List[torch.Tensor] = []
-
-        for scale_idx in range(self.box_counting_scales):
-            # Box size decreases exponentially: epsilon = 2^(-scale_idx - 1)
-            num_boxes_per_dim: int = 2 ** (scale_idx + 1)
-            epsilon: float = 1.0 / num_boxes_per_dim
-
-            # Quantize points to box indices
-            box_indices: torch.Tensor = (feat_normalized / epsilon).long().clamp(0, num_boxes_per_dim - 1)
-
-            # Count unique boxes per batch (use only first 3 dims to keep tractable)
-            # For high-dimensional features, project to lower dimension
-            dims_to_use: int = min(3, feat_dim)
-            box_indices_proj: torch.Tensor = box_indices[:, :, :dims_to_use]  # (batch, num_points, dims_to_use)
-
-            # Convert multi-dimensional box index to single index
-            multipliers: torch.Tensor = torch.tensor(
-                [num_boxes_per_dim ** i for i in range(dims_to_use)],
-                device=features.device, dtype=torch.long
-            )
-            flat_box_idx: torch.Tensor = (box_indices_proj * multipliers).sum(dim=-1)  # (batch, num_points)
-
-            # Count unique boxes per batch using vectorized approach
-            # Sort each batch and count value transitions (avoids Python loop)
-            sorted_idx, _ = flat_box_idx.sort(dim=1)
-            # Count where consecutive values differ, plus 1 for the first element
-            transitions: torch.Tensor = (sorted_idx[:, 1:] != sorted_idx[:, :-1]).sum(dim=1) + 1
-            count_tensor: torch.Tensor = transitions.float()
-
-            log_scales.append(math.log(epsilon))
-            log_counts.append(torch.log(count_tensor + self.fractal_epsilon))
-
-        # Linear regression to estimate fractal dimension: D = -d(log N) / d(log epsilon)
-        # Stack log counts: (num_scales, batch)
-        log_counts_tensor: torch.Tensor = torch.stack(log_counts, dim=0)  # (num_scales, batch)
-        log_scales_tensor: torch.Tensor = torch.tensor(log_scales, device=features.device, dtype=torch.float32)
-
-        # Compute slope via least squares: D = -slope
-        # y = log(N), x = log(epsilon), slope = cov(x,y) / var(x)
-        x_mean: float = log_scales_tensor.mean().item()
-        y_mean: torch.Tensor = log_counts_tensor.mean(dim=0)  # (batch,)
-
-        x_centered: torch.Tensor = log_scales_tensor - x_mean  # (num_scales,)
-        y_centered: torch.Tensor = log_counts_tensor - y_mean.unsqueeze(0)  # (num_scales, batch)
-
-        cov_xy: torch.Tensor = (x_centered.unsqueeze(1) * y_centered).sum(dim=0)  # (batch,)
-        var_x: float = (x_centered ** 2).sum().item()
-
-        slope: torch.Tensor = cov_xy / (var_x + self.fractal_epsilon)  # (batch,)
-        fractal_dim: torch.Tensor = -slope  # D = -slope (negative because N increases as epsilon decreases)
-
-        # Average across batch
-        mean_fractal_dim: torch.Tensor = fractal_dim.mean()
-
-        # Store for diagnostics
-        self._last_measured_fractal_dim = mean_fractal_dim.item()
-
-        return mean_fractal_dim
-
-    def verify_fractal_dimension(
-        self, features: torch.Tensor, verbose: bool = False
-    ) -> Tuple[bool, float, str]:
-        """
-        Verify that measured fractal dimension is within tolerance of theoretical value.
-
-        Computes the box-counting fractal dimension of the given features and compares
-        it against the theoretical dimension (TQF_THEORETICAL_FRACTAL_DIM_DEFAULT = 1.585).
-        If the deviation exceeds fractal_dim_tol, emits a warning.
-
-        This is a DIAGNOSTIC check - it does not halt training but provides feedback
-        on whether the geometric structure is being preserved during training.
-
-        Args:
-            features: Input features to analyze (batch, num_points, feature_dim)
-            verbose: Whether to print detailed verification results
-
-        Returns:
-            Tuple of:
-            - passed: Whether the dimension is within tolerance
-            - measured_dim: The measured fractal dimension
-            - message: Descriptive message about the verification result
-        """
-        measured_dim: torch.Tensor = self.compute_box_counting_fractal_dimension(features)
-        measured_dim_value: float = measured_dim.item()
-
-        deviation: float = abs(measured_dim_value - self.theoretical_fractal_dim)
-        passed: bool = deviation <= self.fractal_dim_tol
-
-        if passed:
-            message: str = (
-                f"Fractal dimension OK: measured={measured_dim_value:.4f}, "
-                f"theoretical={self.theoretical_fractal_dim:.4f}, "
-                f"deviation={deviation:.4f} <= tolerance={self.fractal_dim_tol:.4f}"
-            )
-        else:
-            message = (
-                f"WARNING: Fractal dimension deviation exceeds tolerance! "
-                f"measured={measured_dim_value:.4f}, theoretical={self.theoretical_fractal_dim:.4f}, "
-                f"deviation={deviation:.4f} > tolerance={self.fractal_dim_tol:.4f}. "
-                f"This may indicate: (1) geometric structure degradation, "
-                f"(2) numerical instabilities, or (3) need to adjust tolerance."
-            )
-            # Only warn once per training run to avoid log spam
-            if not self._fractal_dim_warning_issued:
-                import warnings
-                warnings.warn(message, UserWarning)
-                self._fractal_dim_warning_issued = True
-
-        if verbose:
-            print(f"[Fractal Dimension Verification] {message}")
-
-        return passed, measured_dim_value, message
-
-    def reset_fractal_dim_warning(self) -> None:
-        """Reset the fractal dimension warning flag to allow new warnings."""
-        self._fractal_dim_warning_issued = False
-        self._last_measured_fractal_dim = None
-
-    def get_fractal_dimension_info(self) -> Dict[str, float]:
-        """
-        Get current fractal dimension information for logging/diagnostics.
-
-        Returns:
-            Dictionary containing:
-            - theoretical_dim: Expected fractal dimension
-            - tolerance: Acceptable deviation threshold
-            - last_measured_dim: Most recent measurement (or None if not computed)
-        """
-        return {
-            'theoretical_dim': self.theoretical_fractal_dim,
-            'tolerance': self.fractal_dim_tol,
-            'last_measured_dim': self._last_measured_fractal_dim
-        }
-
-
 class TQFANN(nn.Module):
     """
     Tri-Quarter Framework Artificial Neural Network with Full T24 Symmetry.
@@ -1716,14 +1368,10 @@ class TQFANN(nn.Module):
         Enable dual inner/outer output (default: True)
     use_dual_metric : bool
         Enable dual metric for radial binning (default: True)
-    fractal_iters : int
-        Number of fractal self-similarity iterations (default: 5)
     dropout : float
         Dropout probability (default: 0.2)
     verify_geometry : bool
-        Enable geometry verification with fractal regularization (default: False).
-        When enabled, ensures fractal losses (self-similarity and box-counting) are
-        active by overriding zero-valued weights with defaults.
+        Enable geometry verification (default: False).
     geometry_reg_weight : float
         Weight for geometry regularization loss (default: 0.0; opt-in).
         Controls how strongly geometric consistency is enforced during training.
@@ -1749,15 +1397,9 @@ class TQFANN(nn.Module):
         symmetry_level: str = TQF_SYMMETRY_LEVEL_DEFAULT,
         use_dual_output: bool = True,
         use_dual_metric: bool = True,
-        fractal_iters: int = TQF_FRACTAL_ITERATIONS_DEFAULT,
         dropout: float = DROPOUT_DEFAULT,
         verify_geometry: bool = False,
         geometry_reg_weight: float = TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-        hop_attention_temp: float = TQF_HOP_ATTENTION_TEMP_DEFAULT,
-        self_similarity_weight: float = TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-        fractal_dim_tol: float = TQF_FRACTAL_DIM_TOLERANCE_DEFAULT,
-        box_counting_weight: float = TQF_BOX_COUNTING_WEIGHT_DEFAULT,
-        box_counting_scales: int = TQF_BOX_COUNTING_SCALES_DEFAULT,
         use_gradient_checkpointing: bool = False
     ):
         """
@@ -1777,10 +1419,7 @@ class TQFANN(nn.Module):
         # Auto-tune hidden_dim if not provided
         if hidden_dim is None:
             from param_matcher import tune_d_for_params
-            hidden_dim = tune_d_for_params(
-                R=int(R),
-                fractal_iters=fractal_iters,
-            )
+            hidden_dim = tune_d_for_params(R=int(R))
 
         # Store configuration
         self.in_features: int = in_features
@@ -1797,10 +1436,8 @@ class TQFANN(nn.Module):
         self.symmetry_level: str = symmetry_level
         self.use_dual_output: bool = use_dual_output
         self.use_dual_metric: bool = use_dual_metric
-        self.fractal_iters: int = fractal_iters
         self.dropout: float = dropout
         self.verify_geometry: bool = verify_geometry
-        self.fractal_dim_tol: float = fractal_dim_tol
 
         # Build triangular lattice with explicit Eisenstein coordinates
         (
@@ -1859,7 +1496,7 @@ class TQFANN(nn.Module):
 
         # Build model components
         self.pre_encoder = EnhancedPreEncoder(in_features, hidden_dim)
-        self.boundary_encoder = RayOrganizedBoundaryEncoder(hidden_dim, fractal_iters)
+        self.boundary_encoder = RayOrganizedBoundaryEncoder(hidden_dim)
 
         # T24-Equivariant Hybrid Binner
         # Ultimate optimization with (B, 2, 6, L, H) tensor layout:
@@ -1870,8 +1507,6 @@ class TQFANN(nn.Module):
         self.radial_binner = T24EquivariantHybridBinner(
             R=R, hidden_dim=hidden_dim, symmetry_level=symmetry_level,
             num_layers=num_radial_layers, use_dual_metric=use_dual_metric,
-            hop_attention_temp=hop_attention_temp,
-            fractal_iters=fractal_iters,
             outer_vertices=self.outer_zone_vertices,
             inner_vertices=self.inner_zone_vertices,
             outer_adjacency=self.adjacency_outer,
@@ -1888,11 +1523,7 @@ class TQFANN(nn.Module):
         # Create dual output head with hidden_dim (constant for all modes)
         self.dual_output = BijectionDualOutputHead(
             hidden_dim=hidden_dim, num_classes=num_classes, r_sq=r * r,
-            verify_geometry=verify_geometry, fractal_iters=fractal_iters,
-            self_similarity_weight=self_similarity_weight,
-            fractal_dim_tol=fractal_dim_tol,
-            box_counting_weight=box_counting_weight,
-            box_counting_scales=box_counting_scales,
+            verify_geometry=verify_geometry,
             inversion_map=self.inversion_map,
             outer_vertices=self.outer_vertices,
             inner_vertices=self.inner_vertices,
@@ -1999,109 +1630,6 @@ class TQFANN(nn.Module):
                 print(f"  {correction}: {'PASS' if passed else 'FAIL'}")
 
         return results
-
-    def verify_fractal_dimension(
-        self, features: Optional[torch.Tensor] = None, verbose: bool = False
-    ) -> Tuple[bool, float, str]:
-        """
-        Verify that measured fractal dimension is within tolerance of theoretical value.
-
-        Delegates to the dual_output head's verification method. If no features are
-        provided, uses cached sector features from the most recent forward pass.
-
-        This is a DIAGNOSTIC check following the TQF framework specification:
-        - Theoretical dimension: ~1.585 (Sierpinski triangle, triangular lattice archetype)
-        - Tolerance: Configurable via --tqf-fractal-dim-tolerance (default: 0.15)
-        - Behavior: Emits warning if deviation exceeds tolerance (training continues)
-
-        Args:
-            features: Optional features to analyze. If None, uses cached sector features.
-                     Shape: (batch, num_points, feature_dim)
-            verbose: Whether to print detailed verification results
-
-        Returns:
-            Tuple of:
-            - passed: Whether the dimension is within tolerance
-            - measured_dim: The measured fractal dimension
-            - message: Descriptive message about the verification result
-        """
-        if features is None:
-            # Try to use cached sector features from last forward pass
-            if hasattr(self.dual_output, '_cached_sector_feats') and self.dual_output._cached_sector_feats is not None:
-                features = self.dual_output._cached_sector_feats
-            else:
-                return False, 0.0, "No features available for fractal dimension verification"
-
-        return self.dual_output.verify_fractal_dimension(features, verbose=verbose)
-
-    def get_fractal_dimension_info(self) -> Dict[str, float]:
-        """
-        Get current fractal dimension information for logging/diagnostics.
-
-        Delegates to the dual_output head's method.
-
-        Returns:
-            Dictionary containing:
-            - theoretical_dim: Expected fractal dimension (1.585)
-            - tolerance: Acceptable deviation threshold
-            - last_measured_dim: Most recent measurement (or None if not computed)
-        """
-        return self.dual_output.get_fractal_dimension_info()
-
-    def reset_fractal_dim_warning(self) -> None:
-        """Reset the fractal dimension warning flag to allow new warnings."""
-        self.dual_output.reset_fractal_dim_warning()
-
-    def compute_fractal_loss(self, features: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        Compute combined fractal regularization loss (self-similarity + box-counting).
-
-        Args:
-            features: Optional features to analyze. If None, uses cached sector features.
-
-        Returns:
-            Combined fractal loss (scalar tensor)
-        """
-        if features is None:
-            if hasattr(self.dual_output, '_cached_sector_feats') and self.dual_output._cached_sector_feats is not None:
-                features = self.dual_output._cached_sector_feats.to(next(self.parameters()).device)
-            else:
-                return torch.tensor(0.0, device=next(self.parameters()).device)
-        return self.dual_output.compute_fractal_loss(features)
-
-    def compute_self_similarity_loss(self, features: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        Compute self-similarity loss for fractal regularization.
-
-        Args:
-            features: Optional features to analyze. If None, uses cached sector features.
-
-        Returns:
-            Self-similarity loss weighted by self_similarity_weight
-        """
-        if features is None:
-            if hasattr(self.dual_output, '_cached_sector_feats') and self.dual_output._cached_sector_feats is not None:
-                features = self.dual_output._cached_sector_feats.to(next(self.parameters()).device)
-            else:
-                return torch.tensor(0.0, device=next(self.parameters()).device)
-        return self.dual_output.compute_self_similarity_loss(features)
-
-    def compute_box_counting_loss(self, features: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        Compute box-counting fractal dimension loss.
-
-        Args:
-            features: Optional features to analyze. If None, uses cached sector features.
-
-        Returns:
-            Box-counting loss weighted by box_counting_weight
-        """
-        if features is None:
-            if hasattr(self.dual_output, '_cached_sector_feats') and self.dual_output._cached_sector_feats is not None:
-                features = self.dual_output._cached_sector_feats.to(next(self.parameters()).device)
-            else:
-                return torch.tensor(0.0, device=next(self.parameters()).device)
-        return self.dual_output.compute_box_counting_loss(features)
 
     def verify_phase_pair_consistency(self, verbose: bool = False) -> bool:
         """
@@ -2626,7 +2154,7 @@ class TQFANN(nn.Module):
 
 if __name__ == "__main__":
     print("TQF-ANN Module - Full T24 Symmetry Implementation")
-    model: TQFANN = TQFANN(R=20, hidden_dim=80, fractal_iters=10)
+    model: TQFANN = TQFANN(R=20, hidden_dim=80)
     print(f"Parameters: {model.count_parameters():,}")
     x = torch.randn(1, 784)
     out = model(x)

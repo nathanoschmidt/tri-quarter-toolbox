@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.5<br>
-**Date:** February 24, 2026<br>
+**Version:** 1.1.0<br>
+**Date:** February 26, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -36,7 +36,7 @@
 This automated testing framework provides comprehensive coverage of all modules in the TQF-NN project, ensuring scientific rigor, reproducibility, and code quality.
 
 Key Features:
-- **760 total test cases** across 18 test files
+- **724 total test cases** across 17 test files
 - **~5-10 second** full test suite execution time
 - Shared utility infrastructure (conftest.py)
 - Full type hint coverage
@@ -102,7 +102,6 @@ tests/
 |-- test_dual_metrics_hexagonal_lattice.py  # Hexagonal lattice foundation tests
 |-- test_engine.py                          # Training engine, experiment orchestration
 |-- test_evaluation.py                      # Performance metrics evaluation
-|-- test_fibonacci_inner_zone_mirroring.py  # Fibonacci inner zone mirroring tests
 |-- test_logging_utils.py                   # Logging utilities
 |-- test_main.py                            # Good ole main
 |-- test_models_tqf_lattice_integration.py  # TQF-ANN lattice integration tests
@@ -286,8 +285,8 @@ pytest --lf
 
 ### Overall Coverage
 
-- **Total test cases:** 760 (varies based on skip conditions)
-- **Test files:** 18
+- **Total test cases:** 724 (varies based on skip conditions)
+- **Test files:** 17
 - **Full suite execution time:** ~5-10 seconds
 - **Core module coverage:** 100%
 - **Overall code coverage:** ~87%
@@ -296,41 +295,40 @@ pytest --lf
 
 | Test File | Test Cases | Status | Focus Area |
 |-----------|------------|--------|------------|
-| test_cli.py | 108 | All passing | CLI validation, orbit mixing flags, range constant consistency |
-| test_config.py | 81 | All passing | Configuration constants, range constants, defaults-within-ranges |
+| test_cli.py | 115 | All passing | CLI validation, orbit mixing flags, Z6 enhancement flags, range constant consistency |
+| test_config.py | 80 | All passing | Configuration constants, range constants, defaults-within-ranges |
 | test_datasets.py | 23 | All passing | Data loading and transformations |
-| test_dual_metrics.py | 53 | All passing | Geometric dual metrics, k-hop neighbors |
+| test_dual_metrics.py | 34 | All passing | Geometric dual metrics, k-hop neighbors |
 | test_dual_metrics_hexagonal_lattice.py | 37 | All passing | Hexagonal lattice Eisenstein coordinates |
-| test_engine.py | 48 | All passing | Training loop, optimizer setup, losses |
-| test_evaluation.py | 30 | All passing | Performance metrics, evaluation, orbit mixing |
-| test_fibonacci_inner_zone_mirroring.py | 24 | All passing | Fibonacci weight scaling and mirroring |
+| test_engine.py | 55 | All passing | Training loop, optimizer setup, losses |
+| test_evaluation.py | 55 | All passing | Performance metrics, evaluation, orbit mixing, Z6 enhancement modes, orbit consistency loss |
 | test_logging_utils.py | 25 | All passing | Logging and output formatting |
-| test_main.py | 13 | Varies | Main pipeline integration |
-| test_models_tqf_lattice_integration.py | 32 | Slow/Skip | TQF-ANN hexagonal lattice integration |
-| test_output_formatters.py | 49 | All passing | Result formatting and display |
-| test_param_matcher.py | 33 | All passing | Parameter matching and auto-tuning |
-| test_performance.py | 14 | All passing | Performance benchmarks |
+| test_main.py | 10 | Varies | Main pipeline integration |
+| test_models_tqf_lattice_integration.py | 27 | Slow/Skip | TQF-ANN hexagonal lattice integration |
+| test_output_formatters.py | 74 | All passing | Result formatting and display |
+| test_param_matcher.py | 27 | Varies | Parameter matching and auto-tuning |
+| test_performance.py | 13 | All passing | Performance benchmarks |
 | test_symmetry_ops.py | 53 | All passing | Symmetry ops unit tests (Z6/D6/T24) |
-| test_tqf_ann.py | 69 | All passing | TQF-ANN architecture, k-hop, checkpointing, inner zone caching |
+| test_tqf_ann.py | 47 | All passing | TQF-ANN architecture, k-hop, checkpointing, inner zone caching |
 | test_tqf_ann_integration.py | 41 | Slow/Skip | TQF-ANN end-to-end integration tests |
-| test_verification_features.py | 26 | All passing | Model verification utilities |
+| test_verification_features.py | 8 | All passing | Model verification utilities |
 
-**Note:** A small number of tests may be conditionally skipped based on environment (e.g., CUDA availability, slow test markers). Most notably, some tests have known Windows/CUDA compatibility issues that have been manually verified and documented.
+**Note:** A small number of tests are conditionally skipped or deselected based on environment and marker filters. 6 tests are unconditionally skipped due to a known Windows/CUDA 12.6 driver compatibility issue with ResNet Conv2d (3 tests) and CUDA-specific logging paths (3 tests). Tests marked `@pytest.mark.slow` are deselected when running with `-m "not slow"`.
 
 ### Module-Specific Coverage
 
 | Module | Coverage | Test Cases | Notes |
 |--------|----------|------------|-------|
-| cli.py | 95% | 108 | All CLI arguments, validation, defaults, range constant consistency |
+| cli.py | 95% | 115 | All CLI arguments, validation, defaults, range constant consistency, Z6 enhancements |
 | config.py | 95% | 81 | All constants, range constants, defaults-within-ranges, orbit mixing |
 | dual_metrics.py | 92% | 53 | Metrics, k-hop precomputation, edge cases |
 | models_tqf.py | 90% | 69+ | Architecture, k-hop, checkpointing, inner zone caching |
 | models_baseline.py | 85% | 13+ | All baseline models (via param_matcher) |
 | datasets.py | 92% | 23 | Loading, transforms, validation |
 | engine.py | 80% | 48 | Training loops, evaluation, orchestration |
-| evaluation.py | 90% | 30 | Metrics, statistical tests, timing, orbit mixing |
+| evaluation.py | 90% | 55 | Metrics, statistical tests, timing, orbit mixing, Z6 enhancement modes, orbit consistency loss |
 | output_formatters.py | 93% | 49 | All formatters, edge cases, constants |
-| param_matcher.py | 90% | 33 | Parameter counting, model registry |
+| param_matcher.py | 90% | 27 | Parameter counting, model registry |
 | symmetry_ops.py | 95% | 53 | Z6/D6/T24 group transformations |
 | logging_utils.py | 88% | 25 | Separators, config logging, progress |
 
@@ -345,14 +343,14 @@ When you run `pytest -v`, you'll see output like:
 ```
 ======================================================== test session starts ========================================================
 platform win32 -- Python 3.13.9, pytest-9.0.2, pluggy-1.6.0
-collected 760 items
+collected 724 items
 
 test_cli.py::TestGetAllModelNames::test_returns_list PASSED                                                                    [  0%]
 test_cli.py::TestGetAllModelNames::test_contains_tqf_ann PASSED                                                                [  0%]
 ...
 test_verification_features.py::TestParameterCounting::test_count_parameters_tqf PASSED                                         [100%]
 
-================================================== 760 passed, N skipped in 5-10s ==================================================
+================================================== 718 passed, N skipped in 5-10s ==================================================
 ```
 
 **Key Elements:**
@@ -376,26 +374,32 @@ test_verification_features.py::TestParameterCounting::test_count_parameters_tqf 
 ### C. Common Skip Reasons
 
 ```python
-# Skipped: "PyTorch not available" or "CUDA not available"
-# -> Tests requiring PyTorch/CUDA are skipped if dependencies unavailable
-# -> Normal behavior for environments without GPU support
-
 # Skipped: "ResNet Conv2d triggers CUDA access violation on Windows/CUDA 12.6"
 # -> Known PyTorch/CUDA driver compatibility issue on Windows
 # -> Tests manually verified: ResNet has 656,848 params (1.05% deviation from target)
-# -> Not a code bug; safe to skip
+# -> Not a code bug; safe to skip (3 tests: test_main.py, test_param_matcher.py x2)
 
-# Skipped: Tests with @pytest.mark.slow marker when --quick flag used
-# -> Integration and slow tests are skipped to speed up test execution
-# -> Run full suite without --quick to include these tests
+# Skipped: "CUDA not available on this system"
+# -> Tests that exercise CUDA-specific code paths (e.g., GPU logging output)
+# -> Normal behavior on machines without GPU support; skipped at runtime
+
+# Deselected: Tests with @pytest.mark.slow when running with -m "not slow"
+# -> TQF-ANN integration tests and production-sized model tests are excluded
+# -> Run full suite without -m "not slow" to include these tests
+# -> Affected files: test_main.py, test_param_matcher.py,
+#    test_verification_features.py, test_models_tqf_lattice_integration.py,
+#    test_tqf_ann_integration.py
 ```
 
-**Current skip status (as of Feb 2026):**
-- Number of skipped tests varies based on environment and test execution flags
-- All conditionally skipped tests are properly documented with clear skip reasons
+**Current skip/deselect status (as of Feb 2026):**
+
+| Command | Passed | Skipped | Deselected | Total |
+|---------|--------|---------|------------|-------|
+| `pytest tests/ -v` (full suite) | 718 | 6 | 0 | 724 |
+| `pytest tests/ -v -m "not slow"` | 640 | 6 | 78 | 724 |
 
 **When to worry about skips:**
-- [OK] **Normal:** Skips for known environment issues (like ResNet CUDA issue)
+- [OK] **Normal:** Skips for known environment issues (ResNet CUDA, GPU logging)
 - [WARN] **Investigate:** Skips for core functionality or unexpected missing dependencies
 - [X] **Fix immediately:** Skips due to import errors or configuration issues
 
@@ -583,13 +587,18 @@ git log --oneline -5
 
 ### L. Expected Test Results (Health Check)
 
-[OK] **Healthy test suite:**
+[OK] **Healthy test suite (full run):**
 ```
-760 passed, N skipped in 5-10s
+718 passed, 6 skipped in 5-10s
+```
+
+[OK] **Healthy test suite (fast run, `-m "not slow"`):**
+```
+640 passed, 6 skipped, 78 deselected in ~15s
 ```
 - All core tests passing
-- Skips vary by environment (CUDA availability, slow markers)
-- Fast execution for unit tests
+- 6 skipped: 3 ResNet/CUDA driver issues + 3 CUDA-path tests (all documented)
+- 78 deselected when using `-m "not slow"`: TQF-ANN integration and production model tests
 - No warnings or errors
 
 [WARN] **Needs attention:**
@@ -875,14 +884,15 @@ temp_data_dir                   # Temporary data directory
 
 ## 11. Recap Summary
 
-This automated testing framework provides robust validation of the TQF-NN project through **760 comprehensive test cases** organized across **18 test modules**. The framework emphasizes scientific rigor, maintainability, and ease of use through shared utilities (conftest.py), standardized configuration (pytest.ini), and clear documentation.
+This automated testing framework provides robust validation of the TQF-NN project through **724 comprehensive test cases** organized across **17 test modules**. The framework emphasizes scientific rigor, maintainability, and ease of use through shared utilities (conftest.py), standardized configuration (pytest.ini), and clear documentation.
 
 ### Key Statistics
 
-- **Total test cases:** 760 (varies based on skip conditions)
-- **Skipped tests:** Varies by environment (CUDA availability, slow test markers)
-- **Test modules:** 18
-- **Execution time:** ~5-10 seconds (full suite)
+- **Total test cases:** 724
+- **Skipped tests:** 6 (3 ResNet/CUDA driver + 3 CUDA-path; all documented)
+- **Deselected with `-m "not slow"`:** 78 (TQF-ANN integration + production model tests)
+- **Test modules:** 17
+- **Execution time:** ~5-10 seconds (full suite); ~15 seconds (fast `-m "not slow"` suite)
 - **Code coverage:** ~87% overall
 - **Lines of test code:** ~10,000+
 - **Test-to-code ratio:** ~1.2:1
@@ -921,8 +931,8 @@ The framework ensures that the TQF-NN implementation maintains high quality, cor
 
 **`QED`**
 
-**Last Updated:** February 24, 2026<br>
-**Version:** 1.0.5<br>
+**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

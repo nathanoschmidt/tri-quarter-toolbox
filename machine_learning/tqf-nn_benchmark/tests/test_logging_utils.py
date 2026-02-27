@@ -169,13 +169,9 @@ class TestLogExperimentConfig:
             tqf_R=3.0,
             tqf_hidden_dim=512,
             tqf_symmetry_level='D6',
-            tqf_fractal_iterations=5,
-            tqf_self_similarity_weight=0.001,
-            tqf_box_counting_weight=0.001,
             tqf_geometry_reg_weight=0.01,
             tqf_rotation_inv_loss_weight=0.001,
             tqf_inversion_loss_weight=0.001,
-            tqf_hop_attention_temp=0.5,
             tqf_verify_duality_interval=10,
             tqf_verify_geometry=False
         )

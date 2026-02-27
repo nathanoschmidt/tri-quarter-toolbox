@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.5<br>
-**Date:** February 24, 2026<br>
+**Version:** 1.1.0<br>
+**Date:** February 26, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -46,7 +46,7 @@ The primary goals are:
 ## 2. Key Features
 
 - 🧬 **First-Principles TQF-NN Architecture:** Radial dual triangular lattice graph (truncated) with explicit Eisenstein integer coordinates, true 6-neighbor hexagonal adjacency, phase-pair directional encoding, and circle inversion bijective duality between inner & outer zones.
-- 🔄 **Symmetry Group Enforcement:** Native ℤ₆ (rotational), D₆ (dihedral), and 𝕋₂₄ (inversive hexagonal dihedral) support with optional geometry regularization + equivariance/inversion orbit consistency losses.
+- 🔄 **ℤ₆ Orbit Mixing (Recommended):** Evaluation-time ensemble over 6 rotations (0°–300°) leveraging TQF-ANN's hexagonal lattice symmetry for strong rotation robustness — the primary opt-in TQF-specific feature. Native ℤ₆/D₆/𝕋₂₄ geometric structure also supports experimental symmetry enforcement losses (opt-in, not recommended — see below).
 - 📊 **Rotated MNIST Benchmark Suite:** 60°-aligned augmentations for true ℤ₆-equivariant evaluation with robust rotational accuracy.
 - ⚖️ **Apples-to-Apples Comparisons:** Parameter-matched (~650k ±1%) training & evaluation of TQF-ANN vs 3 non-TQF ANN baselines (FC-MLP, CNN-L5, ResNet-18-Scaled); groundwork laid for future non-TQF-SNN baselines.
 - 🧪 **High Test Coverage & Reproducibility:** Over 85–95% coverage on core lattice, symmetry, and training components; fixed seeds, stratified sampling, deterministic algorithms where possible.
@@ -120,7 +120,7 @@ python src/main.py --num-epochs 10 --num-train 1000
 
 Note: Particularly for TQF-ANN training, we expect the first epoch training time to be noticeably longer than the subsequent epoch training times due to runtime optimizations like cuDNN auto-tuning and CUDA initialization overhead.
 
-See more examples in [`QUICKSTART.md`](QUICKSTART.md) and full CLI reference in [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
+See more examples in [`QUICK_START.md`](QUICK_START.md) and full CLI reference in [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
 
 ---
 
@@ -148,10 +148,8 @@ Most common flags:
 --learning-rate               Initial LR (default: 0.001)
 --batch-size                  Batch size (default: 128)
 --patience                    Early stopping patience (default: 25)
---tqf-symmetry-level          none | Z6 | D6 | T24 (default: none)
---tqf-use-z6-orbit-mixing     TQF Z6 orbit mixing (competes/conflicts with TQF Z6 augmentation)
+--tqf-use-z6-orbit-mixing     TQF Z6 orbit mixing — recommended for rotation robustness (eval-time; keep --z6-data-augmentation off)
 --z6-data-augmentation        Enable Z6 data augmentation during training (disabled by default)
---tqf-z6-equivariance-weight  Enable and set weight for Z6 equivariance loss (range [0.001, 0.05])
 --device                      cpu | cuda (default: cuda if available)
 --compile                     Enable PyTorch model compilation (Linux/macOS only)
 ```
@@ -170,6 +168,20 @@ Key CLI flags (focus on ℤ₆ for simplicity and efficiency):
   - `--tqf-orbit-mixing-temp-reflection`: Temperature for reflection averaging (default: 0.5).
   - `--tqf-orbit-mixing-temp-inversion`: Temperature for inversion averaging (default: 0.7).
 
+ℤ₆ orbit mixing quality enhancements (all eval-time, opt-in, require `--tqf-use-z6-orbit-mixing`):
+- `--tqf-z6-orbit-mixing-confidence-mode`: Variant confidence scoring — `max_logit` (default) or `margin`.
+- `--tqf-z6-orbit-mixing-aggregation-mode`: Ensemble space — `logits` (default), `probs`, or `log_probs`.
+- `--tqf-z6-orbit-mixing-top-k`: Keep only K most confident rotation variants (default: all 6).
+- `--tqf-z6-orbit-mixing-adaptive-temp`: Per-sample entropy-based temperature scaling.
+- `--tqf-z6-orbit-mixing-rotation-mode`: Rotation interpolation — `bilinear` (default) or `bicubic`.
+- `--tqf-z6-orbit-mixing-rotation-padding-mode`: Rotation boundary — `zeros` (default) or `border`.
+- `--tqf-z6-orbit-mixing-rotation-pad`: Reflect-pad-rotate-crop to eliminate corner artefacts (default: 0).
+
+Training-time additions (opt-in):
+- `--tqf-z6-non-rotation-augmentation`: Random crop (pad=2) + ColorJitter ±10% during training.
+- `--tqf-z6-orbit-consistency-weight`: ℤ₆ orbit consistency self-distillation loss weight (KL divergence from stop-gradient ensemble; disabled by default).
+- `--tqf-z6-orbit-consistency-rotations`: Extra rotation passes for consistency loss (default: 2; range [1, 5]).
+
 **Important Note:** Orbit mixing conflicts with training-time data augmentation via `--z6-data-augmentation`, as the latter introduces explicit rotations that may interfere with orbit-based ensembles. Keep `--z6-data-augmentation` off (default) when enabling any orbit mixing to avoid suboptimal results.
 
 Example: Enable ℤ₆ orbit mixing for evaluation robustness:
@@ -177,7 +189,9 @@ Example: Enable ℤ₆ orbit mixing for evaluation robustness:
 python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 ```
 
-### Symmetry Enforcement Losses (TQF-ANN)
+### Symmetry Enforcement Losses (TQF-ANN, Experimental)
+> **Note:** These training-time loss features are experimental and have not shown accuracy improvements in practice — they may slightly hurt performance. For rotation robustness, use `--tqf-use-z6-orbit-mixing` instead.
+
 Explicit symmetry enforcement through equivariance and/or invariance losses during training.
 Features are disabled by default and enabled by providing a weight value:
 ```bash
@@ -249,10 +263,11 @@ Run full test suite with coverage (cross-platform):
 pytest tests/ -v --cov=. --cov-report=html
 ```
 
-Run non-slow test suite (excludes integration/slow tests):
+Run non-slow test suite (excludes TQF-ANN integration and production model tests):
 
 ```bash
 pytest tests/ -v -m "not slow"
+# Expected: 679 passed, 6 skipped, 79 deselected
 ```
 
 ---
@@ -306,8 +321,8 @@ See some of our future TODO items in [`FUTURE_TODO.md`](FUTURE_TODO.md).
 
 **`QED`**
 
-**Last Updated:** February 24, 2026<br>
-**Version:** 1.0.5<br>
+**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

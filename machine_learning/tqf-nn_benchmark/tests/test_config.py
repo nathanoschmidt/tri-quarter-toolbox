@@ -163,7 +163,6 @@ class TestTQFArchitectureParameters(unittest.TestCase):
         float_params: List[str] = ['TQF_RADIUS_R_FIXED']
         int_or_float_params: List[str] = ['TQF_TRUNCATION_R_DEFAULT']  # Can be int or float
         int_params: List[str] = ['TQF_HIDDEN_DIMENSION_DEFAULT']
-        # Note: TQF_FRACTAL_ITERATIONS_DEFAULT excluded - can be 0 (disabled by default, opt-in)
 
         for param in float_params:
             value: float = getattr(config, param)
@@ -188,14 +187,6 @@ class TestTQFArchitectureParameters(unittest.TestCase):
         valid: List[str] = ['none', 'Z6', 'D6', 'T24']
         self.assertIn(config.TQF_SYMMETRY_LEVEL_DEFAULT, valid)
 
-    def test_tqf_weights_non_negative(self) -> None:
-        """Test that TQF weight parameters are non-negative."""
-        for param in ['TQF_FRACTAL_DIM_TOLERANCE_DEFAULT',
-                     'TQF_SELF_SIMILARITY_WEIGHT_DEFAULT',
-                     'TQF_BOX_COUNTING_WEIGHT_DEFAULT']:
-            value: float = getattr(config, param)
-            assert_non_negative(value, param)
-
     def test_tqf_radius_type(self) -> None:
         """Test TQF_RADIUS_R_FIXED is float."""
         self.assertIsInstance(config.TQF_RADIUS_R_FIXED, float)
@@ -208,24 +199,10 @@ class TestTQFArchitectureParameters(unittest.TestCase):
         """Test TQF_HIDDEN_DIMENSION_DEFAULT is integer."""
         self.assertIsInstance(config.TQF_HIDDEN_DIMENSION_DEFAULT, int)
 
-    def test_tqf_fractal_iterations_type(self) -> None:
-        """Test TQF_FRACTAL_ITERATIONS_DEFAULT is integer."""
-        self.assertIsInstance(config.TQF_FRACTAL_ITERATIONS_DEFAULT, int)
-
     def test_tqf_hidden_dim_reasonable(self) -> None:
         """Test TQF hidden dimension is in reasonable range."""
         self.assertGreaterEqual(config.TQF_HIDDEN_DIMENSION_DEFAULT, 32)
         self.assertLessEqual(config.TQF_HIDDEN_DIMENSION_DEFAULT, 2048)
-
-    def test_tqf_fractal_iterations_reasonable(self) -> None:
-        """Test fractal iterations default is 0 (disabled) or in reasonable range [1, 20].
-
-        Fractal iterations is an opt-in feature:
-        - 0 = disabled by default
-        - [1, 20] = valid enabled range when user provides value via CLI
-        """
-        self.assertGreaterEqual(config.TQF_FRACTAL_ITERATIONS_DEFAULT, 0)
-        self.assertLessEqual(config.TQF_FRACTAL_ITERATIONS_DEFAULT, 20)
 
 
 class TestTrainingHyperparameters(unittest.TestCase):
@@ -442,12 +419,6 @@ class TestRangeConstants(unittest.TestCase):
         pairs = [
             ('TQF_R_MIN', 'TQF_R_MAX'),
             ('TQF_HIDDEN_DIM_MIN', 'TQF_HIDDEN_DIM_MAX'),
-            ('TQF_FRACTAL_ITERATIONS_MIN', 'TQF_FRACTAL_ITERATIONS_MAX'),
-            # TQF_FRACTAL_DIM_TOLERANCE range constants removed (internal, not CLI-tunable)
-            ('TQF_SELF_SIMILARITY_WEIGHT_MIN', 'TQF_SELF_SIMILARITY_WEIGHT_MAX'),
-            ('TQF_BOX_COUNTING_WEIGHT_MIN', 'TQF_BOX_COUNTING_WEIGHT_MAX'),
-            # TQF_BOX_COUNTING_SCALES range constants removed (internal, not CLI-tunable)
-            ('TQF_HOP_ATTENTION_TEMP_MIN', 'TQF_HOP_ATTENTION_TEMP_MAX'),
         ]
         for min_name, max_name in pairs:
             self.assertTrue(hasattr(config, min_name), f"Missing {min_name}")
@@ -499,12 +470,6 @@ class TestRangeConstants(unittest.TestCase):
             ('NUM_TEST_UNROT_MIN', 'NUM_TEST_UNROT_MAX'),
             ('TQF_R_MIN', 'TQF_R_MAX'),
             ('TQF_HIDDEN_DIM_MIN', 'TQF_HIDDEN_DIM_MAX'),
-            ('TQF_FRACTAL_ITERATIONS_MIN', 'TQF_FRACTAL_ITERATIONS_MAX'),
-            # TQF_FRACTAL_DIM_TOLERANCE range constants removed (internal, not CLI-tunable)
-            ('TQF_SELF_SIMILARITY_WEIGHT_MIN', 'TQF_SELF_SIMILARITY_WEIGHT_MAX'),
-            ('TQF_BOX_COUNTING_WEIGHT_MIN', 'TQF_BOX_COUNTING_WEIGHT_MAX'),
-            # TQF_BOX_COUNTING_SCALES range constants removed (internal, not CLI-tunable)
-            ('TQF_HOP_ATTENTION_TEMP_MIN', 'TQF_HOP_ATTENTION_TEMP_MAX'),
             ('TQF_ORBIT_MIXING_TEMP_MIN', 'TQF_ORBIT_MIXING_TEMP_MAX'),
             ('TQF_GEOMETRY_REG_WEIGHT_MIN', 'TQF_GEOMETRY_REG_WEIGHT_MAX'),
             ('TQF_INVERSION_LOSS_WEIGHT_MIN', 'TQF_INVERSION_LOSS_WEIGHT_MAX'),
@@ -581,27 +546,10 @@ class TestDefaultsWithinRanges(unittest.TestCase):
             self.assertLessEqual(default_val, max_val,
                 f"{default_name} ({default_val}) must be <= {max_name} ({max_val})")
 
-    def test_tqf_architecture_defaults_within_ranges(self) -> None:
-        """Test TQF architecture defaults are within bounds."""
-        self.assertGreaterEqual(config.TQF_TRUNCATION_R_DEFAULT, config.TQF_R_MIN)
-        self.assertLessEqual(config.TQF_TRUNCATION_R_DEFAULT, config.TQF_R_MAX)
-
-        self.assertGreaterEqual(config.TQF_HIDDEN_DIMENSION_DEFAULT, config.TQF_HIDDEN_DIM_MIN)
-        self.assertLessEqual(config.TQF_HIDDEN_DIMENSION_DEFAULT, config.TQF_HIDDEN_DIM_MAX)
-
-        # TQF_BOX_COUNTING_SCALES range check removed (internal constant, not CLI-tunable)
-        # Validated by assertion in config.py: 2 <= TQF_BOX_COUNTING_SCALES_DEFAULT <= 20
-
-        self.assertGreaterEqual(config.TQF_HOP_ATTENTION_TEMP_DEFAULT, config.TQF_HOP_ATTENTION_TEMP_MIN)
-        self.assertLessEqual(config.TQF_HOP_ATTENTION_TEMP_DEFAULT, config.TQF_HOP_ATTENTION_TEMP_MAX)
-
     def test_tqf_weight_defaults_within_ranges(self) -> None:
         """Test TQF regularization weight defaults are within bounds."""
         checks = [
             ('TQF_GEOMETRY_REG_WEIGHT_MIN', 'TQF_GEOMETRY_REG_WEIGHT_DEFAULT', 'TQF_GEOMETRY_REG_WEIGHT_MAX'),
-            ('TQF_SELF_SIMILARITY_WEIGHT_MIN', 'TQF_SELF_SIMILARITY_WEIGHT_DEFAULT', 'TQF_SELF_SIMILARITY_WEIGHT_MAX'),
-            ('TQF_BOX_COUNTING_WEIGHT_MIN', 'TQF_BOX_COUNTING_WEIGHT_DEFAULT', 'TQF_BOX_COUNTING_WEIGHT_MAX'),
-            # TQF_FRACTAL_DIM_TOLERANCE range check removed (internal constant, not CLI-tunable)
         ]
         for min_name, default_name, max_name in checks:
             min_val = getattr(config, min_name)
@@ -693,6 +641,26 @@ class TestRemovedObsoleteConstants(unittest.TestCase):
         """Test that unused TQF_MAX_FRACTAL_GATES_DEFAULT was removed."""
         self.assertFalse(hasattr(config, 'TQF_MAX_FRACTAL_GATES_DEFAULT'),
                         "TQF_MAX_FRACTAL_GATES_DEFAULT should have been removed (unused)")
+
+    def test_fractal_iterations_default_removed(self) -> None:
+        """Test that TQF_FRACTAL_ITERATIONS_DEFAULT was removed."""
+        self.assertFalse(hasattr(config, 'TQF_FRACTAL_ITERATIONS_DEFAULT'),
+                        "TQF_FRACTAL_ITERATIONS_DEFAULT should have been removed")
+
+    def test_hop_attention_temp_default_removed(self) -> None:
+        """Test that TQF_HOP_ATTENTION_TEMP_DEFAULT was removed."""
+        self.assertFalse(hasattr(config, 'TQF_HOP_ATTENTION_TEMP_DEFAULT'),
+                        "TQF_HOP_ATTENTION_TEMP_DEFAULT should have been removed")
+
+    def test_self_similarity_weight_default_removed(self) -> None:
+        """Test that TQF_SELF_SIMILARITY_WEIGHT_DEFAULT was removed."""
+        self.assertFalse(hasattr(config, 'TQF_SELF_SIMILARITY_WEIGHT_DEFAULT'),
+                        "TQF_SELF_SIMILARITY_WEIGHT_DEFAULT should have been removed")
+
+    def test_box_counting_weight_default_removed(self) -> None:
+        """Test that TQF_BOX_COUNTING_WEIGHT_DEFAULT was removed."""
+        self.assertFalse(hasattr(config, 'TQF_BOX_COUNTING_WEIGHT_DEFAULT'),
+                        "TQF_BOX_COUNTING_WEIGHT_DEFAULT should have been removed")
 
 
 def run_tests(verbosity: int = 2) -> unittest.TestResult:

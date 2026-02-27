@@ -99,13 +99,13 @@ if TORCH_AVAILABLE:
 class TestTQFANNLatticeConstruction(unittest.TestCase):
     """Test that TQF-ANN properly constructs hexagonal lattice."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(
             R=5.0,
             hidden_dim=32,
-            fractal_iters=2,
-                    )
+        )
 
     def test_lattice_vertices_created(self) -> None:
         """Test that explicit lattice vertices are created."""
@@ -154,9 +154,10 @@ class TestTQFANNLatticeConstruction(unittest.TestCase):
 class TestTQFANNSectorPartitions(unittest.TestCase):
     """Test angular sector partitioning."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(R=6.0, hidden_dim=32, fractal_iters=2)
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(R=6.0, hidden_dim=32)
 
     def test_six_sectors_created(self) -> None:
         """Test that exactly 6 angular sectors are created."""
@@ -194,9 +195,10 @@ class TestTQFANNSectorPartitions(unittest.TestCase):
 class TestTQFANNAdjacencyIntegration(unittest.TestCase):
     """Test that adjacency is properly integrated."""
 
-    def setUp(self) -> None:
-        """Create test model with T24 binner."""
-        self.model = TQFANN(R=5.0, hidden_dim=32, fractal_iters=2)
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(R=5.0, hidden_dim=32)
 
     def test_adjacency_dict_exists(self) -> None:
         """Test that adjacency dictionary exists."""
@@ -228,9 +230,10 @@ class TestTQFANNAdjacencyIntegration(unittest.TestCase):
 class TestTQFANNPhasePairs(unittest.TestCase):
     """Test phase pair integration."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(R=4.0, hidden_dim=32, fractal_iters=2)
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(R=4.0, hidden_dim=32)
 
     def test_all_vertices_have_phase_pairs(self) -> None:
         """Test that all vertices have phase_pair attribute."""
@@ -260,9 +263,10 @@ class TestTQFANNPhasePairs(unittest.TestCase):
 class TestTQFANNSixColoring(unittest.TestCase):
     """Test trihexagonal six-coloring integration."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(R=6.0, hidden_dim=32, fractal_iters=2)
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(R=6.0, hidden_dim=32)
 
     def test_six_coloring_verification_exists(self) -> None:
         """Test that six-coloring verification method exists."""
@@ -283,12 +287,12 @@ class TestTQFANNSixColoring(unittest.TestCase):
 class TestTQFANNDualOutputGeodesic(unittest.TestCase):
     """Test geodesic distance verification in dual output (Step 5)."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(
             R=5.0,
             hidden_dim=32,
-            fractal_iters=2,
             use_dual_output=True
         )
 
@@ -354,14 +358,14 @@ class TestTQFANNDualOutputGeodesic(unittest.TestCase):
 class TestTQFANNForwardPass(unittest.TestCase):
     """Test that forward pass works with lattice integration."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(
             R=4.0,
             hidden_dim=32,
-            fractal_iters=2,
-                    )
-        self.model.eval()
+        )
+        cls.model.eval()
 
     def test_forward_pass_basic(self) -> None:
         """Test basic forward pass."""
@@ -406,9 +410,10 @@ class TestTQFANNForwardPass(unittest.TestCase):
 class TestTQFANNVerificationMethods(unittest.TestCase):
     """Test TQF-ANN verification methods."""
 
-    def setUp(self) -> None:
-        """Create test model."""
-        self.model = TQFANN(R=5.0, hidden_dim=32, fractal_iters=2)
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Create test model once for all tests in this class."""
+        cls.model = TQFANN(R=5.0, hidden_dim=32)
 
     def test_verify_dualities_method(self) -> None:
         """Test duality verification method."""

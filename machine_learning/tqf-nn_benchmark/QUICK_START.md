@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.5<br>
-**Date:** February 24, 2026<br>
+**Version:** 1.1.0<br>
+**Date:** February 26, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -98,8 +98,8 @@
 
 ### Next Steps
 
-- Run full test suite: `pytest -v`
-- Run quick non-slow test suite: `pytest -v -m "not slow"`
+- Run full test suite: `pytest -v` (expected: 758 passed, 6 skipped)
+- Run quick non-slow test suite: `pytest -v -m "not slow"` (expected: 679 passed, 6 skipped, 79 deselected)
 - View CLI options: `python src/main.py --help`
 - Run an experiment--see next section!
 
@@ -117,7 +117,7 @@
 
 **What happens:**
 - Trains the parameter-matched TQF-ANN (∼650K params) and three strong non-TQF baselines
-- Uses ℤ₆ orbit mixing when training TQF-ANN
+- Uses ℤ₆ orbit mixing at evaluation time for TQF-ANN
 - Automatically downloads & prepares the rotated MNIST datasets
 - Prints a clean apples-to-apples comparison table with Val/Test/Rotated Test accuracy ± std
 
@@ -178,7 +178,7 @@ TQF-ANN               97.05+/-0.00    97.75+/-0.00    66.57+/-0.00     651.2+/- 
 - **TQF-ANN strength** — Look primarily at **Rot Acc** column. A main feature of TQF is rotation invariance thanks to explicit ℤ₆/D₆/𝕋₂₄ geometric structure.
 - **Greatness** — If Rot Acc is much higher than baselines while Val/Test Acc is competitive, that's success.
 - **Statistical reliability** — With `--num-seeds ≥ 3`, the ± values give you a sense of variance. Bigger spreads → need more seeds or longer training.
-- **Next steps** — Try ablations with different symmetry levels (`--tqf-symmetry-level none/Z6/D6/T24`), loss weights, or data sizes (`--num-train`, `--num-epochs`) to see what drives the rotation gains.
+- **Next steps** — The most impactful option is `--tqf-use-z6-orbit-mixing` for rotation robustness. Also try different data sizes (`--num-train`, `--num-epochs`) to see what drives accuracy.
 
 ### Persistent Result Files
 
@@ -228,7 +228,7 @@ python src/main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 ```
 
 ```bash
-# TQF-ANN + D6 symmetry + Z6 equivariance enforcement
+# TQF-ANN + Z6 symmetry + Z6 equivariance enforcement
 python src/main.py --models TQF-ANN --tqf-symmetry-level Z6 --tqf-z6-equivariance-weight 0.01
 ```
 
@@ -258,6 +258,22 @@ Some common flags to remember:
 - `--z6-data-augmentation`            enable ℤ₆ rotation data augmentation (disabled by default)
 - `--tqf-verify-geometry`
 - `--compile`                        (Linux only)
+
+ℤ₆ orbit mixing quality enhancements (all eval-time, opt-in, require `--tqf-use-z6-orbit-mixing`):
+
+- `--tqf-z6-orbit-mixing-confidence-mode`        `max_logit` (default) or `margin`
+- `--tqf-z6-orbit-mixing-aggregation-mode`       `logits` (default), `probs`, or `log_probs`
+- `--tqf-z6-orbit-mixing-top-k`                 keep only K most confident variants (default: all 6)
+- `--tqf-z6-orbit-mixing-adaptive-temp`          per-sample entropy-based temperature scaling
+- `--tqf-z6-orbit-mixing-rotation-mode`          `bilinear` (default) or `bicubic`
+- `--tqf-z6-orbit-mixing-rotation-padding-mode`  `zeros` (default) or `border`
+- `--tqf-z6-orbit-mixing-rotation-pad`           reflect-pad before rotate (0 = off, try 2–4)
+
+Training-time augmentation/loss additions (opt-in):
+
+- `--tqf-z6-non-rotation-augmentation`           random crop + brightness/contrast jitter
+- `--tqf-z6-orbit-consistency-weight`            ℤ₆ orbit consistency self-distillation loss weight
+- `--tqf-z6-orbit-consistency-rotations`         extra rotation passes for consistency loss (default: 2)
 
 For the full list of command parameters (including weights, TQF lattice radius, symmetry levels, etc.), see [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
 
@@ -293,6 +309,8 @@ done
 - Lets you directly compare how much each layer of symmetry improves rotated MNIST accuracy
 
 ### Equivariance/Orbit Loss Training
+
+> **Note:** These training-time loss features are experimental. In practice they have not shown accuracy improvements and may slightly hurt performance. For rotation robustness, prefer `--tqf-use-z6-orbit-mixing` instead.
 
 Features are disabled by default and enabled by providing a weight value:
 
@@ -345,9 +363,6 @@ python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
 **What this does:**
 - `--z6-data-augmentation` enables training-time rotation augmentation for rotation robustness (disabled by default to avoid conflicts with orbit mixing)
 - `--tqf-use-z6-orbit-mixing` averages predictions over 6 input-space rotations (0, 60, ..., 300 degrees) at evaluation time, leveraging TQF-ANN's hexagonal symmetry
-- `--tqf-use-d6-orbit-mixing` adds feature-space reflections (lightweight, classification head only)
-- `--tqf-use-t24-orbit-mixing` adds inner/outer zone-swap variants (full T24 symmetry group)
-- Without augmentation, baseline models (CNN, MLP) lose rotation robustness while TQF-ANN retains it thanks to its geometric structure -- this is the key demonstration of TQF-ANN's architectural advantage
 
 **Temperature tuning** (optional, for advanced users):
 ```bash
@@ -395,7 +410,7 @@ for lr in learning_rates:
 
 **What this does:**
 - Systematically tests one hyperparameter while keeping others fixed
-- Easily adapt for geometry reg weight, inversion loss weight, truncation radius R, self-similarity weight, hop attention temperature, etc.
+- Easily adapt for geometry reg weight, inversion loss weight, truncation radius R, etc.
 - Results appear sequentially in console/logs — compare manually or collect in a spreadsheet
 
 These workflows cover most day-to-day usage: direct comparison, symmetry group ablation, loss ablation, hierarchical weighting experiments, and simple hyperparameter tuning.
@@ -445,8 +460,8 @@ You're ready—get your gameface on and get to training!
    python src/main.py --help
    ```
    Try useful ones to experiment with:
-   - `--tqf-symmetry-level T24` (full inversive hexagonal symmetry)
-   - `--tqf-inversion-loss-weight 0.001 --tqf-t24-orbit-invariance-weight 0.005`
+   - `--tqf-use-z6-orbit-mixing` (recommended — ℤ₆ orbit mixing for rotation robustness)
+   - `--tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-rotation-pad 2` (orbit mixing with corner artefact reduction)
    - `--batch-size 128 --learning-rate 0.0005`
    - `--device cpu` (fallback when testing without GPU)
 
@@ -470,7 +485,7 @@ You're ready—get your gameface on and get to training!
    - Architecture overview → [`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md)
    - API documentation → [`doc/API_REFERENCE.md`](doc/API_REFERENCE.md)
    - Data set documentation → [`data/DATASET_README.md`](data/DATASET_README.md)
-   - Test suite guide & structure → [`doc/TESTS_README.md`](doc/TESTS_README.md)
+   - Test suite guide & structure → [`tests/TESTS_README.md`](tests/TESTS_README.md)
 
 6. **Share results or get help**
    - See all options with descriptions:
@@ -485,8 +500,8 @@ You're ready—get your gameface on and get to training!
 
 **`QED`**
 
-**Last Updated:** February 24, 2026<br>
-**Version:** 1.0.5<br>
+**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

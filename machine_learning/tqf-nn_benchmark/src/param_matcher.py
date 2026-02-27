@@ -50,7 +50,6 @@ from config import (
     TARGET_PARAMS_TOLERANCE_ABSOLUTE,
     TARGET_PARAMS_TOLERANCE_PERCENT,
     TQF_TRUNCATION_R_DEFAULT,
-    TQF_FRACTAL_ITERATIONS_DEFAULT
 )
 
 # Import lattice construction for accurate layer count calculation
@@ -69,72 +68,46 @@ except ImportError:
 def _estimate_radial_binner_params(
     L: int,
     d: int,
-    fractal_iters: int,
 ) -> Tuple[int, int]:
     """Estimate parameters for the T24EquivariantHybridBinner.
 
     Helper function that calculates parameters for the radial binner.
     T24 binner shares weights between zones (single set of parameters).
 
-    IMPORTANT: Fibonacci mode now uses CONSTANT dimensions (weight-based scaling).
-    All modes (none, linear, fibonacci) have IDENTICAL parameter counts.
-
     Args:
         L: Number of layers
-        d: Base hidden dimension (CONSTANT for all layers and all modes)
-        fractal_iters: Number of fractal iterations
+        d: Base hidden dimension (CONSTANT for all layers)
 
     Returns:
         Tuple of (radial_params, final_dim=d)
     """
-    effective_fractal_iters: int = min(3, fractal_iters)
-
-    # ALL MODES USE CONSTANT DIMENSIONS (d)
-    # Fibonacci mode only affects feature aggregation weights, not dimensions
-    # This ensures identical parameter counts across all modes
-
     # Graph convs: Each layer has Sequential(Linear + LayerNorm + GELU + Dropout)
     # Linear: d*d + d, LayerNorm: 2*d
     per_layer_conv: int = (d * d + d) + (2 * d)
     graph_conv_params: int = per_layer_conv * L
 
-    # No self_transforms: Using direct residual addition (x + f(x))
-    # Only learned transform is the main conv layer
-
-    radial_base: int = graph_conv_params
+    radial_params: int = graph_conv_params
     final_dim: int = d
-
-    # Fractal gates: shared gates for all layers (uniform dimensions)
-    fractal_gates_per_iter: int = d * d + d
-    fractal_gates_total: int = effective_fractal_iters * fractal_gates_per_iter
-
-    radial_params: int = radial_base + fractal_gates_total
     return radial_params, final_dim
 
 
 def estimate_tqf_params(
     R: int,
     d: int,
-    fractal_iters: int = TQF_FRACTAL_ITERATIONS_DEFAULT,
 ) -> int:
     """Estimate TQF-ANN parameter count from architecture configuration.
 
     Accurately accounts for all components including the T24-equivariant binner
     with shared weights between zones.
 
-    IMPORTANT: Fibonacci mode uses WEIGHT-BASED scaling, not dimension scaling.
-    All modes (none, linear, fibonacci) have IDENTICAL parameter counts.
-
     Architecture Components:
         1. BoundaryZoneEncoder:
            - pre_encoder: Linear(784, d) + LayerNorm(d)
            - radial_proj: Linear(d, d)
            - fourier_basis: Parameter(d, 6)
-           - fractal_mixer: fractal_iters * Linear(6, 6)
 
         2. T24EquivariantHybridBinner (shared weights for both zones):
            - graph_convs: L layers of Sequential(Linear(d,d), LayerNorm(d), GELU, Dropout)
-           - fractal_gates: shared gates Linear(d, d)
 
         3. DualOutputHead:
            - classification_head: Linear(d, 10)
@@ -143,7 +116,6 @@ def estimate_tqf_params(
     Args:
         R: Truncation radius. Controls lattice extent.
         d: Hidden dimension (CONSTANT for all layers). Auto-tuned by tune_d_for_params().
-        fractal_iters: Number of fractal self-similarity iterations.
 
     Returns:
         Total trainable parameter count (int).
@@ -179,15 +151,10 @@ def estimate_tqf_params(
     # RayOrganizedBoundaryEncoder:
     # - radial_proj: Linear(d, d)
     # - fourier_basis: Parameter(d, 6)
-    # - fractal_mixer: fractal_iters * Linear(6, 6)
     radial_proj: int = d * d + d  # Linear(d, d)
     fourier_basis: int = 6 * d  # Parameter(hidden_dim, 6)
-    fractal_layer_per_iter: int = 6 * 6 + 6  # Linear(6, 6): 36 weights + 6 biases
-    fractal_layers_total: int = fractal_iters * fractal_layer_per_iter
 
-    boundary: int = (
-        pre_encoder_total + radial_proj + fourier_basis + fractal_layers_total
-    )
+    boundary: int = pre_encoder_total + radial_proj + fourier_basis
 
     # ========================================================================
     # DUAL-ZONE RADIAL BINNER PARAMETERS (OUTER + INNER)
@@ -195,9 +162,7 @@ def estimate_tqf_params(
     # ========================================================================
 
     # Compute binner parameters
-    binner_params, _ = _estimate_radial_binner_params(
-        L=L, d=d, fractal_iters=fractal_iters
-    )
+    binner_params, _ = _estimate_radial_binner_params(L=L, d=d)
 
     # T24 binner shares weights between zones (single set of parameters)
     radial: int = binner_params
@@ -226,7 +191,6 @@ def tune_d_for_params(
     R: int,
     target: int = TARGET_PARAMS,
     tol: int = TARGET_PARAMS_TOLERANCE_ABSOLUTE,
-    fractal_iters: int = TQF_FRACTAL_ITERATIONS_DEFAULT,
 ) -> int:
     """Find optimal hidden dimension d to match target parameter count.
 
@@ -241,26 +205,25 @@ def tune_d_for_params(
         R: Truncation radius for TQF graph
         target: Target parameter count (default: 650,000)
         tol: Acceptable deviation from target (default: 7,150 for 1.1%)
-        fractal_iters: Number of fractal self-similarity iterations
 
     Returns:
         Optimal hidden dimension d (int) that brings parameter count closest
         to target within tolerance.
 
     Example:
-        >>> tune_d_for_params(R=20, fractal_iters=10)
-        38  # Produces ~650,000 params with R=20, fractal_iters=10
+        >>> tune_d_for_params(R=20)
+        42  # Produces ~650,000 params with R=20
     """
     d_low: int = 10
     d_high: int = 300
     best_d: int = d_low
-    best_diff: int = abs(estimate_tqf_params(R, d_low, fractal_iters) - target)
+    best_diff: int = abs(estimate_tqf_params(R, d_low) - target)
 
     # Binary search for optimal d
     while d_low <= d_high:
         d_mid: int = (d_low + d_high) // 2
 
-        params: int = estimate_tqf_params(R, d_mid, fractal_iters)
+        params: int = estimate_tqf_params(R, d_mid)
         diff: int = abs(params - target)
 
         # Update best if closer to target

@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.5<br>
-**Date:** February 24, 2026<br>
+**Version:** 1.1.0<br>
+**Date:** February 26, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -158,17 +158,19 @@ Current device:  NVIDIA GeForce RTX 4060 Laptop GPU
 ### 3.3 Quick Smoke Tests
 
 ```bash
-# Non-slow tests
+# Non-slow tests (fast: ~15s, skips TQF-ANN integration + production model tests)
 pytest tests/ -v -m "not slow"
+# Expected: 679 passed, 6 skipped, 79 deselected
 
-# Full test suite (includes some computationally expensive runtime performance testing)
+# Full test suite (includes TQF-ANN integration and production model tests)
 pytest tests/ -v
+# Expected: 758 passed, 6 skipped
 
 # With coverage report (recommended during development)
 pytest tests/ -v --cov=. --cov-report=term-missing
 ```
 
-If at least the non-slow tests pass, the installation is healthy.
+The 6 skipped tests are expected: 3 are ResNet/CUDA driver issues (Windows/CUDA 12.6 incompatibility, manually verified) and 3 are CUDA-specific logging paths. All are documented. If at least the non-slow tests pass, the installation is healthy.
 
 ---
 
@@ -198,10 +200,10 @@ Reactivate if needed:
 source venv/bin/activate
 ```
 
-### NumPy 2.x Conflict
+### NumPy Version Conflict
 
 ```bash
-pip install "numpy>=1.24.0,<2.0.0" --force-reinstall
+pip install "numpy>=1.24.0,<3.0.0" --force-reinstall
 ```
 
 ### CUDA Out-of-Memory During Training
@@ -233,7 +235,7 @@ See contact info below.
 
 You're ready to launch! Have fun exploring the TQF-NN!
 
-We recommend to check out [`README.md`](README.md) and [`QUICKSTART.md`](QUICKSTART.md).
+We recommend to check out [`README.md`](README.md) and [`QUICK_START.md`](QUICK_START.md).
 
 If you're still wrestling with hassles, or if you're interesting in the heavier documentation, then feel free to check out the advanced/comprehensive/L33T documentation:
 
@@ -247,8 +249,8 @@ If you're still wrestling with hassles, or if you're interesting in the heavier 
 
 **`QED`**
 
-**Last Updated:** February 24, 2026<br>
-**Version:** 1.0.5<br>
+**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

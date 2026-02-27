@@ -54,6 +54,7 @@ Date: February 2026
 
 import sys
 import time
+import math
 import random
 import warnings
 import numpy as np
@@ -64,6 +65,12 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from typing import Dict, List, Tuple, Optional, Any, Union
 import logging
+
+# Module-level cache for rotation affine grids.
+# Key: (angle_degrees, H, W, pad_before_rotate) → (1, H, W, 2) float32 grid on CPU.
+# The grid depends only on angle and spatial size, never on batch content or device.
+# Cached grids are expanded to batch size and moved to device at use time.
+_ROTATION_GRID_CACHE: Dict[Tuple[int, int, int, int], torch.Tensor] = {}
 
 # Suppress PyTorch scheduler deprecation warnings (PyTorch 2.8+)
 # This is a known issue with SequentialLR internally passing epoch parameter
@@ -100,6 +107,14 @@ from config import (
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
     MIN_DELTA_DEFAULT
 )
 from models_baseline import get_model, MODEL_REGISTRY
@@ -117,7 +132,9 @@ from param_matcher import TARGET_PARAMS, TARGET_PARAMS_TOLERANCE_PERCENT
 def rotate_batch_images(
     images: torch.Tensor,
     angle_degrees: int,
-    mode: str = 'bilinear'
+    mode: str = 'bilinear',
+    padding_mode: str = 'zeros',
+    pad_before_rotate: int = 0
 ) -> torch.Tensor:
     """
     Rotate a batch of MNIST images by a specified angle.
@@ -125,7 +142,12 @@ def rotate_batch_images(
     Args:
         images: Input tensor of shape (B, 784), (B, 28, 28), or (B, 1, 28, 28)
         angle_degrees: Rotation angle in degrees (typically 60, 120, 180, 240, 300)
-        mode: Interpolation mode ('bilinear' or 'nearest')
+        mode: Interpolation mode ('bilinear', 'bicubic', or 'nearest')
+        padding_mode: How rotated corners are filled — 'zeros' (default, black corners)
+            or 'border' (replicate edge pixels; avoids artificial zero artefacts)
+        pad_before_rotate: If > 0, pad the image to (28+2*pad)×(28+2*pad) with reflect
+            padding before rotating, then center-crop back to 28×28. This eliminates
+            zero-filled corners for any rotation angle. Default 0 = disabled.
     Returns:
         Rotated images in same shape as input (except 3D becomes 4D)
     """
@@ -142,38 +164,53 @@ def rotate_batch_images(
         batch_size: int = images.size(0)
         images = images.unsqueeze(1)  # (B, 28, 28) -> (B, 1, 28, 28)
 
-    # Convert angle to radians
-    angle_rad: float = angle_degrees * (3.14159265358979 / 180.0)
-
-    # Create rotation matrix
-    cos_theta: float = np.cos(angle_rad)
-    sin_theta: float = np.sin(angle_rad)
-
-    # Affine transformation matrix for rotation around center
-    # [cos  -sin  0]
-    # [sin   cos  0]
-    theta: torch.Tensor = torch.tensor([
-        [cos_theta, -sin_theta, 0.0],
-        [sin_theta, cos_theta, 0.0]
-    ], dtype=images.dtype, device=images.device).unsqueeze(0)
-
-    # Expand for batch
     batch_size: int = images.size(0)
-    theta = theta.expand(batch_size, 2, 3)
 
-    # Create affine grid and apply transformation
-    grid: torch.Tensor = F.affine_grid(
-        theta,
-        images.size(),
-        align_corners=False
+    # Optional: pad before rotate to avoid corner artefacts, then crop back
+    if pad_before_rotate > 0:
+        p: int = pad_before_rotate
+        # Reflect-pad: (left, right, top, bottom) — all equal to p
+        images = F.pad(images, (p, p, p, p), mode='reflect')
+
+    # Retrieve or compute the affine grid for this (angle, H, W, pad) combination.
+    # The grid is purely geometric — independent of batch content and device —
+    # so it is safe to cache globally and reuse across batches and epochs.
+    H: int = images.size(2)
+    W: int = images.size(3)
+    cache_key: Tuple[int, int, int, int] = (angle_degrees, H, W, pad_before_rotate)
+
+    if cache_key not in _ROTATION_GRID_CACHE:
+        angle_rad: float = angle_degrees * (math.pi / 180.0)
+        cos_theta: float = math.cos(angle_rad)
+        sin_theta: float = math.sin(angle_rad)
+        # Build (1, 2, 3) theta for a single image, compute (1, H, W, 2) grid on CPU
+        theta_1: torch.Tensor = torch.tensor([
+            [cos_theta, -sin_theta, 0.0],
+            [sin_theta,  cos_theta, 0.0]
+        ], dtype=torch.float32).unsqueeze(0)
+        _ROTATION_GRID_CACHE[cache_key] = F.affine_grid(
+            theta_1, (1, 1, H, W), align_corners=False
+        )  # (1, H, W, 2) — stored on CPU
+
+    # Move cached grid to the current device/dtype, then expand to batch size
+    grid: torch.Tensor = _ROTATION_GRID_CACHE[cache_key].to(
+        device=images.device, dtype=images.dtype
     )
+    if batch_size > 1:
+        grid = grid.expand(batch_size, -1, -1, -1)  # (B, H, W, 2) — no memory copy
+
     rotated: torch.Tensor = F.grid_sample(
         images,
         grid,
         mode=mode,
-        padding_mode='zeros',
+        padding_mode=padding_mode,
         align_corners=False
     )
+
+    # If we padded, center-crop back to 28x28
+    if pad_before_rotate > 0:
+        p = pad_before_rotate
+        rotated = rotated[:, :, p:-p, p:-p]
 
     # Restore original shape if needed
     if was_flattened:
@@ -200,8 +237,6 @@ class TrainingEngine:
         label_smoothing: float = LABEL_SMOOTHING_DEFAULT,
         use_geometry_reg: bool = False,
         geometry_weight: float = TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-        self_similarity_weight: float = 0.0,
-        box_counting_weight: float = 0.0,
         use_amp: bool = True,
         warmup_epochs: int = LEARNING_RATE_WARMUP_EPOCHS,
         num_epochs: int = MAX_EPOCHS_DEFAULT,
@@ -216,8 +251,6 @@ class TrainingEngine:
             label_smoothing: Label smoothing factor (0=hard labels, 0.1=standard)
             use_geometry_reg: Enable geometric preservation loss (TQF only)
             geometry_weight: Weight for geometric regularization
-            self_similarity_weight: Weight for fractal self-similarity loss (TQF only)
-            box_counting_weight: Weight for box-counting dimension loss (TQF only)
             use_amp: Enable automatic mixed precision (faster on RTX GPUs)
             warmup_epochs: Number of epochs for linear LR warmup (0 disables warmup)
             num_epochs: Total number of training epochs (for scheduler T_max)
@@ -251,16 +284,13 @@ class TrainingEngine:
         self.device: torch.device = device
         self.use_geometry_reg: bool = use_geometry_reg
         self.geometry_weight: float = geometry_weight
-        self.self_similarity_weight: float = self_similarity_weight
-        self.box_counting_weight: float = box_counting_weight
-        self.use_fractal_reg: bool = (self_similarity_weight > 0.0 or box_counting_weight > 0.0)
         self.use_amp: bool = use_amp and torch.cuda.is_available()
 
         # Optimizer setup with L2 regularization (weight decay)
         # Weight decay adds L2 penalty to loss: Total_Loss = Loss + (weight_decay/2) * ||W||^2
         # This encourages smaller weights, reducing overfitting by penalizing model complexity.
-        # Default 1e-4 is standard for Adam; lower values (e.g., 5e-5) recommended when
-        # TQF regularizations (geometry, self-similarity, box-counting) are active.
+        # Default 1e-4 is standard for Adam; lower values (e.g., 5e-5) may be needed when
+        # TQF geometry regularization is active.
         # CLI override: --weight-decay
         self.optimizer: optim.Adam = optim.Adam(
             self.model.parameters(),
@@ -325,7 +355,6 @@ class TrainingEngine:
         self.val_losses: List[float] = []
         self.val_accuracies: List[float] = []
         self.geometry_losses: List[float] = []
-        self.fractal_losses: List[float] = []
 
         # Cache model capability checks (performance optimization)
         # Avoids repeated hasattr/introspection calls in training loop
@@ -339,7 +368,6 @@ class TrainingEngine:
         )
         self._has_sector_features: bool = hasattr(self.model, 'get_cached_sector_features')
         self._has_dual_output: bool = hasattr(self.model, 'dual_output')
-        self._has_fractal_loss: bool = hasattr(self.model, 'compute_fractal_loss')
         self._has_verify_self_duality: bool = hasattr(self.model, 'verify_self_duality')
 
     def train_epoch(
@@ -348,7 +376,9 @@ class TrainingEngine:
         inversion_loss_weight: Optional[float] = None,
         z6_equivariance_weight: Optional[float] = None,
         d6_equivariance_weight: Optional[float] = None,
-        t24_orbit_invariance_weight: Optional[float] = None
+        t24_orbit_invariance_weight: Optional[float] = None,
+        z6_orbit_consistency_weight: Optional[float] = None,
+        z6_orbit_consistency_rotations: int = 2
     ) -> Dict[str, float]:
         """
         Train for one epoch.
@@ -362,6 +392,11 @@ class TrainingEngine:
             z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
             d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
             t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
+            z6_orbit_consistency_weight: Weight for Z6 orbit consistency self-distillation loss
+                (None=disabled). When enabled, extra Z6 rotations are run each batch and KL
+                divergence between each rotation's softmax and the orbit ensemble is minimised.
+            z6_orbit_consistency_rotations: Number of additional Z6 rotations to sample per batch
+                when z6_orbit_consistency_weight is set (default 2, range 1-5).
         Returns:
             Dict of loss metrics
         """
@@ -370,14 +405,15 @@ class TrainingEngine:
         use_z6_equivariance_loss: bool = z6_equivariance_weight is not None
         use_d6_equivariance_loss: bool = d6_equivariance_weight is not None
         use_t24_orbit_invariance_loss: bool = t24_orbit_invariance_weight is not None
+        use_orbit_consistency_loss: bool = z6_orbit_consistency_weight is not None
         self.model.train()
         total_cls_loss: float = 0.0
         total_inversion_loss: float = 0.0
         total_geom_loss: float = 0.0
-        total_fractal_loss: float = 0.0
         total_z6_equiv_loss: float = 0.0
         total_d6_equiv_loss: float = 0.0
         total_t24_orbit_loss: float = 0.0
+        total_orbit_consistency_loss: float = 0.0
         num_batches: int = 0
 
         for inputs, labels in train_loader:
@@ -479,19 +515,29 @@ class TrainingEngine:
                 if self.use_geometry_reg and geom_loss is not None:
                     loss = loss + self.geometry_weight * geom_loss
 
-                # Fractal regularization losses (self-similarity + box-counting)
-                fractal_loss: Optional[torch.Tensor] = None
-                if self.use_fractal_reg and self._has_fractal_loss:
-                    fractal_loss = self.model.compute_fractal_loss()
-                    if fractal_loss is not None and fractal_loss.item() > 0:
-                        loss = loss + fractal_loss
-
                 if use_z6_equivariance_loss and z6_equiv_loss is not None:
                     loss = loss + z6_equivariance_weight * z6_equiv_loss
                 if use_d6_equivariance_loss and d6_equiv_loss is not None:
                     loss = loss + d6_equivariance_weight * d6_equiv_loss
                 if use_t24_orbit_invariance_loss and t24_orbit_loss is not None:
                     loss = loss + t24_orbit_invariance_weight * t24_orbit_loss
+
+                # Orbit Consistency Self-Distillation Loss (TQF only)
+                # Runs num extra Z6-rotated forward passes, forms a soft orbit-mixed
+                # ensemble, and minimises KL(ensemble || each rotation's softmax).
+                # This enforces output-space rotation consistency without requiring
+                # equivariance in intermediate feature representations.
+                orbit_consistency_loss: Optional[torch.Tensor] = None
+                if use_orbit_consistency_loss:
+                    from evaluation import compute_orbit_consistency_loss
+                    orbit_consistency_loss = compute_orbit_consistency_loss(
+                        self.model,
+                        inputs,
+                        logits,
+                        num_rotations=z6_orbit_consistency_rotations
+                    )
+                    if orbit_consistency_loss is not None:
+                        loss = loss + z6_orbit_consistency_weight * orbit_consistency_loss
 
             # Backward pass with gradient scaling
             self.scaler.scale(loss).backward()
@@ -502,14 +548,14 @@ class TrainingEngine:
                 total_inversion_loss += inversion_loss.item()
             if self.use_geometry_reg and geom_loss is not None:
                 total_geom_loss += geom_loss.item()
-            if self.use_fractal_reg and fractal_loss is not None:
-                total_fractal_loss += fractal_loss.item()
             if use_z6_equivariance_loss and z6_equiv_loss is not None:
                 total_z6_equiv_loss += z6_equiv_loss.item()
             if use_d6_equivariance_loss and d6_equiv_loss is not None:
                 total_d6_equiv_loss += d6_equiv_loss.item()
             if use_t24_orbit_invariance_loss and t24_orbit_loss is not None:
                 total_t24_orbit_loss += t24_orbit_loss.item()
+            if use_orbit_consistency_loss and orbit_consistency_loss is not None:
+                total_orbit_consistency_loss += orbit_consistency_loss.item()
 
             total_cls_loss += cls_loss.item()
             num_batches += 1
@@ -527,11 +573,6 @@ class TrainingEngine:
             metrics['geom_loss'] = geom_avg
             self.geometry_losses.append(geom_avg)
 
-        if self.use_fractal_reg:
-            fractal_avg: float = total_fractal_loss / num_batches if num_batches > 0 else 0.0
-            metrics['fractal_loss'] = fractal_avg
-            self.fractal_losses.append(fractal_avg)
-
         if use_z6_equivariance_loss:
             metrics['z6_equiv_loss'] = total_z6_equiv_loss / num_batches if num_batches > 0 else 0.0
 
@@ -540,6 +581,9 @@ class TrainingEngine:
 
         if use_t24_orbit_invariance_loss:
             metrics['t24_orbit_loss'] = total_t24_orbit_loss / num_batches if num_batches > 0 else 0.0
+
+        if use_orbit_consistency_loss:
+            metrics['orbit_consistency_loss'] = total_orbit_consistency_loss / num_batches if num_batches > 0 else 0.0
 
         # Store total training loss
         self.train_losses.append(metrics['cls_loss'])
@@ -652,6 +696,8 @@ class TrainingEngine:
         z6_equivariance_weight: Optional[float] = None,
         d6_equivariance_weight: Optional[float] = None,
         t24_orbit_invariance_weight: Optional[float] = None,
+        z6_orbit_consistency_weight: Optional[float] = None,
+        z6_orbit_consistency_rotations: int = 2,
         verify_duality_interval: int = TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
         verbose: bool = True
     ) -> Dict:
@@ -693,7 +739,9 @@ class TrainingEngine:
                 inversion_loss_weight=inversion_loss_weight,
                 z6_equivariance_weight=z6_equivariance_weight,
                 d6_equivariance_weight=d6_equivariance_weight,
-                t24_orbit_invariance_weight=t24_orbit_invariance_weight
+                t24_orbit_invariance_weight=t24_orbit_invariance_weight,
+                z6_orbit_consistency_weight=z6_orbit_consistency_weight,
+                z6_orbit_consistency_rotations=z6_orbit_consistency_rotations
             )
 
             # Validate
@@ -809,6 +857,8 @@ def run_single_seed_experiment(
     z6_equivariance_weight: Optional[float] = None,
     d6_equivariance_weight: Optional[float] = None,
     t24_orbit_invariance_weight: Optional[float] = None,
+    z6_orbit_consistency_weight: Optional[float] = None,
+    z6_orbit_consistency_rotations: int = 2,
     total_seeds: int = 1,
     seed_idx: int = 1,
     verbose: bool = True,
@@ -818,7 +868,15 @@ def run_single_seed_experiment(
     use_t24_orbit_mixing: bool = False,
     orbit_mixing_temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     orbit_mixing_temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    z6_orbit_mixing_confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+    z6_orbit_mixing_aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+    z6_orbit_mixing_top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+    z6_orbit_mixing_adaptive_temp: bool = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+    z6_orbit_mixing_adaptive_temp_alpha: float = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+    z6_orbit_mixing_rotation_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+    z6_orbit_mixing_rotation_padding_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+    z6_orbit_mixing_rotation_pad: int = TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT
 ) -> Dict:
     """
     Run single-seed experiment for a model.
@@ -844,6 +902,8 @@ def run_single_seed_experiment(
         z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
         d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
         t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
+        z6_orbit_consistency_weight: Weight for orbit consistency loss (None=disabled, TQF only)
+        z6_orbit_consistency_rotations: Number of extra rotations per batch for consistency loss
         total_seeds: Total number of seeds (for display)
         seed_idx: Current seed index (for display)
         verbose: Whether to print progress
@@ -853,6 +913,14 @@ def run_single_seed_experiment(
         orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
         orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
         orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
+        z6_orbit_mixing_confidence_mode: Confidence signal mode ('max_logit' or 'margin')
+        z6_orbit_mixing_aggregation_mode: Aggregation space ('logits', 'probs', 'log_probs')
+        z6_orbit_mixing_top_k: Top-K variant selection (None = use all 6)
+        z6_orbit_mixing_adaptive_temp: Enable per-sample adaptive temperature
+        z6_orbit_mixing_adaptive_temp_alpha: Sensitivity of adaptive temperature scaling
+        z6_orbit_mixing_rotation_mode: Interpolation mode for rotation ('bilinear' or 'bicubic')
+        z6_orbit_mixing_rotation_padding_mode: Padding mode for rotation ('zeros' or 'border')
+        z6_orbit_mixing_rotation_pad: Pixels to pad before rotating then crop (0=disabled)
     Returns:
         Dict with results
     """
@@ -882,11 +950,6 @@ def run_single_seed_experiment(
     geometry_weight: float = model_config.get('geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)
     use_geometry_reg: bool = 'TQF' in model_name and geometry_weight > 0.0
 
-    # ===== Enable fractal regularization for TQF models =====
-    # Fractal losses: self-similarity (multi-scale correlation) + box-counting (dimension matching)
-    self_similarity_weight: float = model_config.get('self_similarity_weight', 0.0) if 'TQF' in model_name else 0.0
-    box_counting_weight: float = model_config.get('box_counting_weight', 0.0) if 'TQF' in model_name else 0.0
-
     # Training engine with specified learning rate, weight decay, label smoothing, warmup, and geometry reg
     engine: TrainingEngine = TrainingEngine(
         model,
@@ -896,8 +959,6 @@ def run_single_seed_experiment(
         label_smoothing=label_smoothing,
         use_geometry_reg=use_geometry_reg,
         geometry_weight=geometry_weight,
-        self_similarity_weight=self_similarity_weight,
-        box_counting_weight=box_counting_weight,
         warmup_epochs=warmup_epochs,
         num_epochs=num_epochs,
         use_compile=use_compile
@@ -911,6 +972,7 @@ def run_single_seed_experiment(
     apply_z6_weight: Optional[float] = z6_equivariance_weight if is_tqf_model else None
     apply_d6_weight: Optional[float] = d6_equivariance_weight if is_tqf_model else None
     apply_t24_weight: Optional[float] = t24_orbit_invariance_weight if is_tqf_model else None
+    apply_z6_orbit_consistency_weight: Optional[float] = z6_orbit_consistency_weight if is_tqf_model else None
 
     # Train with specified patience
     start_time: float = time.time()
@@ -924,6 +986,8 @@ def run_single_seed_experiment(
         z6_equivariance_weight=apply_z6_weight,
         d6_equivariance_weight=apply_d6_weight,
         t24_orbit_invariance_weight=apply_t24_weight,
+        z6_orbit_consistency_weight=apply_z6_orbit_consistency_weight,
+        z6_orbit_consistency_rotations=z6_orbit_consistency_rotations,
         verify_duality_interval=verify_duality_interval,
         verbose=verbose
     )
@@ -942,7 +1006,15 @@ def run_single_seed_experiment(
             use_t24=use_t24_orbit_mixing,
             temp_rotation=orbit_mixing_temp_rotation,
             temp_reflection=orbit_mixing_temp_reflection,
-            temp_inversion=orbit_mixing_temp_inversion
+            temp_inversion=orbit_mixing_temp_inversion,
+            confidence_mode=z6_orbit_mixing_confidence_mode,
+            aggregation_mode=z6_orbit_mixing_aggregation_mode,
+            top_k=z6_orbit_mixing_top_k,
+            adaptive_temp=z6_orbit_mixing_adaptive_temp,
+            adaptive_temp_alpha=z6_orbit_mixing_adaptive_temp_alpha,
+            rotation_mode=z6_orbit_mixing_rotation_mode,
+            rotation_padding_mode=z6_orbit_mixing_rotation_padding_mode,
+            pad_before_rotate=z6_orbit_mixing_rotation_pad
         )
     else:
         _, test_rot_acc = engine.evaluate(dataloaders['test_rot'])
@@ -1015,6 +1087,8 @@ def run_multi_seed_experiment(
     z6_equivariance_weight: Optional[float] = None,
     d6_equivariance_weight: Optional[float] = None,
     t24_orbit_invariance_weight: Optional[float] = None,
+    z6_orbit_consistency_weight: Optional[float] = None,
+    z6_orbit_consistency_rotations: int = 2,
     use_compile: bool = False,
     output_path: Optional[str] = None,
     use_z6_orbit_mixing: bool = False,
@@ -1022,7 +1096,15 @@ def run_multi_seed_experiment(
     use_t24_orbit_mixing: bool = False,
     orbit_mixing_temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     orbit_mixing_temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    z6_orbit_mixing_confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+    z6_orbit_mixing_aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+    z6_orbit_mixing_top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+    z6_orbit_mixing_adaptive_temp: bool = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+    z6_orbit_mixing_adaptive_temp_alpha: float = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+    z6_orbit_mixing_rotation_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+    z6_orbit_mixing_rotation_padding_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+    z6_orbit_mixing_rotation_pad: int = TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT
 ) -> Dict[str, List[Dict]]:
     """
     Run multi-seed experiments for multiple models.
@@ -1048,6 +1130,8 @@ def run_multi_seed_experiment(
         z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
         d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
         t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
+        z6_orbit_consistency_weight: Weight for orbit consistency loss (None=disabled, TQF only)
+        z6_orbit_consistency_rotations: Number of extra rotations per batch for consistency loss
         output_path: Path to JSON file for incremental result saving (None=no disk save)
         use_z6_orbit_mixing: Enable Z6 rotation orbit mixing at evaluation
         use_d6_orbit_mixing: Enable D6 reflection orbit mixing at evaluation
@@ -1055,6 +1139,14 @@ def run_multi_seed_experiment(
         orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
         orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
         orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
+        z6_orbit_mixing_confidence_mode: Confidence signal mode ('max_logit' or 'margin')
+        z6_orbit_mixing_aggregation_mode: Aggregation space ('logits', 'probs', 'log_probs')
+        z6_orbit_mixing_top_k: Top-K variant selection (None = use all 6)
+        z6_orbit_mixing_adaptive_temp: Enable per-sample adaptive temperature
+        z6_orbit_mixing_adaptive_temp_alpha: Sensitivity of adaptive temperature scaling
+        z6_orbit_mixing_rotation_mode: Interpolation mode for rotation ('bilinear' or 'bicubic')
+        z6_orbit_mixing_rotation_padding_mode: Padding mode for rotation ('zeros' or 'border')
+        z6_orbit_mixing_rotation_pad: Pixels to pad before rotating then crop (0=disabled)
     Returns:
         Dict mapping model_name -> list of results (one per seed)
     """
@@ -1090,6 +1182,8 @@ def run_multi_seed_experiment(
                 z6_equivariance_weight,
                 d6_equivariance_weight,
                 t24_orbit_invariance_weight,
+                z6_orbit_consistency_weight=z6_orbit_consistency_weight,
+                z6_orbit_consistency_rotations=z6_orbit_consistency_rotations,
                 total_seeds=total_seeds,
                 seed_idx=seed_idx,
                 verbose=True,
@@ -1099,7 +1193,15 @@ def run_multi_seed_experiment(
                 use_t24_orbit_mixing=use_t24_orbit_mixing,
                 orbit_mixing_temp_rotation=orbit_mixing_temp_rotation,
                 orbit_mixing_temp_reflection=orbit_mixing_temp_reflection,
-                orbit_mixing_temp_inversion=orbit_mixing_temp_inversion
+                orbit_mixing_temp_inversion=orbit_mixing_temp_inversion,
+                z6_orbit_mixing_confidence_mode=z6_orbit_mixing_confidence_mode,
+                z6_orbit_mixing_aggregation_mode=z6_orbit_mixing_aggregation_mode,
+                z6_orbit_mixing_top_k=z6_orbit_mixing_top_k,
+                z6_orbit_mixing_adaptive_temp=z6_orbit_mixing_adaptive_temp,
+                z6_orbit_mixing_adaptive_temp_alpha=z6_orbit_mixing_adaptive_temp_alpha,
+                z6_orbit_mixing_rotation_mode=z6_orbit_mixing_rotation_mode,
+                z6_orbit_mixing_rotation_padding_mode=z6_orbit_mixing_rotation_padding_mode,
+                z6_orbit_mixing_rotation_pad=z6_orbit_mixing_rotation_pad
             )
             model_results.append(result)
 

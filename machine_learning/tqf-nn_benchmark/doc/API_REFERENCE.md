@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.5<br>
-**Last Updated:** February 24, 2026<br>
+**Version:** 1.1.0<br>
+**Last Updated:** February 26, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -52,7 +52,7 @@ This API reference provides comprehensive documentation for all public functions
 | `config.py` | Configuration constants | 1,232 | Hyperparameters, defaults |
 | `models_tqf.py` | TQF-ANN architecture | 700 | Layer aggregation, symmetry ops |
 | `models_baseline.py` | Baseline models | 525 | MLP, CNN, ResNet |
-| `dual_metrics.py` | Geometric operations | 970 | Dual metrics, fractal dim |
+| `dual_metrics.py` | Geometric operations | 970 | Dual metrics |
 | `engine.py` | Training orchestration | 996 | Multi-seed experiments |
 | `evaluation.py` | Metrics computation | 879 | 18 evaluation functions |
 | `param_matcher.py` | Parameter tuning | 712 | Fair model comparison |
@@ -273,13 +273,6 @@ Features are disabled by default and enabled by providing a weight value.
 - `--tqf-verify-geometry`: Enable geometry verification
 - `--tqf-geometry-reg-weight`: Weight (default: 0.0, disabled)
 
-**TQF Fractal Geometry (TQF-ANN only, opt-in):**
-- `--tqf-fractal-iterations`: Iterations for dimension estimation (default: 0, disabled; enable by providing value in range [1-20])
-- `--tqf-self-similarity-weight`: Self-similarity loss weight (default: 0.0, disabled)
-- `--tqf-box-counting-weight`: Box-counting loss weight (default: 0.0, disabled)
-**TQF Attention (TQF-ANN only):**
-- `--tqf-hop-attention-temp`: Hop attention temperature (default: 1.0)
-
 **Example:**
 ```python
 from cli import parse_args
@@ -387,7 +380,6 @@ TQFANN(
     R: int = 20,
     r: float = 1.0,
     symmetry_level: str = 'none',
-    fractal_iters: int = 0,
     use_dual_output: bool = True,
     use_gradient_checkpointing: bool = False,
     dropout: float = 0.2
@@ -504,44 +496,16 @@ print(f"Parameters: {model.count_parameters():,}")
 - `use_dual_metric` (bool): Enable dual metric computation
   - **Default**: True
 
-- `fractal_iters` (int): Depth for fractal self-similarity
-  - **Default**: 0 (from `TQF_FRACTAL_ITERATIONS_DEFAULT`, disabled; enable by providing value in range [1, 20])
-  - **Range**: [1, 20] when enabled
-  - **Why**: Opt-in feature that enforces scale-invariant feature hierarchies
-
 - `dropout` (float): Dropout probability
   - **Default**: 0.2
 
 - `verify_geometry` (bool): Enable geometry verification
   - **Default**: False
 
-- `fractal_dim_tol` (float): Tolerance for fractal dimension verification
-  - **Default**: 0.08 (from `TQF_FRACTAL_DIM_TOLERANCE_DEFAULT`)
-  - **Range**: [0.0, 1.0]
-  - **Theoretical dimension**: 1.585 (Sierpinski triangle)
-
 **Regularization Weights:**
 
 - `geometry_reg_weight` (float): Weight for geometric regularization
   - **Default**: 0.0 (from `TQF_GEOMETRY_REG_WEIGHT_DEFAULT`, disabled; opt-in via CLI)
-
-- `inversion_loss_weight` (float): Weight for inversion duality loss
-  - **Default**: 0.0 (disabled; opt-in via CLI `--tqf-inversion-loss-weight`)
-
-- `self_similarity_weight` (float): Weight for fractal self-similarity loss
-  - **Default**: 0.0 (from `TQF_SELF_SIMILARITY_WEIGHT_DEFAULT`, disabled; opt-in via CLI)
-
-- `box_counting_weight` (float): Weight for box counting dimension loss
-  - **Default**: 0.0 (from `TQF_BOX_COUNTING_WEIGHT_DEFAULT`, disabled; opt-in via CLI)
-
-- `box_counting_scales` (int): Number of scales for box-counting
-  - **Default**: 10 (from `TQF_BOX_COUNTING_SCALES_DEFAULT`, internal constant, not CLI-tunable)
-
-**Attention Parameters:**
-
-- `hop_attention_temp` (float): Temperature for hop-distance attention
-  - **Default**: 1.0 (from `TQF_HOP_ATTENTION_TEMP_DEFAULT`)
-  - **Range**: [0.01, 10.0]
 
 **Methods:**
 
@@ -647,83 +611,6 @@ print(f"Passes: {duality_metrics['passes'] == 1.0}")
 
 ---
 
-##### `verify_fractal_dimension(features: Optional[torch.Tensor] = None, verbose: bool = False) -> Tuple[bool, float, str]`
-
-**Description:** Verifies that the measured fractal dimension is within tolerance of the theoretical value (1.585, Sierpinski triangle dimension).
-
-This is a DIAGNOSTIC check - it does not halt training but provides feedback on whether the geometric structure is being preserved during training. If the deviation exceeds the tolerance, a warning is emitted (once per training run).
-
-**Args:**
-- `features` (Optional[torch.Tensor]): Features to analyze
-  - **Shape**: (batch, num_points, feature_dim), typically (batch, 6, hidden_dim)
-  - **Default**: None (uses cached sector features from last forward pass)
-
-- `verbose` (bool): Whether to print detailed verification results
-  - **Default**: False
-
-**Returns:**
-- `Tuple[bool, float, str]`:
-  - `passed`: Whether the dimension is within tolerance
-  - `measured_dim`: The measured fractal dimension
-  - `message`: Descriptive message about the verification result
-
-**Example:**
-```python
-model: TQFANN = TQFANN(R=20, fractal_iters=5, fractal_dim_tol=0.15)
-
-# Run forward pass to cache features
-x: torch.Tensor = torch.randn(32, 784)
-_ = model(x)
-
-# Verify fractal dimension using cached features
-passed, measured_dim, message = model.verify_fractal_dimension(verbose=True)
-print(f"Passed: {passed}")
-print(f"Measured dimension: {measured_dim:.4f}")
-# Output: [Fractal Dimension Verification] Fractal dimension OK: measured=1.4823, theoretical=1.5850, deviation=0.1027 <= tolerance=0.1500
-```
-
----
-
-##### `get_fractal_dimension_info() -> Dict[str, float]`
-
-**Description:** Returns current fractal dimension diagnostic information for logging and monitoring.
-
-**Returns:**
-- `Dict[str, float]`:
-  - `'theoretical_dim'`: Expected fractal dimension (1.585)
-  - `'tolerance'`: Acceptable deviation threshold
-  - `'last_measured_dim'`: Most recent measurement (None if not computed)
-
-**Example:**
-```python
-model: TQFANN = TQFANN(R=20, fractal_iters=5, fractal_dim_tol=0.15)
-
-info = model.get_fractal_dimension_info()
-print(f"Theoretical: {info['theoretical_dim']}")   # 1.585
-print(f"Tolerance: {info['tolerance']}")           # 0.15
-print(f"Last measured: {info['last_measured_dim']}")  # None initially
-```
-
----
-
-##### `reset_fractal_dim_warning() -> None`
-
-**Description:** Resets the fractal dimension warning flag to allow new warnings to be emitted. Useful at the start of each training run or validation epoch.
-
-**Example:**
-```python
-model: TQFANN = TQFANN(R=20, fractal_iters=5, fractal_dim_tol=0.05)
-
-# During training loop
-for epoch in range(num_epochs):
-    model.reset_fractal_dim_warning()  # Reset at start of each epoch
-    for batch in dataloader:
-        # ... training code ...
-        # If fractal dim exceeds tolerance, warning emitted once per epoch
-```
-
----
-
 #### Helper Classes in `models_tqf.py`
 
 ##### `class BoundaryZoneEncoder(nn.Module)`
@@ -751,7 +638,7 @@ for epoch in range(num_epochs):
 
 **Binning Methods:**
 - `'linear'`: Uniform bin widths
-- `'dyadic'`: Powers of 2 (better for fractal analysis)
+- `'dyadic'`: Powers of 2
 - `'dual_metric'`: Based on ContinuousDualMetric distances
 
 ---
@@ -784,18 +671,6 @@ for epoch in range(num_epochs):
 - `rotate_feats(feats, angle)`: Rotates feature arrangement
 - `reflect_feats(feats, axis)`: Reflects across specified axis
 - `invert_feats(feats)`: Applies circle inversion transformation
-
----
-
-##### `class FractalDimensionLoss(nn.Module)`
-
-**Description:** Loss module enforcing fractal self-similarity across scales.
-
-**Purpose:** Regularizes network to exhibit scale-invariant structure.
-
-**Key Methods:**
-- `forward(feats)`: Computes self-similarity loss
-- `estimate_fractal_dimension(feats)`: Box counting dimension estimation
 
 ---
 
@@ -973,8 +848,6 @@ TrainingEngine(
     label_smoothing: float = 0.1,
     use_geometry_reg: bool = False,
     geometry_weight: float = 0.0,
-    self_similarity_weight: float = 0.0,
-    box_counting_weight: float = 0.0,
     use_amp: bool = True,
     warmup_epochs: int = 5,
     num_epochs: int = 150
@@ -989,8 +862,6 @@ TrainingEngine(
 - `label_smoothing` (float): Label smoothing factor for CrossEntropyLoss (0=hard labels, 0.1=standard). Default: 0.1
 - `use_geometry_reg` (bool): Enable geometric preservation loss (TQF-ANN only). Default: False
 - `geometry_weight` (float): Weight for geometric regularization loss. Default: 0.0
-- `self_similarity_weight` (float): Weight for fractal self-similarity loss (TQF-ANN only). Default: 0.0
-- `box_counting_weight` (float): Weight for box-counting dimension loss (TQF-ANN only). Default: 0.0
 - `use_amp` (bool): Enable automatic mixed precision for faster training on RTX GPUs. Default: True
 - `warmup_epochs` (int): Number of epochs for linear LR warmup (0 disables). Default: 5
 - `num_epochs` (int): Total training epochs for scheduler T_max calculation. Default: 150
@@ -1082,8 +953,6 @@ engine_tqf = TrainingEngine(
     weight_decay=0.00005,       # Lower weight_decay when TQF regs active
     use_geometry_reg=True,
     geometry_weight=0.1,
-    self_similarity_weight=0.001,
-    box_counting_weight=0.001,
     num_epochs=50
 )
 ```
@@ -1438,20 +1307,55 @@ print(f"Rotation invariance score: {1.0 - inv_error:.4f}")
 
 ---
 
-#### `adaptive_orbit_mixing(logits_per_variant: List[torch.Tensor], temperature: float = 0.5) -> torch.Tensor`
+#### `adaptive_orbit_mixing(logits_per_variant, temperature, confidence_mode, aggregation_mode, top_k, adaptive_temp, adaptive_temp_alpha) -> torch.Tensor`
 
-**Description:** Combines multiple prediction variants using max-logit confidence weighting. Each variant's contribution is weighted by the confidence of its most certain prediction (max logit).
+**Description:** Combines multiple prediction variants using confidence-weighted averaging. Supports multiple confidence scoring modes, aggregation spaces, top-K filtering, and adaptive per-sample temperature scaling.
 
 **Args:**
-- `logits_per_variant`: List of logit tensors, each `(batch, num_classes)`
-- `temperature`: Softmax temperature for confidence weighting (lower = sharper)
+- `logits_per_variant`: `List[torch.Tensor]` — logit tensors, each `(batch, num_classes)`
+- `temperature`: `float` — softmax temperature for confidence weighting (default: `0.5`, lower = sharper)
+- `confidence_mode`: `str` — `'max_logit'` (default) or `'margin'` (top-1 minus top-2 logit)
+- `aggregation_mode`: `str` — `'logits'` (default), `'probs'`, or `'log_probs'` (geometric mean)
+- `top_k`: `Optional[int]` — keep only the K most confident variants (default: `None` = all)
+- `adaptive_temp`: `bool` — enable per-sample entropy-based temperature scaling (default: `False`)
+- `adaptive_temp_alpha`: `float` — sensitivity of adaptive temperature (default: `1.0`)
 
 **Returns:**
-- `torch.Tensor`: Weighted average logits `(batch, num_classes)`
+- `torch.Tensor`: Weighted average in the chosen aggregation space `(batch, num_classes)`
 
 ---
 
-#### `classify_from_sector_features(model: nn.Module, outer_sector_feats: torch.Tensor, inner_sector_feats: torch.Tensor) -> torch.Tensor`
+#### `compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations) -> Optional[torch.Tensor]`
+
+**Description:** Computes orbit consistency self-distillation loss (training-time only). Creates a stop-gradient ensemble from the base logits plus extra rotated forward passes, then penalises each rotation variant for diverging from the ensemble via KL divergence. Returns `None` for non-TQF models.
+
+**Args:**
+- `model`: `nn.Module` — TQF-ANN model instance (must have `dual_output` attribute)
+- `inputs`: `torch.Tensor` — batch inputs `(batch, 784)` from the current training step
+- `base_logits`: `torch.Tensor` — logits from the current forward pass `(batch, num_classes)`, must still be in the computation graph
+- `num_rotations`: `int` — number of extra Z6 rotation passes sampled from {60°, 120°, 180°, 240°, 300°} (default: `2`)
+
+**Returns:**
+- `Optional[torch.Tensor]`: Scalar KL-divergence loss averaged over all variants, or `None` for non-TQF models
+
+**Example:**
+```python
+from evaluation import compute_orbit_consistency_loss
+
+# During training
+base_logits = model(inputs, return_inv_loss=False)
+ce_loss = criterion(base_logits, labels)
+
+consistency_loss = compute_orbit_consistency_loss(model, inputs, base_logits, num_rotations=2)
+if consistency_loss is not None:
+    total_loss = ce_loss + 0.01 * consistency_loss
+else:
+    total_loss = ce_loss
+```
+
+---
+
+#### `classify_from_sector_features(model: nn.Module, outer_sector_feats: torch.Tensor, inner_sector_feats: torch.Tensor, swap_weights: bool = False) -> torch.Tensor`
 
 **Description:** Runs the TQF-ANN classification pipeline on pre-computed zone features. Mirrors the classification steps in `TQFANN.forward()` — shared classification head, sector weight einsum, and confidence-weighted ensemble.
 
@@ -1459,15 +1363,16 @@ print(f"Rotation invariance score: {1.0 - inv_error:.4f}")
 - `model`: TQFANN model instance (must have `dual_output` attribute)
 - `outer_sector_feats`: Outer zone features `(batch, 6, hidden_dim)`
 - `inner_sector_feats`: Inner zone features `(batch, 6, hidden_dim)`
+- `swap_weights` (bool): If `True`, swaps inner/outer zone weighting for T24 zone-swap operations. **Default**: `False`
 
 **Returns:**
 - `torch.Tensor`: Ensemble logits `(batch, num_classes)`
 
 ---
 
-#### `evaluate_with_orbit_mixing(model, loader, device, use_z6, use_d6, use_t24, temp_rotation, temp_reflection, temp_inversion, use_amp, verbose) -> Tuple[float, float]`
+#### `evaluate_with_orbit_mixing(model, loader, device, use_z6, use_d6, use_t24, temp_rotation, temp_reflection, temp_inversion, confidence_mode, aggregation_mode, top_k, adaptive_temp, adaptive_temp_alpha, rotation_mode, rotation_padding_mode, pad_before_rotate, use_amp, verbose) -> Tuple[float, float]`
 
-**Description:** Evaluates TQF-ANN with hierarchical orbit mixing preserving inner/outer mirroring. Three levels: Z6 input-space rotation, D6 feature-space reflection, T24 zone-swap.
+**Description:** Evaluates TQF-ANN with hierarchical orbit mixing preserving inner/outer mirroring. Three independent levels: Z6 input-space rotation, D6 feature-space reflection, T24 zone-swap. All Z6 quality enhancement parameters from `adaptive_orbit_mixing` and `rotate_batch_images` are threaded through.
 
 **Args:**
 - `model`: TQFANN model instance
@@ -1475,6 +1380,14 @@ print(f"Rotation invariance score: {1.0 - inv_error:.4f}")
 - `device`: Torch device
 - `use_z6/use_d6/use_t24`: Enable each symmetry level
 - `temp_rotation/temp_reflection/temp_inversion`: Per-level temperatures
+- `confidence_mode`: `'max_logit'` or `'margin'` (passed to `adaptive_orbit_mixing`)
+- `aggregation_mode`: `'logits'`, `'probs'`, or `'log_probs'`
+- `top_k`: Keep only K most confident Z6 variants (`None` = all)
+- `adaptive_temp`: Enable per-sample adaptive temperature
+- `adaptive_temp_alpha`: Adaptive temperature entropy sensitivity
+- `rotation_mode`: Grid-sample interpolation (`'bilinear'` or `'bicubic'`)
+- `rotation_padding_mode`: Grid-sample padding (`'zeros'` or `'border'`)
+- `pad_before_rotate`: Reflect-pad before rotation, crop after (0 = disabled)
 - `use_amp`: Enable automatic mixed precision
 - `verbose`: Log per-batch progress
 
@@ -1485,18 +1398,26 @@ print(f"Rotation invariance score: {1.0 - inv_error:.4f}")
 ```python
 from evaluation import evaluate_with_orbit_mixing
 
+# Standard Z6 orbit mixing with all defaults
 loss, acc = evaluate_with_orbit_mixing(
     model=model,
     loader=test_loader_rot,
     device=device,
     use_z6=True,
-    use_d6=True,
-    use_t24=True,
-    temp_rotation=0.5,
-    temp_reflection=0.5,
-    temp_inversion=0.7
 )
-print(f"T24 orbit mixing: {acc:.2f}%")
+print(f"Z6 orbit mixing: {acc:.2f}%")
+
+# Z6 with mark3 quality enhancements
+loss, acc = evaluate_with_orbit_mixing(
+    model=model,
+    loader=test_loader_rot,
+    device=device,
+    use_z6=True,
+    confidence_mode='margin',
+    aggregation_mode='log_probs',
+    top_k=4,
+)
+print(f"Enhanced Z6 orbit mixing: {acc:.2f}%")
 ```
 
 ---
@@ -1771,23 +1692,11 @@ TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'
 TQF_SYMMETRY_CHOICES: List[str] = ['none', 'Z6', 'D6', 'T24']
 
-# Fractal properties (opt-in, disabled by default)
-TQF_FRACTAL_ITERATIONS_DEFAULT: int = 0  # 0 = disabled
-TQF_FRACTAL_DIM_TOLERANCE_DEFAULT: float = 0.08
-TQF_THEORETICAL_FRACTAL_DIM_DEFAULT: float = 1.585  # Sierpinski triangle dimension
-TQF_FRACTAL_EPSILON_DEFAULT: float = 1e-8
-TQF_BOX_COUNTING_SCALES_DEFAULT: int = 10
-
 # Z6 augmentation (applies to all models)
 Z6_DATA_AUGMENTATION_DEFAULT: bool = False
 
 # Regularization weights (all opt-in, disabled by default)
 TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
-TQF_SELF_SIMILARITY_WEIGHT_DEFAULT: float = 0.0
-TQF_BOX_COUNTING_WEIGHT_DEFAULT: float = 0.0
-
-# Attention
-TQF_HOP_ATTENTION_TEMP_DEFAULT: float = 1.0
 
 # Verification
 TQF_VERIFY_DUALITY_INTERVAL_DEFAULT: int = 10
@@ -1997,35 +1906,6 @@ print(f"Dual norm of {z}: {dual_norm:.4f}")
 
 ### Utility Functions
 
-#### `compute_fractal_dimension(data: np.ndarray, box_sizes: List[int]) -> float`
-
-**Description:** Estimates fractal dimension via box counting method.
-
-**Args:**
-- `data` (np.ndarray): Binary or grayscale image/data
-- `box_sizes` (List[int]): Box sizes to test (e.g., [2, 4, 8, 16])
-
-**Returns:**
-- `float`: Estimated fractal dimension
-
-**Method:**
-- Count boxes containing data at each scale
-- Fit log(count) vs log(1/size)
-- Slope = fractal dimension
-
-**Example:**
-```python
-from dual_metrics import compute_fractal_dimension
-import numpy as np
-
-# Generate fractal-like data
-data: np.ndarray = np.random.random((256, 256)) > 0.5
-dim: float = compute_fractal_dimension(data, box_sizes=[2, 4, 8, 16, 32])
-print(f"Fractal dimension: {dim:.3f}")
-```
-
----
-
 #### `build_triangular_lattice_zones(R: float, r: float = 1.0) -> Tuple[Dict, Dict, Dict]`
 
 **Description:** Constructs outer and inner zones of radial dual triangular lattice.
@@ -2066,14 +1946,13 @@ TARGET_PARAMS_TOLERANCE_PERCENT: float = 1.1  # +/-1.1% acceptable
 
 ### TQF Parameter Estimation
 
-#### `estimate_tqf_params(R: int, d_hidden: int, fractal_iterations: int, num_classes: int = 10) -> int`
+#### `estimate_tqf_params(R: int, d_hidden: int, num_classes: int = 10) -> int`
 
 **Description:** Estimates TQF-ANN parameter count.
 
 **Args:**
 - `R`: Truncation radius
 - `d_hidden`: Hidden dimension
-- `fractal_iterations`: Fractal depth
 - `num_classes`: Output classes
 
 **Returns:**
@@ -2082,18 +1961,16 @@ TARGET_PARAMS_TOLERANCE_PERCENT: float = 1.1  # +/-1.1% acceptable
 **Formula:**
 - Boundary encoder: 784 x 6 x d_hidden
 - Radial bins: R x d_hidden^2
-- Fractal regularizers: fractal_iterations x d_hidden^2
 - Output heads: d_hidden x num_classes x 2 (dual zones)
 
 ---
 
-#### `tune_d_for_params(R: int, fractal_iterations: int, target_params: int = TARGET_PARAMS, tolerance_percent: float = TARGET_PARAMS_TOLERANCE_PERCENT) -> int`
+#### `tune_d_for_params(R: int, target_params: int = TARGET_PARAMS, tolerance_percent: float = TARGET_PARAMS_TOLERANCE_PERCENT) -> int`
 
 **Description:** Auto-tunes hidden dimension to match target parameter count.
 
 **Args:**
 - `R`: Truncation radius (fixed)
-- `fractal_iterations`: Fractal depth (fixed)
 - `target_params`: Target parameter count
 - `tolerance_percent`: Acceptable deviation (%)
 
@@ -2107,10 +1984,9 @@ TARGET_PARAMS_TOLERANCE_PERCENT: float = 1.1  # +/-1.1% acceptable
 from param_matcher import tune_d_for_params, estimate_tqf_params
 
 R: int = 18
-fractal_iters: int = 10
 
-d_opt: int = tune_d_for_params(R, fractal_iters, target_params=650000)
-params: int = estimate_tqf_params(R, d_opt, fractal_iters)
+d_opt: int = tune_d_for_params(R, target_params=650000)
+params: int = estimate_tqf_params(R, d_opt)
 
 print(f"Optimal d_hidden: {d_opt}")
 print(f"Actual parameters: {params:,}")
@@ -2383,11 +2259,10 @@ from param_matcher import tune_d_for_params, estimate_tqf_params
 
 # Custom configuration
 R: int = 25
-fractal_iterations: int = 12
 symmetry_level: str = 'T24'
 
 # Auto-tune hidden dimension
-d_hidden: int = tune_d_for_params(R, fractal_iterations, target_params=650000)
+d_hidden: int = tune_d_for_params(R, target_params=650000)
 print(f"Auto-tuned hidden_dim: {d_hidden}")
 
 # Initialize model
@@ -2395,7 +2270,6 @@ model: TQFANN = TQFANN(
     hidden_dim=d_hidden,
     R=R,
     symmetry_level=symmetry_level,
-    fractal_iterations=fractal_iterations,
     geometry_reg_weight=0.15,
     inv_loss_weight=0.25,
     verify_duality_interval=10,
@@ -2507,15 +2381,15 @@ See the project MEMORY.md for the latest benchmark results with optimal configur
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design patterns
 - **[CLI_PARAMETER_GUIDE.md](CLI_PARAMETER_GUIDE.md)** - Complete CLI reference
 - **[INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md)** - Installation instructions
-- **[QUICKSTART.md](QUICKSTART.md)** - Fast-track tutorial
+- **[QUICK_START.md](QUICK_START.md)** - Fast-track tutorial
 - **[TESTS_README.md](TESTS_README.md)** - Testing guide
 
 ---
 
 **`QED`**
 
-**Last Updated:** February 24, 2026<br>
-**Version:** 1.0.5<br>
+**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

@@ -69,7 +69,15 @@ from torch.utils.data import DataLoader
 from config import (
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT
 )
 
 # =============================================================================
@@ -147,11 +155,20 @@ def measure_inference_time(
     model.eval()
     times: List[float] = []
 
-    # Warm-up
-    dummy_input: torch.Tensor = torch.randn(input_shape).to(device)
+    # Check model capability once (avoid repeated introspection inside loops)
+    has_inv_loss: bool = (
+        hasattr(model, 'forward') and
+        'return_inv_loss' in model.forward.__code__.co_varnames
+    )
+
+    # Create dummy input once and reuse for all trials.
+    # Timing measures model compute, not input allocation.
+    dummy_input: torch.Tensor = torch.randn(input_shape, device=device)
+
+    # Warm-up (ensures CUDA kernels are compiled/cached before timing)
     with torch.no_grad():
         for _ in range(10):
-            if hasattr(model, 'forward') and 'return_inv_loss' in model.forward.__code__.co_varnames:
+            if has_inv_loss:
                 _ = model(dummy_input, return_inv_loss=False)
             else:
                 _ = model(dummy_input)
@@ -159,13 +176,11 @@ def measure_inference_time(
     # Timed trials
     with torch.no_grad():
         for _ in range(num_trials):
-            dummy_input = torch.randn(input_shape).to(device)
-
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             start: float = time.time()
 
-            if hasattr(model, 'forward') and 'return_inv_loss' in model.forward.__code__.co_varnames:
+            if has_inv_loss:
                 _ = model(dummy_input, return_inv_loss=False)
             else:
                 _ = model(dummy_input)
@@ -260,8 +275,12 @@ def compute_per_class_accuracy(
 
             _, predicted = torch.max(outputs, 1)
 
+            # Transfer both tensors to CPU once per batch (not per sample)
+            labels_np: np.ndarray = labels.cpu().numpy()
+            predicted_np: np.ndarray = predicted.cpu().numpy()
+
             # Per-class stats
-            for label, pred in zip(labels.cpu().numpy(), predicted.cpu().numpy()):
+            for label, pred in zip(labels_np, predicted_np):
                 class_total[label] += 1
                 if label == pred:
                     class_correct[label] += 1
@@ -375,33 +394,31 @@ def compute_rotation_invariance_error(
 
             probs: torch.Tensor = F.softmax(outputs, dim=1)
 
-            # Process each sample in batch
+            # Transfer the full batch to CPU once (avoids per-sample GPU sync).
+            probs_np: np.ndarray = probs.cpu().numpy()       # (B, C)
+            labels_np: np.ndarray = labels.cpu().numpy()     # (B,)
+
+            # Use pre-parsed metadata from CustomMNIST._metadata when available
+            # (avoids 3 string-split calls per sample in this hot loop).
+            has_metadata: bool = hasattr(dataset, 'get_metadata')
+
             for i in range(batch_size):
-                # Get dataset index for this sample
                 dataset_idx: int = indices[batch_start_idx + i]
 
-                # Extract metadata from filename
-                img_path, label_from_path = dataset.samples[dataset_idx]
-                img_path: str
-                label_from_path: int
-                filename: str = os.path.basename(img_path)
+                if has_metadata:
+                    base_img_id, _ = dataset.get_metadata(dataset_idx)
+                else:
+                    # Fallback: parse filename on the fly (legacy datasets)
+                    img_path, _ = dataset.samples[dataset_idx]
+                    filename: str = os.path.basename(img_path)
+                    base_img_id = int(filename.split('_')[1])
 
-                # Parse filename: test_00042_label_3_rot_120.png
-                # Extract base image ID (e.g., 00042)
-                base_img_id: int = int(filename.split('_')[1])
-
-                # Extract rotation angle (e.g., 120)
-                rot_angle: int = int(filename.split('_rot_')[1].split('.')[0])
-
-                # Use actual label from forward pass (more robust)
-                label_val: int = int(labels[i].item())
-
-                # Group by (base_image_id, class)
+                label_val: int = int(labels_np[i])
                 key: Tuple[int, int] = (base_img_id, label_val)
 
                 if key not in sample_outputs:
                     sample_outputs[key] = []
-                sample_outputs[key].append(probs[i].cpu().numpy())
+                sample_outputs[key].append(probs_np[i])
 
             batch_start_idx += batch_size
 
@@ -507,13 +524,13 @@ def compute_inversion_consistency_metrics(
                 outer_logits, inner_logits, reduction='none'
             ).mean(dim=1)
 
-            inv_losses.extend(inv_loss.cpu().numpy().tolist())
+            # Transfer both result tensors to CPU in a single operation each
+            inv_losses.extend(inv_loss.cpu().numpy())
 
             # Agreement: do outer and inner predict same class?
             outer_pred: torch.Tensor = torch.argmax(outer_logits, dim=1)
             inner_pred: torch.Tensor = torch.argmax(inner_logits, dim=1)
-            agree: torch.Tensor = (outer_pred == inner_pred)
-            agreements.extend(agree.cpu().numpy().tolist())
+            agreements.extend((outer_pred == inner_pred).cpu().numpy())
 
     metrics: Dict[str, float] = {
         'inv_loss_mean': np.mean(inv_losses) if inv_losses else 0.0,
@@ -580,32 +597,89 @@ def compute_statistical_significance(
 
 def adaptive_orbit_mixing(
     logits_per_variant: List[torch.Tensor],
-    temperature: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT
+    temperature: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+    aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+    top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+    adaptive_temp: bool = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+    adaptive_temp_alpha: float = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT
 ) -> torch.Tensor:
     """
-    Combine multiple prediction variants using max-logit confidence weighting.
+    Combine multiple prediction variants using confidence-weighted averaging.
 
-    Each variant's contribution is weighted by the confidence of its most
-    certain prediction (max logit). Lower temperatures sharpen the weights
-    toward the most confident variant; higher temperatures approach uniform
-    averaging.
+    Each variant's contribution is weighted by a per-variant confidence score.
+    Lower temperatures sharpen the weights toward the most confident variant;
+    higher temperatures approach uniform averaging.
 
     Args:
         logits_per_variant: List of logit tensors, each (batch, num_classes)
         temperature: Softmax temperature for confidence weighting.
             Lower = sharper (most confident variant dominates).
             Higher = more uniform averaging.
+        confidence_mode: Signal used to score each variant's confidence.
+            'max_logit' (default): maximum logit value.
+            'margin': top-1 minus top-2 logit (decision margin).
+        aggregation_mode: Space in which weighted averaging is performed.
+            'logits' (default): raw logit space.
+            'probs': probability space (softmax before averaging).
+            'log_probs': log-probability space (log-softmax; geometric mean).
+        top_k: If set, keep only the top-K most confident variants before
+            averaging. None (default) uses all N variants.
+        adaptive_temp: If True, scale temperature per-sample by the entropy of
+            preliminary weights. High-entropy samples (all variants similarly
+            confident) get a higher temperature for smoother averaging.
+        adaptive_temp_alpha: Controls sensitivity of adaptive temperature.
+            0 = no adaptation; larger values → stronger entropy scaling.
 
     Returns:
-        Weighted average logits (batch, num_classes)
+        Weighted average in the chosen aggregation space (batch, num_classes)
     """
     if len(logits_per_variant) == 1:
         return logits_per_variant[0]
 
     stacked: torch.Tensor = torch.stack(logits_per_variant, dim=0)  # (N, B, C)
-    max_logits: torch.Tensor = stacked.max(dim=2).values             # (N, B)
-    weights: torch.Tensor = F.softmax(max_logits / temperature, dim=0)  # (N, B)
-    return (stacked * weights.unsqueeze(2)).sum(dim=0)                # (B, C)
+    N, B, C = stacked.shape
+
+    # ── Confidence score per variant ──
+    if confidence_mode == 'margin':
+        top2: torch.Tensor = stacked.topk(2, dim=2).values  # (N, B, 2)
+        confidence: torch.Tensor = top2[..., 0] - top2[..., 1]  # (N, B)
+    else:  # 'max_logit' (default)
+        confidence: torch.Tensor = stacked.max(dim=2).values  # (N, B)
+
+    # ── Top-K filtering (select most confident K variants) ──
+    if top_k is not None and top_k < N:
+        _, topk_idx = confidence.topk(top_k, dim=0)  # (top_k, B)
+        expand_idx = topk_idx.unsqueeze(2).expand(-1, -1, C)
+        stacked = stacked.gather(0, expand_idx)  # (top_k, B, C)
+        confidence = confidence.gather(0, topk_idx)  # (top_k, B)
+        N = top_k
+
+    # ── Temperature (adaptive or fixed) ──
+    if adaptive_temp and N > 1:
+        # Preliminary weights at base temperature to estimate per-sample entropy
+        w_base: torch.Tensor = F.softmax(confidence / temperature, dim=0)  # (N, B)
+        # Entropy ∈ [0, log(N)]; high = all variants similarly confident
+        entropy: torch.Tensor = -(w_base * (w_base + 1e-10).log()).sum(dim=0)  # (B,)
+        # Scale T up when variants are similar (high entropy → more averaging)
+        adaptive_T: torch.Tensor = temperature * (
+            1.0 + adaptive_temp_alpha * entropy / math.log(N)
+        )  # (B,)
+        weights: torch.Tensor = F.softmax(
+            confidence / adaptive_T.unsqueeze(0), dim=0
+        )  # (N, B)
+    else:
+        weights: torch.Tensor = F.softmax(confidence / temperature, dim=0)  # (N, B)
+
+    # ── Aggregation ──
+    if aggregation_mode == 'probs':
+        values: torch.Tensor = F.softmax(stacked, dim=2)  # (N, B, C)
+    elif aggregation_mode == 'log_probs':
+        values: torch.Tensor = F.log_softmax(stacked, dim=2)  # (N, B, C)
+    else:  # 'logits' (default)
+        values: torch.Tensor = stacked
+
+    return (values * weights.unsqueeze(2)).sum(dim=0)  # (B, C)
 
 
 def classify_from_sector_features(
@@ -658,6 +732,14 @@ def evaluate_with_orbit_mixing(
     temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
     temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+    aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+    top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+    adaptive_temp: bool = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+    adaptive_temp_alpha: float = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+    rotation_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+    rotation_padding_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+    pad_before_rotate: int = TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
     use_amp: bool = True,
     verbose: bool = False
 ) -> Tuple[float, float]:
@@ -685,6 +767,14 @@ def evaluate_with_orbit_mixing(
         temp_rotation: Temperature for Z6 rotation averaging
         temp_reflection: Temperature for D6 reflection averaging
         temp_inversion: Temperature for T24 zone-swap averaging
+        confidence_mode: Confidence signal mode for Z6 weighting ('max_logit' or 'margin')
+        aggregation_mode: Aggregation space for Z6 weighting ('logits', 'probs', 'log_probs')
+        top_k: Top-K variant selection for Z6 (None = all 6)
+        adaptive_temp: Enable per-sample adaptive temperature for Z6
+        adaptive_temp_alpha: Sensitivity of adaptive temperature scaling
+        rotation_mode: Interpolation mode for image rotation ('bilinear' or 'bicubic')
+        rotation_padding_mode: Padding mode for rotated corners ('zeros' or 'border')
+        pad_before_rotate: Pixels to pad before rotating then crop back (0=disabled)
         use_amp: Enable automatic mixed precision
         verbose: Log per-batch progress
 
@@ -717,36 +807,107 @@ def evaluate_with_orbit_mixing(
     with torch.no_grad():
         for batch_idx, (inputs, labels) in enumerate(loader):
             inputs, labels = inputs.to(device), labels.to(device)
+            batch_size: int = inputs.size(0)
 
             # ── Level 1: Z6 input-space rotations ──
             rotation_logits: List[torch.Tensor] = []
 
-            for angle in z6_angles:
-                rotated_input: torch.Tensor = rotate_batch_images(inputs, angle)
+            if use_z6:
+                # Rotate all 6 angles upfront (grid is cached after the first call
+                # for each angle, so subsequent batches incur only a GPU memcpy).
+                rotated_all: List[torch.Tensor] = [
+                    rotate_batch_images(
+                        inputs, angle,
+                        mode=rotation_mode,
+                        padding_mode=rotation_padding_mode,
+                        pad_before_rotate=pad_before_rotate
+                    )
+                    for angle in z6_angles
+                ]
+                # Stack to (6B, ...) and run a single forward pass.
+                # TQF-ANN uses LayerNorm (per-sample), so per-image results are
+                # bit-identical to running each rotation in a separate pass.
+                batched_input: torch.Tensor = torch.cat(rotated_all, dim=0)
 
                 with torch.amp.autocast('cuda', enabled=use_amp and device.type == 'cuda'):
-                    logits = model(rotated_input, return_inv_loss=False)
+                    batched_logits: torch.Tensor = model(batched_input, return_inv_loss=False)
 
-                # Start with base logits from this forward pass
-                current: torch.Tensor = logits
+                # Split (6B, C) → list of 6 × (B, C)
+                split_logits: List[torch.Tensor] = list(
+                    batched_logits.split(batch_size, dim=0)
+                )
+
+                # If D6 or T24 are active, retrieve and split cached sector features.
+                if use_d6 or use_t24:
+                    outer_all: torch.Tensor = model.get_cached_sector_features()   # (6B, 6, H)
+                    inner_all: torch.Tensor = model.get_cached_inner_sector_features()  # (6B, 6, H)
+
+                for i in range(len(z6_angles)):
+                    current: torch.Tensor = split_logits[i]
+
+                    if use_d6 or use_t24:
+                        outer_feats: torch.Tensor = outer_all[i * batch_size:(i + 1) * batch_size]
+                        inner_feats: torch.Tensor = inner_all[i * batch_size:(i + 1) * batch_size]
+
+                    # ── Level 2: D6 feature-space reflection ──
+                    if use_d6:
+                        reflected_outer: torch.Tensor = apply_d6_reflection_to_sectors(
+                            outer_feats, reflection_axis=0
+                        )
+                        reflected_inner: torch.Tensor = apply_d6_reflection_to_sectors(
+                            inner_feats, reflection_axis=0
+                        )
+                        reflected_logits: torch.Tensor = classify_from_sector_features(
+                            model, reflected_outer, reflected_inner
+                        )
+                        refl_stack = torch.stack([current, reflected_logits], dim=0)
+                        refl_conf = refl_stack.max(dim=2).values
+                        refl_w = F.softmax(refl_conf / temp_reflection, dim=0)
+                        current = (refl_stack * refl_w.unsqueeze(2)).sum(dim=0)
+
+                    # ── Level 3: T24 zone-swap (flip confidence weighting) ──
+                    if use_t24:
+                        swapped_logits: torch.Tensor = classify_from_sector_features(
+                            model, outer_feats, inner_feats, swap_weights=True
+                        )
+                        if use_d6:
+                            swapped_refl_logits: torch.Tensor = classify_from_sector_features(
+                                model, reflected_outer, reflected_inner, swap_weights=True
+                            )
+                            sw_stack = torch.stack([swapped_logits, swapped_refl_logits], dim=0)
+                            sw_conf = sw_stack.max(dim=2).values
+                            sw_w = F.softmax(sw_conf / temp_reflection, dim=0)
+                            swapped_logits = (sw_stack * sw_w.unsqueeze(2)).sum(dim=0)
+
+                        inv_stack = torch.stack([current, swapped_logits], dim=0)
+                        inv_conf = inv_stack.max(dim=2).values
+                        inv_w = F.softmax(inv_conf / temp_inversion, dim=0)
+                        current = (inv_stack * inv_w.unsqueeze(2)).sum(dim=0)
+
+                    rotation_logits.append(current)
+
+            else:
+                # No Z6: single forward pass for the unrotated input (angle = 0).
+                with torch.amp.autocast('cuda', enabled=use_amp and device.type == 'cuda'):
+                    logits: torch.Tensor = model(inputs, return_inv_loss=False)
+
+                current = logits
 
                 if use_d6 or use_t24:
-                    # Retrieve cached zone features from this forward pass
-                    outer_feats: torch.Tensor = model.get_cached_sector_features()
-                    inner_feats: torch.Tensor = model.get_cached_inner_sector_features()
+                    outer_feats = model.get_cached_sector_features()
+                    inner_feats = model.get_cached_inner_sector_features()
 
                 # ── Level 2: D6 feature-space reflection ──
                 if use_d6:
-                    reflected_outer: torch.Tensor = apply_d6_reflection_to_sectors(
+                    reflected_outer = apply_d6_reflection_to_sectors(
                         outer_feats, reflection_axis=0
                     )
-                    reflected_inner: torch.Tensor = apply_d6_reflection_to_sectors(
+                    reflected_inner = apply_d6_reflection_to_sectors(
                         inner_feats, reflection_axis=0
                     )
-                    reflected_logits: torch.Tensor = classify_from_sector_features(
+                    reflected_logits = classify_from_sector_features(
                         model, reflected_outer, reflected_inner
                     )
-                    # Average base + reflected with reflection temperature
                     refl_stack = torch.stack([current, reflected_logits], dim=0)
                     refl_conf = refl_stack.max(dim=2).values
                     refl_w = F.softmax(refl_conf / temp_reflection, dim=0)
@@ -754,21 +915,18 @@ def evaluate_with_orbit_mixing(
 
                 # ── Level 3: T24 zone-swap (flip confidence weighting) ──
                 if use_t24:
-                    swapped_logits: torch.Tensor = classify_from_sector_features(
+                    swapped_logits = classify_from_sector_features(
                         model, outer_feats, inner_feats, swap_weights=True
                     )
                     if use_d6:
-                        # Also compute reflected + zone-swapped variant
-                        swapped_refl_logits: torch.Tensor = classify_from_sector_features(
+                        swapped_refl_logits = classify_from_sector_features(
                             model, reflected_outer, reflected_inner, swap_weights=True
                         )
-                        # Average the two swapped variants
                         sw_stack = torch.stack([swapped_logits, swapped_refl_logits], dim=0)
                         sw_conf = sw_stack.max(dim=2).values
                         sw_w = F.softmax(sw_conf / temp_reflection, dim=0)
                         swapped_logits = (sw_stack * sw_w.unsqueeze(2)).sum(dim=0)
 
-                    # Average normal vs zone-swapped with inversion temperature
                     inv_stack = torch.stack([current, swapped_logits], dim=0)
                     inv_conf = inv_stack.max(dim=2).values
                     inv_w = F.softmax(inv_conf / temp_inversion, dim=0)
@@ -779,7 +937,13 @@ def evaluate_with_orbit_mixing(
             # ── Final Z6 rotation averaging ──
             if use_z6:
                 ensemble_logits: torch.Tensor = adaptive_orbit_mixing(
-                    rotation_logits, temperature=temp_rotation
+                    rotation_logits,
+                    temperature=temp_rotation,
+                    confidence_mode=confidence_mode,
+                    aggregation_mode=aggregation_mode,
+                    top_k=top_k,
+                    adaptive_temp=adaptive_temp,
+                    adaptive_temp_alpha=adaptive_temp_alpha
                 )
             else:
                 ensemble_logits = rotation_logits[0]
@@ -799,3 +963,73 @@ def evaluate_with_orbit_mixing(
     accuracy: float = 100.0 * correct / total if total > 0 else 0.0
 
     return avg_loss, accuracy
+
+
+def compute_orbit_consistency_loss(
+    model: nn.Module,
+    inputs: torch.Tensor,
+    base_logits: torch.Tensor,
+    num_rotations: int = 2
+) -> Optional[torch.Tensor]:
+    """
+    Compute orbit consistency self-distillation loss (training-time only).
+
+    Creates a consensus ensemble from base logits + extra rotated forward passes,
+    then penalises each rotation (including base) for diverging from the ensemble
+    via KL divergence. This encourages the model to produce consistent predictions
+    across Z6 orbit members without requiring labelled data for the rotations.
+
+    Only runs for TQF models (model must accept ``return_inv_loss`` kwarg).
+    Returns None for non-TQF models so callers can skip without branching.
+
+    Args:
+        model: Neural network (TQF-ANN expected)
+        inputs: Batch inputs currently being trained on (B, 784)
+        base_logits: Logits from the current forward pass (B, num_classes).
+            Must still be in the computation graph (not detached).
+        num_rotations: Number of additional Z6 rotation passes (1-5).
+            These are randomly sampled from {60, 120, 180, 240, 300}.
+
+    Returns:
+        Scalar KL-divergence loss averaged over all variants, or None.
+    """
+    # Only applies to TQF models
+    if not hasattr(model, 'dual_output'):
+        return None
+
+    # Lazy import to avoid circular dependency
+    from engine import rotate_batch_images
+
+    import random
+    extra_angles: List[int] = random.sample(
+        [60, 120, 180, 240, 300], k=min(num_rotations, 5)
+    )
+
+    # Rotate all extra angles, then run a single batched forward pass.
+    # TQF-ANN uses LayerNorm (per-sample), so results are identical to running
+    # each rotation separately. This replaces num_rotations serial passes with one.
+    batch_size: int = inputs.size(0)
+    rotated_list: List[torch.Tensor] = [
+        rotate_batch_images(inputs, angle) for angle in extra_angles
+    ]
+    batched_rotated: torch.Tensor = torch.cat(rotated_list, dim=0)   # (num_rot*B, 784)
+    batched_rot_logits: torch.Tensor = model(batched_rotated, return_inv_loss=False)
+    extra_logits: List[torch.Tensor] = list(batched_rot_logits.split(batch_size, dim=0))
+
+    # Collect all logit tensors (base + extra rotations, all with gradients)
+    all_logits: List[torch.Tensor] = [base_logits] + extra_logits
+
+    # Build stop-gradient ensemble soft target
+    stacked_detached: torch.Tensor = torch.stack(
+        [l.detach() for l in all_logits], dim=0
+    ).mean(dim=0)  # (B, C)
+    ensemble_probs: torch.Tensor = F.softmax(stacked_detached, dim=1)  # (B, C)
+
+    # KL divergence of each variant against ensemble target
+    total_kl: torch.Tensor = torch.zeros(1, device=inputs.device)
+    for logits in all_logits:
+        log_probs: torch.Tensor = F.log_softmax(logits, dim=1)
+        kl: torch.Tensor = F.kl_div(log_probs, ensemble_probs, reduction='batchmean')
+        total_kl = total_kl + kl
+
+    return total_kl / len(all_logits)

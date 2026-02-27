@@ -162,20 +162,6 @@ class TestGetModelConfigs:
         for model_name in required:
             assert model_name in MODEL_REGISTRY, f"Missing {model_name}"
 
-    @pytest.mark.slow
-    def test_models_have_consistent_interface(self, all_models) -> None:
-        """
-        WHY: All models should have count_parameters method (SLOW)
-        HOW: Use cached all_models fixture, check for method
-        WHAT: Expect method exists
-
-        NOTE: Marked as slow - uses all_models fixture (includes TQF-ANN).
-        Uses module-level cache for performance.
-        """
-        for model_name, model in all_models.items():
-            assert hasattr(model, 'count_parameters'), \
-                f"{model_name} missing count_parameters method"
-
 
 class TestParameterMatching:
     """Test that all models match target parameter count."""
@@ -223,7 +209,6 @@ class TestParameterMatching:
         assert deviation <= TARGET_PARAMS_TOLERANCE_PERCENT, \
             f"CNN-L5 deviation {deviation:.2f}% exceeds tolerance {TARGET_PARAMS_TOLERANCE_PERCENT}%"
 
-    @pytest.mark.slow
     @pytest.mark.skip(reason="ResNet Conv2d triggers CUDA access violation on Windows/CUDA 12.6 - verified manually: 656,848 params (1.05% deviation)")
     def test_resnet_within_tolerance(self) -> None:
         """
@@ -274,12 +259,9 @@ class TestSymmetryMatrixRegression:
         """
         R: int = 20
         d: int = 166  # Value that triggered the original bug
-        fractal_iters: int = 10
 
         # Estimate parameters
-        total_params: int = estimate_tqf_params(
-            R=R, d=d,            fractal_iters=fractal_iters
-        )
+        total_params: int = estimate_tqf_params(R=R, d=d)
 
         # IMPORTANT: After Step 6 T24 completion, symmetry matrices are NO LONGER
         # learned parameters. They are geometric transformations (Z6 rotations,
@@ -289,10 +271,9 @@ class TestSymmetryMatrixRegression:
 
         # Expected value for hybrid binner (default) architecture:
         # Note: Hybrid binner uses shared weights, resulting in fewer params than
-        # separate binners. For d=166, R=20, fractal_iters=10:
-        # - Separate binner (dual-zone): 832,760 params
-        # - Hybrid binner (default): 497,108 params
-        expected_approx: int = 497108  # Updated for hybrid binner default
+        # separate binners. For d=166, R=20 (no fractal features):
+        # - Hybrid binner (default): 413,522 params
+        expected_approx: int = 413522  # Updated: fractal features removed
         tolerance: float = 0.05  # 5% tolerance
 
         deviation: float = abs(total_params - expected_approx) / expected_approx
@@ -310,16 +291,12 @@ class TestSymmetryMatrixRegression:
         REGRESSION: If auto-tuning broken, deviation would exceed tolerance.
         """
         R: int = config.TQF_TRUNCATION_R_DEFAULT
-        fractal_iters: int = config.TQF_FRACTAL_ITERATIONS_DEFAULT
 
         tuned_d: int = tune_d_for_params(
             R=R, target=TARGET_PARAMS, tol=TARGET_PARAMS_TOLERANCE_ABSOLUTE,
-            fractal_iters=fractal_iters
         )
 
-        estimated_params: int = estimate_tqf_params(
-            R=R, d=tuned_d,            fractal_iters=fractal_iters
-        )
+        estimated_params: int = estimate_tqf_params(R=R, d=tuned_d)
 
         deviation_percent: float = abs(estimated_params - TARGET_PARAMS) / TARGET_PARAMS * 100
 
@@ -338,17 +315,13 @@ class TestSymmetryMatrixRegression:
                     d=146 (diff=1,670). If reverted, neighbor would be closer.
         """
         R: int = 20
-        fractal_iters: int = 10
 
-        tuned_d: int = tune_d_for_params(
-            R=R, target=TARGET_PARAMS,
-            fractal_iters=fractal_iters
-        )
+        tuned_d: int = tune_d_for_params(R=R, target=TARGET_PARAMS)
 
         # Get params for tuned_d and neighbors
-        params_d: int = estimate_tqf_params(R, tuned_d, fractal_iters)
-        params_d_minus: int = estimate_tqf_params(R, tuned_d - 1, fractal_iters)
-        params_d_plus: int = estimate_tqf_params(R, tuned_d + 1, fractal_iters)
+        params_d: int = estimate_tqf_params(R, tuned_d)
+        params_d_minus: int = estimate_tqf_params(R, tuned_d - 1)
+        params_d_plus: int = estimate_tqf_params(R, tuned_d + 1)
 
         dev_d: int = abs(params_d - TARGET_PARAMS)
         dev_d_minus: int = abs(params_d_minus - TARGET_PARAMS)
@@ -368,10 +341,9 @@ class TestSymmetryMatrixRegression:
         REGRESSION: Without symmetry matrices, growth would be ~linear (~2x).
         """
         R: int = 20
-        fractal_iters: int = 10
 
-        params_50: int = estimate_tqf_params(R, 50, fractal_iters)
-        params_100: int = estimate_tqf_params(R, 100, fractal_iters)
+        params_50: int = estimate_tqf_params(R, 50)
+        params_100: int = estimate_tqf_params(R, 100)
 
         growth_factor: float = params_100 / params_50
 
@@ -395,7 +367,6 @@ class TestSymmetryMatrixRegression:
         estimated_params: int = estimate_tqf_params(
             R=config.TQF_TRUNCATION_R_DEFAULT,
             d=model.hidden_dim,
-                       fractal_iters=config.TQF_FRACTAL_ITERATIONS_DEFAULT
         )
 
         difference: int = abs(actual_params - estimated_params)
@@ -409,18 +380,6 @@ class TestSymmetryMatrixRegression:
 
 class TestModelInstantiation:
     """Test that models can be instantiated correctly."""
-
-    @pytest.mark.slow
-    def test_tqf_instantiates(self) -> None:
-        """
-        WHY: TQF must instantiate successfully (SLOW)
-        HOW: Call get_model with TQF-ANN
-        WHAT: Expect nn.Module instance
-
-        NOTE: Marked as slow - TQF-ANN instantiation (~10-15s).
-        """
-        model = get_model('TQF-ANN', R=config.TQF_TRUNCATION_R_DEFAULT)
-        assert isinstance(model, nn.Module)
 
     def test_mlp_instantiates(self) -> None:
         """
@@ -444,7 +403,6 @@ class TestModelInstantiation:
         model = get_model('CNN-L5')
         assert isinstance(model, nn.Module)
 
-    @pytest.mark.slow
     @pytest.mark.skip(reason="ResNet Conv2d triggers CUDA access violation on Windows/CUDA 12.6 - known PyTorch/driver issue, not code bug")
     def test_resnet_instantiates(self) -> None:
         """
@@ -469,6 +427,7 @@ class TestFibonacciModeParameterEstimation:
     aggregation during forward propagation, not the network architecture.
     """
 
+    @pytest.mark.slow
     def test_fibonacci_estimation_within_tolerance(self):
         """
         WHY: Estimator must accurately count Fibonacci mode parameters
@@ -476,31 +435,26 @@ class TestFibonacciModeParameterEstimation:
         WHAT: Expect <5% difference for various configurations
 
         REGRESSION: If formula wrong, auto-tuning produces incorrect hidden_dim
+        NOTE: Marked slow - creates 3 TQFANN models (R=15-20).
         """
         from models_tqf import TQFANN
         from param_matcher import estimate_tqf_params
 
         test_configs = [
-            {'R': 20, 'd': 80, 'fractal_iters': 10},
-            {'R': 20, 'd': 90, 'fractal_iters': 10},
-            {'R': 15, 'd': 100, 'fractal_iters': 5},
+            {'R': 20, 'd': 80},
+            {'R': 20, 'd': 90},
+            {'R': 15, 'd': 100},
         ]
 
         for config in test_configs:
             R = config['R']
             d = config['d']
-            fractal_iters = config['fractal_iters']
 
             # Estimate
-            estimated = estimate_tqf_params(
-                R=R, d=d,                fractal_iters=fractal_iters
-            )
+            estimated = estimate_tqf_params(R=R, d=d)
 
             # Actual
-            model = TQFANN(
-                R=R, hidden_dim=d, fractal_iters=fractal_iters,
-
-            )
+            model = TQFANN(R=R, hidden_dim=d)
             actual = model.count_parameters()
 
             # Check accuracy
@@ -509,37 +463,6 @@ class TestFibonacciModeParameterEstimation:
                 f"Config {config}: Estimated {estimated:,}, Actual {actual:,}, "
                 f"Difference {diff_pct:.2f}% (should be <5%)"
             )
-
-    def test_fibonacci_has_same_params_as_standard(self):
-        """
-        WHY: Fibonacci mode uses weight-based scaling, not dimension scaling
-        HOW: Compare parameter counts for Fibonacci vs standard mode
-        WHAT: Expect IDENTICAL parameter counts
-
-        IMPORTANT: This is a fundamental architectural design decision.
-        Fibonacci mode only affects feature aggregation weights, not dimensions.
-        """
-        from param_matcher import estimate_tqf_params
-
-        R = 20
-        d = 100
-        fractal_iters = 10
-
-        # Standard mode
-        standard_params = estimate_tqf_params(
-            R=R, d=d,            fractal_iters=fractal_iters
-        )
-
-        # Fibonacci mode (weight-based only) - uses same estimate since params are identical
-        fibonacci_params = estimate_tqf_params(
-            R=R, d=d,            fractal_iters=fractal_iters
-        )
-
-        # Fibonacci should have SAME parameters (weight-based, not dimension scaling)
-        assert fibonacci_params == standard_params, (
-            f"Fibonacci mode ({fibonacci_params:,}) should have SAME parameters "
-            f"as standard mode ({standard_params:,}) - weight-based scaling only"
-        )
 
     def test_fibonacci_classification_uses_hidden_dim(self):
         """
@@ -555,12 +478,9 @@ class TestFibonacciModeParameterEstimation:
 
         R = 20
         d = 80
-        fractal_iters = 10
 
         # Get total params
-        total_params = estimate_tqf_params(
-            R=R, d=d,            fractal_iters=fractal_iters
-        )
+        total_params = estimate_tqf_params(R=R, d=d)
 
         # Classification head: d * 10 + 10 (uses hidden_dim, not scaled)
         expected_head_contribution = (
@@ -583,18 +503,12 @@ class TestFibonacciModeParameterEstimation:
         from param_matcher import tune_d_for_params, estimate_tqf_params, TARGET_PARAMS
 
         R = 20
-        fractal_iters = 10
 
         # Auto-tune
-        tuned_d = tune_d_for_params(
-            R=R, target=TARGET_PARAMS,
-            fractal_iters=fractal_iters
-        )
+        tuned_d = tune_d_for_params(R=R, target=TARGET_PARAMS)
 
         # Verify tuned dimension produces params near target
-        estimated_params = estimate_tqf_params(
-            R=R, d=tuned_d,            fractal_iters=fractal_iters
-        )
+        estimated_params = estimate_tqf_params(R=R, d=tuned_d)
 
         deviation_pct = abs(estimated_params - TARGET_PARAMS) / TARGET_PARAMS * 100
         assert deviation_pct < TARGET_PARAMS_TOLERANCE_PERCENT, (
@@ -611,10 +525,8 @@ class TestParameterEstimationRegressions:
     Prevents re-introduction of:
     1. Pre-encoder double-counting (2-layer vs 1-layer)
     2. Phase encodings counted as parameters (buffer vs parameter)
-    3. Fractal mixer layer structure (Tanh vs LayerNorm)
-    4. Fractal gates dimension mismatch (input vs output dims)
-    5. Self-transforms not counted in standard mode
-    6. Graph conv structure (single vs double transform)
+    3. Self-transforms not counted in standard mode
+    4. Graph conv structure (single vs double transform)
     """
 
     def test_pre_encoder_single_layer_counted(self) -> None:
@@ -651,7 +563,7 @@ class TestParameterEstimationRegressions:
         """
         from models_tqf import RayOrganizedBoundaryEncoder
 
-        encoder = RayOrganizedBoundaryEncoder(hidden_dim=128, fractal_iters=10)
+        encoder = RayOrganizedBoundaryEncoder(hidden_dim=128)
 
         # Get all parameter names
         param_names = set(name for name, _ in encoder.named_parameters())
@@ -667,81 +579,24 @@ class TestParameterEstimationRegressions:
             "phase_encodings should be registered as buffer"
         )
 
-    def test_fractal_mixer_uses_tanh_not_layernorm(self) -> None:
-        """
-        REGRESSION: Estimation assumed Linear + LayerNorm, actual is Linear + Tanh
-        WHY: LayerNorm has 2*dim params, Tanh has 0 - caused overcount
-        WHAT: Verify fractal_mixer has no LayerNorm layers
-        """
-        from models_tqf import RayOrganizedBoundaryEncoder
-        import torch.nn as nn
-
-        encoder = RayOrganizedBoundaryEncoder(hidden_dim=64, fractal_iters=5)
-
-        # Check fractal_mixer structure
-        for i, mixer_layer in enumerate(encoder.fractal_mixer):
-            # Should be Sequential(Linear, Tanh)
-            assert isinstance(mixer_layer, nn.Sequential), f"Mixer layer {i} should be Sequential"
-
-            # Count LayerNorm - should be 0
-            layernorms = [m for m in mixer_layer.modules() if isinstance(m, nn.LayerNorm)]
-            assert len(layernorms) == 0, (
-                f"Fractal mixer layer {i} should not have LayerNorm (uses Tanh instead)"
-            )
-
-            # Verify has Linear and Tanh
-            layers = list(mixer_layer.children())
-            assert len(layers) == 2, f"Mixer should have 2 layers (Linear, Tanh), got {len(layers)}"
-            assert isinstance(layers[0], nn.Linear), f"First layer should be Linear"
-            assert isinstance(layers[1], nn.Tanh), f"Second layer should be Tanh"
-
-    def test_fractal_gates_use_constant_hidden_dim(self) -> None:
-        """
-        WHY: Gates use constant hidden_dim (weight-based Fibonacci)
-        HOW: Verify all fractal gates have hidden_dim dimensions
-        WHAT: For all modes, gates match hidden_dim (constant)
-
-        NOTE: With weight-based Fibonacci, all layers have constant dimension.
-        Gates are uniform, not per-layer.
-        """
-        from models_tqf import TQFANN
-
-        hidden_dim: int = 80
-        model = TQFANN(R=20, hidden_dim=hidden_dim, fractal_iters=10)
-        binner = model.radial_binner
-
-        # Verify fractal_gates use hidden_dim (uniform across all gates)
-        for gate_idx, gate_seq in enumerate(binner.fractal_gates):
-            linear = gate_seq[0]  # First element is Linear
-
-            assert linear.in_features == hidden_dim, (
-                f"Gate {gate_idx} input should be {hidden_dim} "
-                f"(constant hidden_dim), got {linear.in_features}"
-            )
-            assert linear.out_features == hidden_dim, (
-                f"Gate {gate_idx} output should be {hidden_dim}, "
-                f"got {linear.out_features}"
-            )
-
+    @pytest.mark.slow
     def test_self_transforms_counted_in_standard_mode(self) -> None:
         """
         REGRESSION: Self-transforms exist in model but weren't counted in estimation
         WHY: They're created in __init__ even if unused in forward
         WHAT: Verify estimation includes self-transforms for standard mode
+        NOTE: Marked slow - creates TQFANN(R=20).
         """
         R: int = 20
         d: int = 100
-        fractal_iters: int = 10
 
         # Get total estimation
-        total_estimated: int = estimate_tqf_params(
-            R=R, d=d,            fractal_iters=fractal_iters
-        )
+        total_estimated: int = estimate_tqf_params(R=R, d=d)
 
         # Estimation without self-transforms (should be less)
         # We can't easily calculate this, so we verify model actually has them
         from models_tqf import TQFANN
-        model = TQFANN(R=R, hidden_dim=d, fractal_iters=fractal_iters)
+        model = TQFANN(R=R, hidden_dim=d)
 
         # Note: self_transforms were removed for performance (now using direct residual addition)
         # Verify model uses direct residuals instead
@@ -755,16 +610,18 @@ class TestParameterEstimationRegressions:
         # This is more efficient than learned transforms
         # No self_transform parameters to count - they've been removed
 
+    @pytest.mark.slow
     def test_graph_convs_single_linear_per_layer(self) -> None:
         """
         REGRESSION: Ensure graph convs don't double-count transforms
         WHY: Early versions may have counted both self and neighbor transforms
         WHAT: Verify each graph conv has exactly one Linear layer
+        NOTE: Marked slow - creates TQFANN(R=20).
         """
         from models_tqf import TQFANN
         import torch.nn as nn
 
-        model = TQFANN(R=20, hidden_dim=100, fractal_iters=10)
+        model = TQFANN(R=20, hidden_dim=100)
         binner = model.radial_binner
 
         # Each graph conv should have exactly 1 Linear layer
@@ -775,26 +632,25 @@ class TestParameterEstimationRegressions:
                 f"got {len(linears)}"
             )
 
+    @pytest.mark.slow
     def test_estimation_vs_actual_within_tolerance_standard(self) -> None:
         """
         REGRESSION: Ensure parameter estimation accurately predicts actual count
         WHY: Previous bugs caused estimation errors in standard mode too
         WHAT: Verify estimation within 5% of actual for standard mode
+        NOTE: Marked slow - creates TQFANN(R=20).
         """
         from models_tqf import TQFANN
 
         # Test configuration
         R: int = 20
         d: int = 120
-        fractal_iters: int = 10
 
         # Estimate parameters
-        estimated: int = estimate_tqf_params(
-            R=R, d=d,            fractal_iters=fractal_iters
-        )
+        estimated: int = estimate_tqf_params(R=R, d=d)
 
         # Create actual model
-        model = TQFANN(R=R, hidden_dim=d, fractal_iters=fractal_iters)
+        model = TQFANN(R=R, hidden_dim=d)
         actual: int = model.count_parameters()
 
         # Calculate deviation

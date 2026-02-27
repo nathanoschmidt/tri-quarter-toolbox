@@ -123,7 +123,6 @@ def main():
     )
     from output_formatters import format_time_seconds, save_final_summary_to_disk
     from logging_utils import log_experiment_config, print_separator, print_single_separator
-    from config import TQF_SELF_SIMILARITY_WEIGHT_DEFAULT, TQF_BOX_COUNTING_WEIGHT_DEFAULT
     try:
         from prepare_datasets import get_dataloaders
     except ImportError:
@@ -167,18 +166,6 @@ def main():
     # Model configurations with argument-driven TQF params
     # Note: TQF hidden_dim=None triggers auto-tuning in TQFANN.__init__()
 
-    # --tqf-verify-geometry enables fractal losses by ensuring weights are non-zero
-    # When enabled, if user explicitly set weights to 0, override with defaults
-    tqf_self_sim_weight: float = args.tqf_self_similarity_weight
-    tqf_box_count_weight: float = args.tqf_box_counting_weight
-    if args.tqf_verify_geometry:
-        # verify_geometry flag ensures fractal losses are active
-        # Use defaults if weights were explicitly disabled
-        if tqf_self_sim_weight == 0.0:
-            tqf_self_sim_weight = TQF_SELF_SIMILARITY_WEIGHT_DEFAULT
-        if tqf_box_count_weight == 0.0:
-            tqf_box_count_weight = TQF_BOX_COUNTING_WEIGHT_DEFAULT
-
     all_model_configs: Dict[str, Dict] = {
         'FC-MLP': {},
         'CNN-L5': {},
@@ -188,17 +175,6 @@ def main():
             'R': args.tqf_R,
             'hidden_dim': args.tqf_hidden_dim,  # None = auto-tune
             'symmetry_level': args.tqf_symmetry_level,
-
-            # Fractal Geometry
-            # fractal_iters: None (disabled by default) -> 0 (no fractal layers)
-            'fractal_iters': args.tqf_fractal_iterations if args.tqf_fractal_iterations is not None else 0,
-            # fractal_dim_tol: uses TQF_FRACTAL_DIM_TOLERANCE_DEFAULT from config.py (internal, not CLI-exposed)
-            # box_counting_scales: uses TQF_BOX_COUNTING_SCALES_DEFAULT from config.py (internal, not CLI-exposed)
-            'self_similarity_weight': tqf_self_sim_weight,
-            'box_counting_weight': tqf_box_count_weight,
-
-            # Attention/Mixing
-            'hop_attention_temp': args.tqf_hop_attention_temp,
 
             # Geometry/Regularization
             'verify_geometry': args.tqf_verify_geometry,
@@ -243,7 +219,8 @@ def main():
         num_val=args.num_val,
         num_test_rot=args.num_test_rot,
         num_test_unrot=args.num_test_unrot,
-        augment_train=args.z6_data_augmentation
+        augment_train=args.z6_data_augmentation,
+        augment_z6_non_rotation=args.tqf_z6_non_rotation_augmentation
     )
 
     # Warm up image caches so first training epoch isn't penalized by disk I/O
@@ -287,6 +264,8 @@ def main():
         z6_equivariance_weight=args.tqf_z6_equivariance_weight,
         d6_equivariance_weight=args.tqf_d6_equivariance_weight,
         t24_orbit_invariance_weight=args.tqf_t24_orbit_invariance_weight,
+        z6_orbit_consistency_weight=args.tqf_z6_orbit_consistency_weight,
+        z6_orbit_consistency_rotations=args.tqf_z6_orbit_consistency_rotations,
         use_compile=args.compile,
         output_path=output_path,
         use_z6_orbit_mixing=args.tqf_use_z6_orbit_mixing,
@@ -294,7 +273,15 @@ def main():
         use_t24_orbit_mixing=args.tqf_use_t24_orbit_mixing,
         orbit_mixing_temp_rotation=args.tqf_orbit_mixing_temp_rotation,
         orbit_mixing_temp_reflection=args.tqf_orbit_mixing_temp_reflection,
-        orbit_mixing_temp_inversion=args.tqf_orbit_mixing_temp_inversion
+        orbit_mixing_temp_inversion=args.tqf_orbit_mixing_temp_inversion,
+        z6_orbit_mixing_confidence_mode=args.tqf_z6_orbit_mixing_confidence_mode,
+        z6_orbit_mixing_aggregation_mode=args.tqf_z6_orbit_mixing_aggregation_mode,
+        z6_orbit_mixing_top_k=args.tqf_z6_orbit_mixing_top_k,
+        z6_orbit_mixing_adaptive_temp=args.tqf_z6_orbit_mixing_adaptive_temp,
+        z6_orbit_mixing_adaptive_temp_alpha=args.tqf_z6_orbit_mixing_adaptive_temp_alpha,
+        z6_orbit_mixing_rotation_mode=args.tqf_z6_orbit_mixing_rotation_mode,
+        z6_orbit_mixing_rotation_padding_mode=args.tqf_z6_orbit_mixing_rotation_padding_mode,
+        z6_orbit_mixing_rotation_pad=args.tqf_z6_orbit_mixing_rotation_pad
     )
 
     # Statistical comparison

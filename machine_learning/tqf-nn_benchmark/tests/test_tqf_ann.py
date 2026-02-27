@@ -116,35 +116,6 @@ class TestFibonacciModeRegressions(unittest.TestCase):
         self.assertEqual(loss.dim(), 0)  # Scalar loss
         self.assertGreater(loss.item(), 0)  # Positive loss
 
-    def test_fractal_gates_use_constant_hidden_dim(self):
-        """
-        WHY: Gates use constant hidden_dim (weight-based Fibonacci)
-        HOW: Verify all fractal gates have hidden_dim dimensions
-        WHAT: Gates are uniform across all layers (not per-layer)
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        hidden_dim = 80
-        model = TQFANN(
-            R=20,
-            hidden_dim=hidden_dim,
-            fractal_iters=10
-        )
-
-        radial_binner = model.radial_binner
-
-        # All gates should use constant hidden_dim (uniform)
-        for gate_idx, gate_seq in enumerate(radial_binner.fractal_gates):
-            linear_layer = gate_seq[0]  # First element is Linear layer
-
-            self.assertEqual(linear_layer.in_features, hidden_dim,
-                           f"Gate {gate_idx} should use hidden_dim {hidden_dim}")
-            self.assertEqual(linear_layer.out_features, hidden_dim,
-                           f"Gate {gate_idx} should output hidden_dim {hidden_dim}")
-
     def test_phase_encodings_is_buffer_not_parameter(self):
         """
         REGRESSION: phase_encodings was counted as parameters
@@ -156,7 +127,7 @@ class TestFibonacciModeRegressions(unittest.TestCase):
 
         from models_tqf import RayOrganizedBoundaryEncoder
 
-        encoder = RayOrganizedBoundaryEncoder(hidden_dim=64, fractal_iters=10)
+        encoder = RayOrganizedBoundaryEncoder(hidden_dim=64)
 
         # phase_encodings should be a buffer
         buffer_names = [name for name, _ in encoder.named_buffers()]
@@ -841,38 +812,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
     use correct dimensions.
     """
 
-    def test_fractal_gates_uniform_structure(self):
-        """
-        WHY: Fractal gates use constant hidden_dim (uniform, not per-layer)
-        HOW: Check gate structure is 1D ModuleList with constant dimensions
-        WHAT: Expect gates[gate_idx] structure with constant hidden_dim
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        hidden_dim = 80
-        model = TQFANN(
-            R=20,
-            hidden_dim=hidden_dim,
-            fractal_iters=10
-        )
-
-        radial_binner = model.radial_binner
-
-        # Check fractal gates structure - should be 1D (uniform gates)
-        self.assertIsInstance(radial_binner.fractal_gates, nn.ModuleList, "Fractal gates should be ModuleList")
-
-        # Gates are uniform (not per-layer) - all use hidden_dim
-        for gate_idx, gate_seq in enumerate(radial_binner.fractal_gates):
-            # Gate is Sequential(Linear, Sigmoid)
-            linear_layer = gate_seq[0]
-            self.assertEqual(linear_layer.in_features, hidden_dim,
-                           f"Gate {gate_idx} input should be {hidden_dim} (constant)")
-            self.assertEqual(linear_layer.out_features, hidden_dim,
-                           f"Gate {gate_idx} output should be {hidden_dim} (constant)")
-
     def test_symmetry_matrices_geometric_not_learned(self):
         """
         WHY: Symmetry operations are geometric, not learned parameters
@@ -890,7 +829,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         model = TQFANN(
             R=20,
             hidden_dim=hidden_dim,
-            fractal_iters=10,
             symmetry_level='Z6'
         )
 
@@ -919,11 +857,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         from models_tqf import TQFANN
 
         hidden_dim = 80
-        model = TQFANN(
-            R=20,
-            hidden_dim=hidden_dim,
-            fractal_iters=10
-        )
+        model = TQFANN(R=20, hidden_dim=hidden_dim)
 
         # Check classification head uses hidden_dim (constant)
         classification_head = model.dual_output.classification_head
@@ -945,11 +879,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(
-            R=20,
-            hidden_dim=80,
-            fractal_iters=10
-        )
+        model = TQFANN(R=20, hidden_dim=80)
         model.eval()
 
         # Test various batch sizes
@@ -974,11 +904,7 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         from config import TARGET_PARAMS, TARGET_PARAMS_TOLERANCE_PERCENT
 
         # Auto-tune
-        model = TQFANN(
-            R=20,
-            hidden_dim=None,  # Trigger auto-tuning
-            fractal_iters=10
-        )
+        model = TQFANN(R=20, hidden_dim=None)  # hidden_dim=None triggers auto-tuning
 
         actual_params = model.count_parameters()
         target_params = TARGET_PARAMS
@@ -1004,23 +930,14 @@ class TestFibonacciModeDimensions(unittest.TestCase):
 
         R = 20
         hidden_dim = 84
-        fractal_iters = 10
 
         # Create model
-        model = TQFANN(
-            R=R,
-            hidden_dim=hidden_dim,
-            fractal_iters=fractal_iters
-        )
+        model = TQFANN(R=R, hidden_dim=hidden_dim)
 
         actual_params = model.count_parameters()
 
         # Estimate parameters
-        estimated_params = estimate_tqf_params(
-            R=R,
-            d=hidden_dim,
-            fractal_iters=fractal_iters
-        )
+        estimated_params = estimate_tqf_params(R=R, d=hidden_dim)
 
         # Check accuracy
         diff_pct = abs(estimated_params - actual_params) / actual_params * 100
@@ -1031,30 +948,18 @@ class TestFibonacciModeDimensions(unittest.TestCase):
 
     def test_standard_mode_unchanged(self):
         """
-        WHY: Standard mode must remain unchanged
-        HOW: Verify fractal gates are shared, dimensions uniform
-        WHAT: Expect single ModuleList of gates, all layers same dimension
+        WHY: Standard mode graph conv dimensions must be uniform
+        HOW: Verify all graph conv layers use constant hidden_dim
+        WHAT: Expect all layers same dimension (direct residuals, no self_transforms)
         """
         if not TORCH_AVAILABLE:
             self.skipTest("PyTorch not available")
 
         from models_tqf import TQFANN
 
-        model = TQFANN(
-            R=20,
-            hidden_dim=120,
-            fractal_iters=10
-        )
+        model = TQFANN(R=20, hidden_dim=120)
 
         radial_binner = model.radial_binner
-
-        # Fractal gates should be simple 1D ModuleList (shared across layers)
-        self.assertIsInstance(radial_binner.fractal_gates, nn.ModuleList)
-
-        # Check first element - should be Sequential (not ModuleList)
-        first_gate = radial_binner.fractal_gates[0]
-        self.assertIsInstance(first_gate, nn.Sequential,
-                            "Standard mode gates should be Sequential, not nested ModuleList")
 
         # All layers should have same dimension (using direct residuals, no self_transforms)
         # Note: self_transforms were removed for performance - now using direct addition
@@ -1067,322 +972,16 @@ class TestFibonacciModeDimensions(unittest.TestCase):
 
 
 # ==============================================================================
-# TEST SUITE: HOP ATTENTION TEMPERATURE
-# ==============================================================================
-
-class TestHopAttentionTemperature(unittest.TestCase):
-    """
-    Tests for hop_attention_temp parameter functionality.
-
-    The hop_attention_temp parameter controls neighbor aggregation:
-    - Lower temperature (< 1.0): Sharp attention, prefer similar neighbors
-    - Standard temperature (= 1.0): Uniform mean pooling
-    - Higher temperature (> 1.0): Smooth attention, more uniform weighting
-    """
-
-    def test_hop_attention_temp_stored_in_binner(self):
-        """
-        WHY: SectorBasedRadialBinner must store hop_attention_temp for aggregation
-        HOW: Create TQFANN and verify binner has correct temperature
-        WHAT: Expect temperature to be stored correctly
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        custom_temp = 0.7
-        model = TQFANN(R=10, hidden_dim=64, hop_attention_temp=custom_temp)
-
-        # Check binner has the temperature
-        self.assertEqual(model.radial_binner.hop_attention_temp, custom_temp)
-
-    def test_hop_attention_temp_affects_aggregation(self):
-        """
-        WHY: Different temperature values should produce different aggregation
-        HOW: Compare outputs from aggregate_neighbors_via_adjacency directly
-        WHAT: Aggregation should differ for different temperature values
-
-        REGRESSION: If temperature is not used in aggregation, outputs identical
-
-        Note: We test at the aggregation level, not end-to-end, because subsequent
-        layers in the full model can "wash out" small differences in aggregation.
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        torch.manual_seed(42)
-
-        # Create models with different temperatures
-        model_sharp = TQFANN(R=10, hidden_dim=64, hop_attention_temp=0.5)
-        model_uniform = TQFANN(R=10, hidden_dim=64, hop_attention_temp=1.0)
-        model_smooth = TQFANN(R=10, hidden_dim=64, hop_attention_temp=2.0)
-
-        # Verify temperatures are stored correctly
-        self.assertEqual(model_sharp.radial_binner.hop_attention_temp, 0.5)
-        self.assertEqual(model_uniform.radial_binner.hop_attention_temp, 1.0)
-        self.assertEqual(model_smooth.radial_binner.hop_attention_temp, 2.0)
-
-        # Test forward pass with different temperatures produces valid output
-        model_sharp.eval()
-        model_uniform.eval()
-        model_smooth.eval()
-
-        x = torch.randn(2, 784)
-        with torch.no_grad():
-            out_sharp = model_sharp(x)
-            out_uniform = model_uniform(x)
-            out_smooth = model_smooth(x)
-
-        # All outputs should have valid shape
-        self.assertEqual(out_sharp.shape, (2, 10))
-        self.assertEqual(out_uniform.shape, (2, 10))
-        self.assertEqual(out_smooth.shape, (2, 10))
-
-        # No NaN values
-        self.assertFalse(torch.isnan(out_sharp).any())
-        self.assertFalse(torch.isnan(out_uniform).any())
-        self.assertFalse(torch.isnan(out_smooth).any())
-
-    def test_hop_attention_temp_in_valid_range(self):
-        """
-        WHY: Temperature must be positive for valid softmax scaling
-        HOW: Create models with various temperature values
-        WHAT: Expect no errors for valid values, model works correctly
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        valid_temps = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
-        x = torch.randn(2, 784)
-
-        for temp in valid_temps:
-            model = TQFANN(R=10, hidden_dim=64, hop_attention_temp=temp)
-            model.eval()
-
-            with torch.no_grad():
-                output = model(x)
-
-            self.assertEqual(output.shape, (2, 10),
-                            f"Output shape should be (2, 10) for temp={temp}")
-            self.assertFalse(
-                torch.isnan(output).any(),
-                f"Output should not contain NaN for temp={temp}"
-            )
-            self.assertFalse(
-                torch.isinf(output).any(),
-                f"Output should not contain Inf for temp={temp}"
-            )
-
-    def test_hop_attention_temp_one_equals_mean_pooling(self):
-        """
-        WHY: Temperature=1.0 should give similar results to uniform mean pooling
-        HOW: The implementation should have a fast path for temp=1.0
-        WHAT: Verify temperature=1.0 case works correctly
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        torch.manual_seed(42)
-
-        model = TQFANN(R=10, hidden_dim=64, hop_attention_temp=1.0)
-        model.eval()
-
-        x = torch.randn(4, 784)
-
-        with torch.no_grad():
-            output = model(x)
-
-        # Should produce valid output
-        self.assertEqual(output.shape, (4, 10))
-        self.assertFalse(torch.isnan(output).any())
-
-
-class TestHopAttentionTemperatureCLI(unittest.TestCase):
-    """
-    Tests for hop_attention_temp CLI integration.
-    """
-
-    def test_hop_attention_forward_pass(self):
-        """
-        WHY: Model should work with hop_attention_temp parameter
-        HOW: Create model with custom hop_attention_temp
-        WHAT: Expect successful forward pass
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        model = TQFANN(
-            R=10, hidden_dim=64,
-            hop_attention_temp=0.7
-        )
-        model.eval()
-
-        x = torch.randn(2, 784)
-        with torch.no_grad():
-            output = model(x)
-
-        self.assertEqual(output.shape, (2, 10))
-        self.assertFalse(torch.isnan(output).any())
-
-    def test_hop_temp_affects_aggregation(self):
-        """
-        WHY: hop_attention_temp should affect neighbor aggregation output
-        HOW: Test with different temperature values and verify storage
-        WHAT: Temperature should be stored correctly in binner
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        torch.manual_seed(42)
-
-        model_base = TQFANN(R=10, hidden_dim=64, hop_attention_temp=1.0)
-        model_hop = TQFANN(R=10, hidden_dim=64, hop_attention_temp=0.5)
-
-        # Verify temperatures are stored correctly in T24 binner
-        self.assertEqual(model_base.radial_binner.hop_attention_temp, 1.0)
-        self.assertEqual(model_hop.radial_binner.hop_attention_temp, 0.5)
-
-        # Verify forward pass works with both temperatures
-        model_base.eval()
-        model_hop.eval()
-        x = torch.randn(2, 784)
-        with torch.no_grad():
-            out_base = model_base(x)
-            out_hop = model_hop(x)
-
-        self.assertEqual(out_base.shape, (2, 10))
-        self.assertEqual(out_hop.shape, (2, 10))
-
-    def test_cli_hop_temp_parameter(self):
-        """
-        WHY: CLI parameters should flow correctly to the model
-        HOW: Verify CLI argument names map to model parameters
-        WHAT: Expect correct parameter names and types
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        # Import CLI to verify argument names
-        from cli import parse_args
-        import sys
-
-        # Save original argv
-        original_argv = sys.argv
-
-        try:
-            # Test with custom hop_attention_temp value
-            sys.argv = [
-                'main.py',
-                '--tqf-hop-attention-temp', '0.8'
-            ]
-            args = parse_args()
-
-            self.assertEqual(args.tqf_hop_attention_temp, 0.8)
-
-        finally:
-            sys.argv = original_argv
-
-
-# ==============================================================================
 # TEST SUITE: GEOMETRY VERIFICATION AND REGULARIZATION
 # ==============================================================================
 
 class TestGeometryVerificationFeatures(unittest.TestCase):
     """
-    Test suite for TQF verify geometry and geometry regularization weight features.
+    Test suite for TQF geometry regularization weight features.
 
-    These tests verify that:
-    1. --tqf-verify-geometry flag enables fractal losses
-    2. --tqf-geometry-reg-weight correctly weights geometry regularization
-    3. End-to-end integration from CLI to model training
+    These tests verify that --tqf-geometry-reg-weight correctly weights
+    geometry regularization and integrates end-to-end from CLI to model training.
     """
-
-    def test_verify_geometry_respects_opt_in_defaults(self):
-        """
-        WHY: Fractal losses are opt-in features (defaults are 0.0)
-        HOW: When verify_geometry=True but weights are 0.0, they stay 0.0
-             (user must explicitly enable via CLI with non-zero values)
-        WHAT: Verify that opt-in behavior is respected
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from config import (
-            TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-            TQF_BOX_COUNTING_WEIGHT_DEFAULT
-        )
-
-        # Verify defaults are 0.0 (opt-in features)
-        self.assertEqual(TQF_SELF_SIMILARITY_WEIGHT_DEFAULT, 0.0,
-                        "Self-similarity weight should default to 0.0 (opt-in)")
-        self.assertEqual(TQF_BOX_COUNTING_WEIGHT_DEFAULT, 0.0,
-                        "Box-counting weight should default to 0.0 (opt-in)")
-
-        # Simulate the main.py logic for verify_geometry
-        class MockArgs:
-            tqf_verify_geometry: bool = True
-            tqf_self_similarity_weight: float = 0.0  # Default (disabled)
-            tqf_box_counting_weight: float = 0.0  # Default (disabled)
-
-        args = MockArgs()
-
-        # Current behavior: weights remain at user-specified values
-        tqf_self_sim_weight: float = args.tqf_self_similarity_weight
-        tqf_box_count_weight: float = args.tqf_box_counting_weight
-
-        # Verify opt-in behavior: 0.0 stays 0.0 unless user specifies otherwise
-        self.assertEqual(tqf_self_sim_weight, 0.0,
-                        "Self-similarity weight should remain 0.0 (opt-in)")
-        self.assertEqual(tqf_box_count_weight, 0.0,
-                        "Box-counting weight should remain 0.0 (opt-in)")
-
-    def test_verify_geometry_preserves_custom_weights(self):
-        """
-        WHY: --tqf-verify-geometry should not override user-specified non-zero weights
-        HOW: Set custom non-zero weights with verify_geometry=True
-        WHAT: Custom weights should be preserved
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from config import (
-            TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-            TQF_BOX_COUNTING_WEIGHT_DEFAULT
-        )
-
-        # Simulate the main.py logic
-        class MockArgs:
-            tqf_verify_geometry: bool = True
-            tqf_self_similarity_weight: float = 0.05  # User specified custom value
-            tqf_box_counting_weight: float = 0.02  # User specified custom value
-
-        args = MockArgs()
-
-        tqf_self_sim_weight: float = args.tqf_self_similarity_weight
-        tqf_box_count_weight: float = args.tqf_box_counting_weight
-
-        if args.tqf_verify_geometry:
-            if tqf_self_sim_weight == 0.0:
-                tqf_self_sim_weight = TQF_SELF_SIMILARITY_WEIGHT_DEFAULT
-            if tqf_box_count_weight == 0.0:
-                tqf_box_count_weight = TQF_BOX_COUNTING_WEIGHT_DEFAULT
-
-        # Verify custom weights were preserved
-        self.assertEqual(tqf_self_sim_weight, 0.05,
-                        "Custom self-similarity weight should be preserved")
-        self.assertEqual(tqf_box_count_weight, 0.02,
-                        "Custom box-counting weight should be preserved")
 
     def test_geometry_reg_weight_default_value(self):
         """

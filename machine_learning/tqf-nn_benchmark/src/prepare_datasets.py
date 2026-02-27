@@ -165,6 +165,43 @@ class Z6AlignedRotation:
         return f"{self.__class__.__name__}(jitter={self.jitter})"
 
 
+class NonRotationAugmentation:
+    """
+    Non-rotation augmentation for improving unrotated MNIST accuracy.
+
+    Applies spatial jitter (random crop with padding) and mild
+    brightness/contrast jitter. These augmentations improve the base
+    accuracy on unrotated data without interfering with Z6 rotation
+    structure or orbit mixing.
+
+    Designed to be composed with or without Z6AlignedRotation — fully
+    independent of rotation augmentation. When used together, it is
+    applied *after* Z6AlignedRotation and *before* ToTensor().
+
+    Applied transforms:
+    - Random 28×28 crop with 2-pixel padding (spatial jitter)
+    - Brightness jitter ±10% (brightness ∈ [0.9, 1.1])
+    - Contrast jitter ±10% (contrast ∈ [0.9, 1.1])
+    """
+
+    def __call__(self, img: Image.Image) -> Image.Image:
+        """
+        Apply non-rotation augmentations to the input image.
+
+        Args:
+            img: PIL Image (expected 28×28 grayscale MNIST)
+
+        Returns:
+            Augmented PIL Image (still 28×28)
+        """
+        img = transforms.RandomCrop(28, padding=2)(img)
+        img = transforms.ColorJitter(brightness=0.1, contrast=0.1)(img)
+        return img
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(crop_pad=2, brightness=0.1, contrast=0.1)"
+
+
 # ==============================================================================
 # STEP 1: DOWNLOAD AND ORGANIZE BASE MNIST
 # ==============================================================================
@@ -313,6 +350,7 @@ class CustomMNIST(Dataset):
         transform: Optional transform to apply to images
         samples: List of (filepath, label) tuples for all images in the dataset
         _cache: Dict mapping index to cached PIL Image (populated lazily)
+        _metadata: List of (base_image_id, rotation_angle) tuples, parsed once at init
     """
 
     def __init__(self, root_dir: str, transform: Optional[Any] = None) -> None:
@@ -327,6 +365,11 @@ class CustomMNIST(Dataset):
         self._root_dir: str = root_dir
         self.samples: List[Tuple[str, int]] = []
         self._cache: Dict[int, Image.Image] = {}
+        # Pre-parsed filename metadata: (base_image_id, rotation_angle).
+        # Parsed once here so that compute_rotation_invariance_error can look up
+        # metadata by index without repeating os.path.basename + string splits
+        # in its hot inner loop.
+        self._metadata: List[Tuple[int, int]] = []
 
         # Scan all class directories and collect image paths
         for class_id in range(10):
@@ -338,6 +381,19 @@ class CustomMNIST(Dataset):
             for filename in sorted(os.listdir(class_dir)):
                 if filename.lower().endswith('.png'):
                     self.samples.append((os.path.join(class_dir, filename), class_id))
+                    # Parse metadata once: filenames follow the pattern
+                    # test_00042_label_3_rot_120.png  (rotated test set)
+                    # test_00042_label_3.png          (standard, angle = 0)
+                    try:
+                        base_id: int = int(filename.split('_')[1])
+                        if '_rot_' in filename:
+                            angle: int = int(filename.split('_rot_')[1].split('.')[0])
+                        else:
+                            angle = 0
+                    except (IndexError, ValueError):
+                        base_id = 0
+                        angle = 0
+                    self._metadata.append((base_id, angle))
 
     def _load_image(self, idx: int) -> Image.Image:
         """Load image from disk or return cached version."""
@@ -345,6 +401,14 @@ class CustomMNIST(Dataset):
             img_path: str = self.samples[idx][0]
             self._cache[idx] = Image.open(img_path).convert('L')
         return self._cache[idx]
+
+    def get_metadata(self, idx: int) -> Tuple[int, int]:
+        """Return pre-parsed (base_image_id, rotation_angle) for sample idx.
+
+        Used by compute_rotation_invariance_error to look up rotation metadata
+        without repeating filename string-splitting in the evaluation hot loop.
+        """
+        return self._metadata[idx]
 
     def warmup_cache(self) -> None:
         """Preload all images into memory cache.
@@ -478,7 +542,8 @@ def get_dataloaders(
     num_val: int = NUM_VAL_DEFAULT,
     num_test_rot: int = NUM_TEST_ROT_DEFAULT,
     num_test_unrot: int = NUM_TEST_UNROT_DEFAULT,
-    augment_train: bool = True
+    augment_train: bool = True,
+    augment_z6_non_rotation: bool = False
 ) -> Tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
     """
     Create stratified, reproducible DataLoaders for TQF-ANN experiments.
@@ -503,7 +568,9 @@ def get_dataloaders(
         num_val: Number of validation samples (stratified across 10 classes)
         num_test_rot: Number of rotated test samples (stratified across 10 classes x 6 angles)
         num_test_unrot: Number of unrotated test samples
-        augment_train: Whether to apply rotation augmentation to training data
+        augment_train: Whether to apply Z6 rotation augmentation to training data
+        augment_z6_non_rotation: Whether to apply non-rotation augmentation (random
+            crop + brightness/contrast jitter). Composable with augment_train.
 
     Returns:
         train_loader: Training DataLoader (with optional augmentation)
@@ -518,22 +585,27 @@ def get_dataloaders(
     - Pin memory and multiple workers improve throughput on GPU systems
     """
     # Define transforms for training vs evaluation
+    # Build list of PIL-space augmentations (applied before ToTensor)
+    pil_augmentations: list = []
     if augment_train:
-        # Training transform with Z6-aligned rotation augmentation
+        # Z6-aligned rotation augmentation
         # Why: Teaches network that 60 deg rotations produce shifted sector features
         # This enables orbit pooling to achieve true rotational invariance on test set
         # The jitter (+/-15 deg) adds regularization while preserving Z6 structure
-        train_transform: transforms.Compose = transforms.Compose([
-            Z6AlignedRotation(jitter=15.0),  # Z6 angles (0 deg,60 deg,120 deg,...) + +/-15 deg jitter
+        pil_augmentations.append(
+            Z6AlignedRotation(jitter=15.0)  # Z6 angles (0°,60°,...,300°) + ±15° jitter
+        )
+    if augment_z6_non_rotation:
+        # Non-rotation augmentation: random crop + brightness/contrast jitter
+        # Applied after Z6 rotation (if enabled) and before ToTensor
+        pil_augmentations.append(NonRotationAugmentation())
+
+    train_transform: transforms.Compose = transforms.Compose(
+        pil_augmentations + [
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))  # MNIST mean and std
-        ])
-    else:
-        # Training transform without augmentation (for ablation studies)
-        train_transform: transforms.Compose = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
-        ])
+        ]
+    )
 
     # Evaluation transform: no augmentation for consistent evaluation
     eval_transform: transforms.Compose = transforms.Compose([

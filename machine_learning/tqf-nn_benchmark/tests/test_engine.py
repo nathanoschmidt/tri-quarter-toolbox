@@ -20,7 +20,6 @@ Key Test Coverage:
   - D6 Equivariance Loss: Reflectional equivariance under mirror symmetries
   - Inversion Loss: Consistency between outer and inner zone predictions
   - T24 Orbit Invariance Loss: Full tetrahedral-octahedral group invariance
-  - Box-Counting Fractal Loss: Multiscale fractal dimension regularization
   - Geometry Regularization Loss: Phase pair and sector consistency
 - Loss Weight Parameters: Optional loss function weights (None = disabled)
 - Loss Application Validation: Correct backpropagation through all loss terms

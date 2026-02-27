@@ -66,9 +66,6 @@ from config import (
     SEED_DEFAULT,
     TQF_SYMMETRY_LEVEL_DEFAULT,
     TQF_TRUNCATION_R_DEFAULT,
-    TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-    TQF_BOX_COUNTING_WEIGHT_DEFAULT,
-    TQF_HOP_ATTENTION_TEMP_DEFAULT,
     LEARNING_RATE_DEFAULT,
     WEIGHT_DECAY_DEFAULT,
     LABEL_SMOOTHING_DEFAULT,
@@ -85,6 +82,17 @@ from config import (
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
+    TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT,
+    TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_DEFAULT,
+    TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT,
     # Numeric range constants (single source of truth in config.py)
     NUM_SEEDS_MIN, NUM_SEEDS_MAX,
     SEED_START_MIN,
@@ -102,17 +110,18 @@ from config import (
     NUM_TEST_UNROT_MIN, NUM_TEST_UNROT_MAX,
     TQF_R_MIN, TQF_R_MAX,
     TQF_HIDDEN_DIM_MIN, TQF_HIDDEN_DIM_MAX,
-    TQF_FRACTAL_ITERATIONS_MIN, TQF_FRACTAL_ITERATIONS_MAX,
-    TQF_SELF_SIMILARITY_WEIGHT_MIN, TQF_SELF_SIMILARITY_WEIGHT_MAX,
-    TQF_BOX_COUNTING_WEIGHT_MIN, TQF_BOX_COUNTING_WEIGHT_MAX,
-    TQF_HOP_ATTENTION_TEMP_MIN, TQF_HOP_ATTENTION_TEMP_MAX,
     TQF_ORBIT_MIXING_TEMP_MIN, TQF_ORBIT_MIXING_TEMP_MAX,
     TQF_GEOMETRY_REG_WEIGHT_MIN, TQF_GEOMETRY_REG_WEIGHT_MAX,
     TQF_INVERSION_LOSS_WEIGHT_MIN, TQF_INVERSION_LOSS_WEIGHT_MAX,
     TQF_Z6_EQUIVARIANCE_WEIGHT_MIN, TQF_Z6_EQUIVARIANCE_WEIGHT_MAX,
     TQF_D6_EQUIVARIANCE_WEIGHT_MIN, TQF_D6_EQUIVARIANCE_WEIGHT_MAX,
     TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN, TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX,
-    TQF_VERIFY_DUALITY_INTERVAL_MIN, TQF_VERIFY_DUALITY_INTERVAL_MAX
+    TQF_VERIFY_DUALITY_INTERVAL_MIN, TQF_VERIFY_DUALITY_INTERVAL_MAX,
+    TQF_Z6_ORBIT_MIXING_TOP_K_MIN, TQF_Z6_ORBIT_MIXING_TOP_K_MAX,
+    TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN, TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX,
+    TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN, TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX,
+    TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MIN, TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MAX,
+    TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN, TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MAX
 )
 
 
@@ -156,23 +165,20 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Train all models (default when --models not specified)
+  # Best TQF-ANN config: Z6 orbit mixing for maximum rotation invariance
+  python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
+
+  # Statistical validation: TQF-ANN with Z6 orbit mixing, 3 seeds
+  python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --num-seeds 3
+
+  # Full benchmark: all models (TQF-ANN benefits most from orbit mixing)
+  python main.py --models all --tqf-use-z6-orbit-mixing
+
+  # Baselines only (FC-MLP, CNN-L5, ResNet-18-Scaled)
+  python main.py --models FC-MLP CNN-L5 ResNet-18-Scaled
+
+  # Train all models with defaults
   python main.py
-
-  # Train all models explicitly
-  python main.py --models all
-
-  # Train only TQF-ANN with Z6 symmetry
-  python main.py --models TQF-ANN --num-seeds 3
-
-  # Train specific baseline models in order
-  python main.py --models FC-MLP CNN-L5 --batch-size 128
-
-  # Train all models with custom epochs
-  python main.py --models all --num-epochs 50
-
-  # Ablation: TQF with no symmetry
-  python main.py --models TQF-ANN --tqf-symmetry-level none
 
 Result Output:
   Results are automatically saved to data/output/results_YYYYMMDD_HHMMSS.json
@@ -456,6 +462,16 @@ Result Output:
              'Default: augmentation disabled (False).'
     )
 
+    tqf_arch_group.add_argument(
+        '--tqf-z6-non-rotation-augmentation',
+        action='store_true',
+        dest='tqf_z6_non_rotation_augmentation',
+        default=TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT,
+        help='Enable non-rotation training augmentation (random crop + brightness/contrast jitter). '
+             'Targets the unrotated accuracy gap vs CNN/ResNet without interfering with Z6 structure. '
+             'Composable with --z6-data-augmentation. Default: disabled (False).'
+    )
+
     # =========================================================================
     # TQF EQUIVARIANCE LOSSES
     # =========================================================================
@@ -509,6 +525,29 @@ Result Output:
              f'Strongest symmetry constraint. Recommended for optimal symmetry enforcement. '
              f'Disabled by default. Provide a value in range '
              f'[{TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN}, {TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX}] to enable.'
+    )
+
+    tqf_inv_group.add_argument(
+        '--tqf-z6-orbit-consistency-weight',
+        type=float,
+        default=TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_DEFAULT,
+        help=f'Enable and set weight for orbit consistency self-distillation loss (TQF-ANN only). '
+             f'Creates a Z6 orbit ensemble as soft target and penalises each rotation for '
+             f'diverging from it (KL divergence). Trains the model to be consistent across '
+             f'rotations without requiring rotation labels. Adds extra forward passes per batch. '
+             f'Disabled by default (None). Provide a value in range '
+             f'[{TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MIN}, {TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MAX}] to enable. '
+             f'Suggested starting value: 0.01.'
+    )
+
+    tqf_inv_group.add_argument(
+        '--tqf-z6-orbit-consistency-rotations',
+        type=int,
+        default=TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT,
+        help=f'Number of extra Z6 rotations sampled per batch for orbit consistency loss. '
+             f'Range: [{TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN}, {TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MAX}]. '
+             f'Default: {TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT}. '
+             f'Higher values = larger ensemble but more compute per batch.'
     )
 
     # =========================================================================
@@ -613,6 +652,95 @@ Result Output:
              f'Default: {TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT}.'
     )
 
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-confidence-mode',
+        type=str,
+        default=TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+        choices=['max_logit', 'margin'],
+        help='Confidence signal used to weight each Z6 rotation variant. '
+             'max_logit (default): maximum logit value. '
+             'margin: top-1 minus top-2 logit (decision margin). '
+             f'Default: {TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT}.'
+    )
+
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-aggregation-mode',
+        type=str,
+        default=TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+        choices=['logits', 'probs', 'log_probs'],
+        help='Space in which weighted averaging is performed for Z6 orbit mixing. '
+             'logits (default): raw logit space. '
+             'probs: probability space (softmax then average). '
+             'log_probs: log-probability space (geometric mean / product-of-experts). '
+             f'Default: {TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT}.'
+    )
+
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-top-k',
+        type=int,
+        default=TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+        help=f'If set, keep only the top-K most confident Z6 rotation variants before averaging. '
+             f'None (default) uses all 6. '
+             f'Range: [{TQF_Z6_ORBIT_MIXING_TOP_K_MIN}, {TQF_Z6_ORBIT_MIXING_TOP_K_MAX}]. '
+             f'Requires --tqf-use-z6-orbit-mixing.'
+    )
+
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-adaptive-temp',
+        action='store_true',
+        dest='tqf_z6_orbit_mixing_adaptive_temp',
+        default=TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+        help='Enable per-sample adaptive temperature for Z6 orbit mixing. '
+             'Scales temperature up when all rotation variants have similar confidence '
+             '(high entropy), allowing smoother averaging in ambiguous cases. '
+             'Default: disabled (False).'
+    )
+
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-adaptive-temp-alpha',
+        type=float,
+        default=TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+        help=f'Sensitivity of adaptive temperature scaling. '
+             f'0 = no adaptation; higher values strengthen entropy scaling. '
+             f'Range: [{TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN}, {TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX}]. '
+             f'Default: {TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT}. '
+             f'Only used when --tqf-z6-orbit-mixing-adaptive-temp is set.'
+    )
+
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-rotation-mode',
+        type=str,
+        default=TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+        choices=['bilinear', 'bicubic'],
+        help='Interpolation mode used when rotating images for Z6 orbit mixing. '
+             'bilinear (default): faster, slightly smoother edges. '
+             'bicubic: higher-order interpolation, may reduce aliasing artefacts. '
+             f'Default: {TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT}.'
+    )
+
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-rotation-padding-mode',
+        type=str,
+        default=TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+        choices=['zeros', 'border'],
+        help='Padding mode for rotated image corners. '
+             'zeros (default): black (zero) fill for out-of-bounds regions. '
+             'border: replicate edge pixels; avoids zero-corner artefacts. '
+             f'Default: {TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT}.'
+    )
+
+    tqf_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-rotation-pad',
+        type=int,
+        default=TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
+        help=f'Pixels to pad before rotating then crop back to 28×28. '
+             f'0 (default) = no padding (standard rotation). '
+             f'>0 = reflect-pad to (28+2*pad)×(28+2*pad), rotate in padded space, '
+             f'then center-crop back to 28×28. Eliminates zero corner artefacts. '
+             f'Range: [{TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN}, {TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX}]. '
+             f'Suggested value: 4.'
+    )
+
     # =========================================================================
     # TQF GEOMETRY REGULARIZATION
     # =========================================================================
@@ -640,51 +768,6 @@ Result Output:
     )
 
     # =========================================================================
-    # TQF FRACTAL GEOMETRY PARAMETERS
-    # =========================================================================
-    tqf_fractal_group = parser.add_argument_group(
-        'TQF Fractal Geometry (TQF-ANN only)',
-        'Fractal dimension estimation and self-similarity settings'
-    )
-
-    tqf_fractal_group.add_argument(
-        '--tqf-fractal-iterations',
-        type=int,
-        default=None,
-        help=f'Enable and set iterations for fractal dimension estimation. '
-             f'DISABLED by default (opt-in feature). '
-             f'Provide a value in range [{TQF_FRACTAL_ITERATIONS_MIN}, {TQF_FRACTAL_ITERATIONS_MAX}] to enable. '
-             f'Creates N fractal mixer layers and enables multi-scale self-similarity. '
-             f'Recommended starting value: 5 (balanced). Higher values improve accuracy but slow training.'
-    )
-
-    # NOTE: --tqf-fractal-dim-tolerance removed (consolidated as internal constant
-    # TQF_FRACTAL_DIM_TOLERANCE_DEFAULT=0.08 in config.py, not user-tunable)
-
-    tqf_fractal_group.add_argument(
-        '--tqf-self-similarity-weight',
-        type=float,
-        default=TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-        help=f'Weight for self-similarity fractal loss. '
-             f'Range: [{TQF_SELF_SIMILARITY_WEIGHT_MIN}, {TQF_SELF_SIMILARITY_WEIGHT_MAX}]. '
-             f'Default: {TQF_SELF_SIMILARITY_WEIGHT_DEFAULT} (disabled). '
-             f'Recommended: 0.0001-0.001 when enabled.'
-    )
-
-    tqf_fractal_group.add_argument(
-        '--tqf-box-counting-weight',
-        type=float,
-        default=TQF_BOX_COUNTING_WEIGHT_DEFAULT,
-        help=f'Weight for box-counting fractal loss. '
-             f'Range: [{TQF_BOX_COUNTING_WEIGHT_MIN}, {TQF_BOX_COUNTING_WEIGHT_MAX}]. '
-             f'Default: {TQF_BOX_COUNTING_WEIGHT_DEFAULT} (disabled). '
-             f'Recommended: 0.0001-0.001 when enabled.'
-    )
-
-    # NOTE: --tqf-box-counting-scales removed (consolidated as internal constant
-    # TQF_BOX_COUNTING_SCALES_DEFAULT=10 in config.py, not user-tunable)
-
-    # =========================================================================
     # TQF MEMORY OPTIMIZATION PARAMETERS
     # =========================================================================
     tqf_mem_group = parser.add_argument_group(
@@ -700,23 +783,6 @@ Result Output:
              'Trades more compute time for less activation memory. '
              'Recommended for large R values (R >= 15) on memory-constrained GPUs. '
              'Default: False.'
-    )
-
-    # =========================================================================
-    # TQF ATTENTION PARAMETERS
-    # =========================================================================
-    tqf_attn_group = parser.add_argument_group(
-        'TQF Attention (TQF-ANN only)',
-        'Temperature settings'
-    )
-
-    tqf_attn_group.add_argument(
-        '--tqf-hop-attention-temp',
-        type=float,
-        default=TQF_HOP_ATTENTION_TEMP_DEFAULT,
-        help=f'Temperature for hop-distance attention. '
-             f'Range: [{TQF_HOP_ATTENTION_TEMP_MIN}, {TQF_HOP_ATTENTION_TEMP_MAX}]. '
-             f'Default: {TQF_HOP_ATTENTION_TEMP_DEFAULT}.'
     )
 
     # Parse arguments
@@ -885,37 +951,6 @@ def _validate_args(args: argparse.Namespace) -> None:
             f"Must be one of: Z6, D6, T24, none"
         )
 
-    # TQF fractal geometry - only validate when provided (not None)
-    if args.tqf_fractal_iterations is not None:
-        if not (TQF_FRACTAL_ITERATIONS_MIN <= args.tqf_fractal_iterations <= TQF_FRACTAL_ITERATIONS_MAX):
-            errors.append(
-                f"--tqf-fractal-iterations={args.tqf_fractal_iterations} outside valid range "
-                f"[{TQF_FRACTAL_ITERATIONS_MIN}, {TQF_FRACTAL_ITERATIONS_MAX}]"
-            )
-
-    # NOTE: --tqf-fractal-dim-tolerance validation removed (internal constant)
-
-    if not (TQF_SELF_SIMILARITY_WEIGHT_MIN <= args.tqf_self_similarity_weight <= TQF_SELF_SIMILARITY_WEIGHT_MAX):
-        errors.append(
-            f"--tqf-self-similarity-weight={args.tqf_self_similarity_weight} outside valid range "
-            f"[{TQF_SELF_SIMILARITY_WEIGHT_MIN}, {TQF_SELF_SIMILARITY_WEIGHT_MAX}]"
-        )
-
-    if not (TQF_BOX_COUNTING_WEIGHT_MIN <= args.tqf_box_counting_weight <= TQF_BOX_COUNTING_WEIGHT_MAX):
-        errors.append(
-            f"--tqf-box-counting-weight={args.tqf_box_counting_weight} outside valid range "
-            f"[{TQF_BOX_COUNTING_WEIGHT_MIN}, {TQF_BOX_COUNTING_WEIGHT_MAX}]"
-        )
-
-    # NOTE: --tqf-box-counting-scales validation removed (internal constant)
-
-    # TQF attention
-    if not (TQF_HOP_ATTENTION_TEMP_MIN <= args.tqf_hop_attention_temp <= TQF_HOP_ATTENTION_TEMP_MAX):
-        errors.append(
-            f"--tqf-hop-attention-temp={args.tqf_hop_attention_temp} outside valid range "
-            f"[{TQF_HOP_ATTENTION_TEMP_MIN}, {TQF_HOP_ATTENTION_TEMP_MAX}]"
-        )
-
     # TQF loss weights
     if not (TQF_GEOMETRY_REG_WEIGHT_MIN <= args.tqf_geometry_reg_weight <= TQF_GEOMETRY_REG_WEIGHT_MAX):
         errors.append(
@@ -953,6 +988,19 @@ def _validate_args(args: argparse.Namespace) -> None:
                 f"[{TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN}, {TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX}]"
             )
 
+    if args.tqf_z6_orbit_consistency_weight is not None:
+        if not (TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MIN <= args.tqf_z6_orbit_consistency_weight <= TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MAX):
+            errors.append(
+                f"--tqf-z6-orbit-consistency-weight={args.tqf_z6_orbit_consistency_weight} outside valid range "
+                f"[{TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MIN}, {TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MAX}]"
+            )
+
+    if not (TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN <= args.tqf_z6_orbit_consistency_rotations <= TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MAX):
+        errors.append(
+            f"--tqf-z6-orbit-consistency-rotations={args.tqf_z6_orbit_consistency_rotations} outside valid range "
+            f"[{TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN}, {TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MAX}]"
+        )
+
     # TQF orbit mixing temperatures
     for temp_name, temp_val in [
         ('--tqf-orbit-mixing-temp-rotation', args.tqf_orbit_mixing_temp_rotation),
@@ -964,6 +1012,30 @@ def _validate_args(args: argparse.Namespace) -> None:
                 f"{temp_name}={temp_val} outside valid range "
                 f"[{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]"
             )
+
+    # TQF orbit mixing quality params
+    if args.tqf_z6_orbit_mixing_top_k is not None:
+        if not (TQF_Z6_ORBIT_MIXING_TOP_K_MIN <= args.tqf_z6_orbit_mixing_top_k <= TQF_Z6_ORBIT_MIXING_TOP_K_MAX):
+            errors.append(
+                f"--tqf-z6-orbit-mixing-top-k={args.tqf_z6_orbit_mixing_top_k} outside valid range "
+                f"[{TQF_Z6_ORBIT_MIXING_TOP_K_MIN}, {TQF_Z6_ORBIT_MIXING_TOP_K_MAX}]"
+            )
+        if not args.tqf_use_z6_orbit_mixing:
+            errors.append(
+                f"--tqf-z6-orbit-mixing-top-k requires --tqf-use-z6-orbit-mixing"
+            )
+
+    if not (TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN <= args.tqf_z6_orbit_mixing_adaptive_temp_alpha <= TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX):
+        errors.append(
+            f"--tqf-z6-orbit-mixing-adaptive-temp-alpha={args.tqf_z6_orbit_mixing_adaptive_temp_alpha} outside valid range "
+            f"[{TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN}, {TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX}]"
+        )
+
+    if not (TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN <= args.tqf_z6_orbit_mixing_rotation_pad <= TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX):
+        errors.append(
+            f"--tqf-z6-orbit-mixing-rotation-pad={args.tqf_z6_orbit_mixing_rotation_pad} outside valid range "
+            f"[{TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN}, {TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX}]"
+        )
 
     # Orbit mixing + orbit pooling conflict warning
     any_orbit_mixing: bool = (

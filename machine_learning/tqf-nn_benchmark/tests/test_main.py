@@ -141,7 +141,6 @@ class TestVerifyParameterMatching:
         result: bool = verify_parameter_matching(tqf_config)
         assert result == True, "TQF-ANN should pass parameter matching"
 
-    @pytest.mark.slow
     @pytest.mark.skip(reason="ResNet Conv2d triggers CUDA access violation on Windows/CUDA 12.6 - verified manually: 656,848 params (1.05% deviation)")
     def test_verification_with_baselines_only(self) -> None:
         """
@@ -190,35 +189,6 @@ class TestModelConfigurationAssembly:
         """
         models: List[str] = get_all_model_names()
         assert len(models) == 4, f"Expected 4 model types, got {len(models)}"
-
-    @pytest.mark.slow
-    def test_each_model_has_count_method(self, all_models) -> None:
-        """
-        WHY: Each model needs parameter counting (SLOW)
-        HOW: Use cached models and check for count_parameters method
-        WHAT: Expect method present and functional
-
-        NOTE: Marked as slow - uses all_models fixture which includes TQF-ANN.
-        """
-        for model_name, model in all_models.items():
-            assert hasattr(model, 'count_parameters'), \
-                f"{model_name} missing count_parameters"
-            # Also verify it's callable
-            params: int = model.count_parameters()
-            assert isinstance(params, int), f"{model_name}.count_parameters() not returning int"
-
-    @pytest.mark.slow
-    def test_models_can_be_instantiated(self, all_models) -> None:
-        """
-        WHY: All models should instantiate successfully (SLOW)
-        HOW: Use cached models fixture
-        WHAT: Expect nn.Module instances
-
-        NOTE: Marked as slow - uses all_models fixture which includes TQF-ANN.
-        """
-        for model_name, model in all_models.items():
-            assert isinstance(model, nn.Module), \
-                f"{model_name} not an nn.Module"
 
 
 class TestDeviceManagement:

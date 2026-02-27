@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.5<br>
-**Date:** February 24, 2026<br>
+**Version:** 1.1.0<br>
+**Date:** February 26, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -147,7 +147,7 @@ main.py
 | `models_tqf.py` | ~1,800 | TQF-ANN architecture | TQFANN class, symmetry ops |
 | `config.py` | ~1,500 | Centralized constants | All defaults, ranges, validation |
 | `engine.py` | ~1,000 | Training orchestration | TrainingEngine class |
-| `dual_metrics.py` | ~970 | Geometry & fractal ops | Dual metric computations |
+| `dual_metrics.py` | ~970 | Geometry ops | Dual metric computations |
 | `output_formatters.py` | ~900 | Results formatting | 29 formatting functions |
 | `evaluation.py` | ~900 | Metrics & analysis | Statistical comparison |
 | `cli.py` | ~850 | Command-line interface | Argument parsing, validation |
@@ -296,12 +296,9 @@ NUM_TEST_UNROT_DEFAULT: int = 8000
 TQF_TRUNCATION_R_DEFAULT: int = 20
 TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'  # Orbit pooling disabled by default
-TQF_FRACTAL_ITERATIONS_DEFAULT: int = 0  # Disabled, opt-in via CLI
 
 # ===== TQF LOSS WEIGHTS (opt-in, all default to 0.0) =====
 TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
-TQF_SELF_SIMILARITY_WEIGHT_DEFAULT: float = 0.0
-TQF_BOX_COUNTING_WEIGHT_DEFAULT: float = 0.0
 
 # ===== VALIDATION RANGES =====
 TQF_R_MIN: int = 2
@@ -335,8 +332,7 @@ class TQFANN(nn.Module):
     Architecture:
       1. Pre-encoder: 784 -> hidden_dim (feature learning)
       2. Geometric encoding: hidden_dim -> 6 Fourier -> (6, hidden_dim)
-      3. Fractal self-similar mixing: Recursive residual refinement
-      4. Dual output: Inner + Outer zone predictions
+      3. Dual output: Inner + Outer zone predictions
     """
 
     def __init__(
@@ -344,8 +340,7 @@ class TQFANN(nn.Module):
         in_features: int = 784,
         hidden_dim: Optional[int] = None,  # Auto-tuned to ~650K params
         R: int = 20,                         # Truncation radius
-        symmetry_level: str = 'none',        # Symmetry group (opt-in)
-        fractal_iters: int = 0               # Fractal iterations (disabled by default)
+        symmetry_level: str = 'none'         # Symmetry group (opt-in)
     ):
         # Initialize layers...
 ```
@@ -358,8 +353,7 @@ from models_tqf import TQFANN
 model = TQFANN(
     in_features=784,          # 28x28 MNIST
     R=20,                     # Truncation radius
-    symmetry_level='none',    # No orbit pooling (default)
-    fractal_iters=0           # Disabled by default
+    symmetry_level='none'     # No orbit pooling (default)
 )
 
 # With explicit hidden_dim and D6 symmetry
@@ -396,14 +390,7 @@ self.radial_proj = nn.Linear(hidden_dim, hidden_dim)
 self.fourier_basis = nn.Parameter(torch.randn(6, hidden_dim))
 ```
 
-3. **Fractal mixing**: Self-similar refinement
-```python
-for i in range(fractal_iters):
-    features = self.fractal_blocks[i](features)
-    features = features + features_prev  # Residual
-```
-
-4. **Dual output**: Inner + outer zone predictions
+3. **Dual output**: Inner + outer zone predictions
 ```python
 outer_logits = self.outer_classifier(outer_features)
 inner_logits = self.inner_classifier(inner_features)
@@ -515,7 +502,8 @@ class TrainingEngine:
         self.model = model
         self.device = device
         self.optimizer = torch.optim.AdamW(...)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(...)
+        # CosineAnnealingLR; optionally wrapped in SequentialLR with a LinearLR warmup
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(...)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 ```
 
@@ -561,8 +549,8 @@ def train(self, train_loader, val_loader, num_epochs, ...):
             inversion_loss = self.model.compute_inversion_loss()
             total_loss += inversion_weight * inversion_loss
 
-        # Learning rate scheduling
-        self.scheduler.step(val_loss)
+        # Learning rate scheduling (CosineAnnealingLR — no argument)
+        self.scheduler.step()
 
         # Early stopping check
         if early_stopper.should_stop(val_loss):
@@ -729,12 +717,11 @@ else:
 
 ### 8. `dual_metrics.py` - Geometric Operations
 
-**Purpose:** Implements dual metric computations and fractal analysis for TQF geometry.
+**Purpose:** Implements dual metric computations for TQF geometry.
 
 **What it does:**
 - Computes dual metrics (inner/outer zone distances)
 - Performs circle inversion transformations
-- Calculates fractal dimensions
 - Validates geometric properties
 
 **Key functions:**
@@ -800,34 +787,6 @@ z_reconstructed = circle_inversion(z_inner, r=1.0)
 # z_reconstructed ~= 2.0+0j (back to original)
 ```
 
-3. **Fractal dimension:**
-```python
-def compute_fractal_dimension(
-    features: torch.Tensor,
-    box_sizes: List[int] = [2, 4, 8, 16]
-) -> float:
-    """
-    Estimate fractal dimension via box-counting.
-
-    Args:
-        features: Feature map (C, H, W) or (B, C, H, W)
-        box_sizes: Scales for box-counting
-
-    Returns:
-        Estimated fractal dimension
-    """
-```
-
-Example:
-```python
-# Feature map from TQF layer
-features = torch.randn(64, 128, 14, 14)  # (B, C, H, W)
-
-fractal_dim = compute_fractal_dimension(features)
-print(f"Fractal dimension: {fractal_dim:.3f}")
-# Typical range: 1.5 - 2.0 for natural images
-```
-
 ---
 
 ### 9. `param_matcher.py` - Parameter Matching
@@ -846,8 +805,7 @@ print(f"Fractal dimension: {fractal_dim:.3f}")
 ```python
 def estimate_tqf_params(
     R: int,
-    hidden_dim: int,
-    fractal_iters: int
+    hidden_dim: int
 ) -> int:
     """
     Estimate TQF-ANN parameter count.
@@ -855,14 +813,13 @@ def estimate_tqf_params(
     Components:
       - Pre-encoder: 784 -> hidden_dim
       - Geometric encoding: Fourier basis, phase encoding
-      - Fractal blocks: fractal_iters residual blocks
       - Dual classifiers: Inner + outer
     """
 ```
 
 Example:
 ```python
-params = estimate_tqf_params(R=3, hidden_dim=512, fractal_iters=5)
+params = estimate_tqf_params(R=3, hidden_dim=512)
 print(f"Estimated parameters: {params:,}")
 # Output: Estimated parameters: ~650,000
 ```
@@ -871,7 +828,6 @@ print(f"Estimated parameters: {params:,}")
 ```python
 def tune_hidden_dim_for_params(
     R: int,
-    fractal_iters: int,
     target_params: int = 650000,
     tolerance: float = 0.05
 ) -> int:
@@ -887,14 +843,13 @@ Example:
 # Find optimal hidden_dim for 650K params
 hidden_dim = tune_hidden_dim_for_params(
     R=3,
-    fractal_iters=5,
     target_params=650000
 )
 print(f"Optimal hidden_dim: {hidden_dim}")
 # Output: Optimal hidden_dim: ~512
 
 # Verify
-actual_params = estimate_tqf_params(3, hidden_dim, 5)
+actual_params = estimate_tqf_params(3, hidden_dim)
 print(f"Actual parameters: {actual_params:,}")
 # Output: Actual parameters: ~650,000 (within 5% tolerance)
 ```
@@ -920,7 +875,7 @@ for model_name in ['TQF-ANN', 'FC-MLP', 'CNN-L5']:
     print(f"{model_name}: {config}")
 
 # Output:
-# TQF-ANN: {'R': 18, 'hidden_dim': 128, 'fractal_iters': 10}
+# TQF-ANN: {'R': 18, 'hidden_dim': 128}
 # FC-MLP: {'hidden_dims': [512, 256, 128]}
 # CNN-L5: {'hidden_channels': [32, 64, 128]}
 ```
@@ -1134,7 +1089,7 @@ def temp_dir():
 @pytest.fixture
 def sample_model():
     """Provide sample TQF-ANN model for testing."""
-    return TQFANN(hidden_dim=64, fractal_iters=3)
+    return TQFANN(hidden_dim=64)
 ```
 
 ---
@@ -1242,7 +1197,6 @@ Input: (B, 784) MNIST images
 +------------------------------------------------+
 |  SIMPLIFIED LATTICE ENCODER (~5K params)       |
 |  +-- Fourier Basis (6 boundary vertices)       |
-|  +-- Fractal Mixing (0 iterations by default)   |
 |  +-- Residual Refinement                       |
 +---------------------+--------------------------+
                       | (B, 6, hidden_dim)
@@ -1298,8 +1252,7 @@ The TQF-ANN implementation includes several critical performance optimizations t
 
 #### 1. Pre-computed Graph Structures (Primary Optimization)
 
-**Problem:** Original implementation recomputed attention matrices every forward pass:
-- Hop attention: O(N³) BFS for all vertex pairs → 15-20ms per batch
+**Problem:** Original implementation recomputed graph matrices every forward pass:
 - Geodesic distances: O(N²) dual metric computation → 5-8ms per batch
 - Adjacency matrix: O(N²) dict→tensor conversion → 2-3ms per batch
 - **Total overhead:** ~25ms out of 32ms (78% of inference time wasted)
@@ -1320,13 +1273,9 @@ class RadialBinner(nn.Module):
         Runs once during model creation, caches matrices as GPU tensors.
 
         Computes:
-        - hop_attention_matrix: (N, N) - hop distance weights
         - geodesic_distance_matrix: (N, N) - continuous dual metric
         - adjacency_tensor: (N, N) - graph connectivity
         """
-        # Compute hop attention (O(N³) but only once!)
-        self.hop_attention_matrix = self._compute_hop_attention_cached()
-
         # Compute geodesic distances (vectorized on GPU)
         self.geodesic_distance_matrix = self._compute_geodesic_distances_vectorized()
 
@@ -1335,12 +1284,10 @@ class RadialBinner(nn.Module):
 
         # Move all to GPU
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.hop_attention_matrix = self.hop_attention_matrix.to(device)
-        # ... move other matrices ...
+        # ... move matrices ...
 ```
 
 **Results:**
-- Hop attention: 15-20ms → <0.1ms (**150-200x speedup**)
 - Geodesic distances: 5-8ms → <0.1ms (**50-80x speedup**)
 - Adjacency: 2-3ms → <0.1ms (**20-30x speedup**)
 - **Overall:** ~25ms → ~0.3ms overhead (**~80x speedup** for graph operations)
@@ -1375,32 +1322,7 @@ distances = compute_vectorized(norm_i, norm_j, phase_i, phase_j)  # (N, N)
 
 **Results:** 50-100x speedup for this component through GPU parallelization
 
-#### 3. Reduced Fractal Gates (3 vs 10)
-
-**Problem:** 10 sequential fractal gates × 4 layers = 40 extra forward passes per batch
-
-```python
-# BEFORE: 10 fractal gates (excessive)
-for i in range(10):  # 10 gates per layer!
-    gate_values = fractal_gate[i](features)
-    features = features * gate_values  # Element-wise gating
-```
-
-**Solution:** Cap at 3 gates (empirically validated optimal):
-
-```python
-# AFTER: 3 fractal gates (optimal)
-effective_iters = min(3, fractal_iters)  # Cap at 3
-self.fractal_gates = nn.ModuleList([...] for _ in range(effective_iters))
-```
-
-**Scientific Justification:**
-- 3 gates capture 95%+ of fractal benefit (vs 10 gates)
-- Marginal accuracy gain gates 4-10: <0.5% validation, <1% rotated test
-- Scale coverage: 3³ = 27x range (sufficient for 28×28 MNIST)
-- **Results:** 2-3x speedup for fractal component
-
-#### 4. Optimized Memory Layout
+#### 3. Optimized Memory Layout
 
 **Problem:** Graph structures stored as Python dictionaries requiring CPU lookups
 
@@ -1424,10 +1346,8 @@ neighbor_features = torch.matmul(adjacency_tensor, features)  # GPU matmul
 
 | Component | Before | After | Speedup |
 |-----------|--------|-------|---------|
-| Hop attention | 15-20 ms | <0.1 ms | **150-200x** |
 | Geodesic distances | 5-8 ms | <0.1 ms | **50-80x** |
 | Adjacency rebuild | 2-3 ms | <0.1 ms | **20-30x** |
-| Fractal gates | 3-5 ms | 1-1.5 ms | **2-3x** |
 | **Total inference** | **32 ms** | **2-4 ms** | **8-16x** |
 | Throughput | 31 samp/s | 250-400 samp/s | **8-13x** |
 | GPU utilization | ~20% | 80-90% | **4-4.5x** |
@@ -1562,7 +1482,8 @@ def apply_T24_transformation(features, op_index):
 ```python
 def train_model(model, train_loader, val_loader, config):
     optimizer = AdamW(model.parameters(), lr=config.lr)
-    scheduler = ReduceLROnPlateau(optimizer)
+    # CosineAnnealingLR; optionally wrapped with LinearLR warmup via SequentialLR
+    scheduler = CosineAnnealingLR(optimizer, T_max=config.num_epochs)
 
     best_val_acc = 0.0
     patience_counter = 0
@@ -1611,7 +1532,7 @@ def train_model(model, train_loader, val_loader, config):
                 val_acc += accuracy(logits, labels)
 
         # ===== LEARNING RATE SCHEDULING =====
-        scheduler.step(val_loss)
+        scheduler.step()  # CosineAnnealingLR — no argument
 
         # ===== EARLY STOPPING =====
         if val_acc > best_val_acc + config.min_delta:
@@ -2059,8 +1980,8 @@ A: All code works on CPU. Add `--device cpu` to CLI or remove CUDA checks in cod
 
 **`QED`**
 
-**Last Updated:** February 24, 2026<br>
-**Version:** 1.0.5<br>
+**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

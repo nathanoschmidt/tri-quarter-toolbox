@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.5<br>
-**Date:** February 24, 2026<br>
+**Version:** 1.1.0<br>
+**Date:** February 26, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -25,9 +25,7 @@
 8. [TQF-Specific Parameters](#8-tqf-specific-parameters)
    - [8.1 Core TQF Architecture](#81-core-tqf-architecture)
    - [8.2 TQF Symmetry Groups](#82-tqf-symmetry-groups)
-   - [8.3 TQF Fractal Geometry](#83-tqf-fractal-geometry)
-   - [8.4 TQF Attention](#84-tqf-attention)
-   - [8.5 TQF Loss and Regularization](#85-tqf-loss-and-regularization)
+   - [8.3 TQF Loss and Regularization](#83-tqf-loss-and-regularization)
 9. [Complete Parameter Reference Table](#9-complete-parameter-reference-table)
 10. [Validation Rules and Constraints](#10-validation-rules-and-constraints)
 11. [Example Workflows](#11-example-workflows)
@@ -514,7 +512,7 @@ python main.py --learning-rate 0.01
 **Lower LR (0.0001-0.0005)**:
 - Preserves TQF geometric structure during training
 - Smoother convergence
-- Better for TQF-ANN due to fractal/symmetry constraints
+- Better for TQF-ANN due to symmetry constraints
 - May require 100+ epochs to converge
 - More stable, less risk of divergence
 
@@ -594,8 +592,6 @@ python main.py --weight-decay 0.001
   - `--tqf-d6-equivariance-weight` (D6 reflection equivariance)
   - `--tqf-t24-orbit-invariance-weight` (T24 orbit invariance)
   - `--tqf-inversion-loss-weight` (circle inversion duality)
-  - `--tqf-self-similarity-weight` (fractal structure)
-  - `--tqf-box-counting-weight` (fractal dimension)
 - Recommendation: Use lower `weight_decay` (0.00005) when TQF regularizations are strong
 - Baseline models typically use standard `weight_decay` (0.0001)
 
@@ -1147,194 +1143,7 @@ python main.py --models TQF-ANN --tqf-symmetry-level T24
 
 ---
 
-### 8.3 TQF Fractal Geometry
-
-#### `--tqf-fractal-iterations` (int)
-
-**Purpose**: Number of iterations for fractal dimension estimation via box-counting.
-
-**Type**: `int`
-
-**Default**: `0` - **DISABLED** (from `TQF_FRACTAL_ITERATIONS_DEFAULT` in config.py)
-
-**Valid Range**: `[1, 20]` when enabled (from `TQF_FRACTAL_ITERATIONS_MIN` to `TQF_FRACTAL_ITERATIONS_MAX`)
-
-**Important**: This is an **opt-in feature**. The feature is disabled by default (value=0). To enable fractal dimension estimation, provide a value in the range [1, 20].
-
-**Examples**:
-
-```bash
-# Enable with minimal fractal estimation
-python main.py --models TQF-ANN --tqf-fractal-iterations 3
-
-# Enable with balanced fractal estimation
-python main.py --models TQF-ANN --tqf-fractal-iterations 5
-
-# Enable with precise fractal estimation
-python main.py --models TQF-ANN --tqf-fractal-iterations 10
-
-# Enable with very precise (slow) estimation
-python main.py --models TQF-ANN --tqf-fractal-iterations 15
-```
-
-**Why This Matters**:
-- Higher iterations: more accurate fractal dimension estimates
-- Lower iterations: faster training
-- Used in `--tqf-box-counting-weight` loss term
-- **Disabled by default** to simplify baseline training
-
-**Computational Impact**:
-- Linear scaling with iterations
-- 3 iterations: adds ~5% training time
-- 5 iterations: adds ~10% training time
-- 10 iterations: adds ~20% training time
-
-**Validation**:
-- When provided, must be in range `[1, 20]`
-- Value of 0 disables the feature (default)
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-> **Note:** `--tqf-fractal-dim-tolerance` was consolidated as an internal constant (`TQF_FRACTAL_DIM_TOLERANCE_DEFAULT = 0.08` in config.py). It is no longer a CLI parameter. The tolerance controls acceptable deviation between measured and theoretical fractal dimensions (1.585, Sierpinski triangle dimension). Related to `--tqf-fractal-iterations` which controls whether fractal features are active.
-
----
-
-#### `--tqf-self-similarity-weight` (float)
-
-**Purpose**: Weight for self-similarity fractal regularization loss.
-
-**Type**: `float`
-
-**Default**: `0.0` (from `TQF_SELF_SIMILARITY_WEIGHT_DEFAULT` in config.py; opt-in, disabled by default)
-
-**Valid Range**: `[0.0, 10.0]` (from `TQF_SELF_SIMILARITY_WEIGHT_MIN` to `TQF_SELF_SIMILARITY_WEIGHT_MAX`)
-
-**Loss Formula**: Compares features at multiple scales using cosine similarity. Penalizes deviation from self-similar structure.
-
-**Examples**:
-
-```bash
-# No self-similarity regularization
-python main.py --models TQF-ANN --tqf-self-similarity-weight 0.0
-
-# Gentle guidance (recommended when enabled)
-python main.py --models TQF-ANN --tqf-self-similarity-weight 0.001
-
-# Moderate regularization
-python main.py --models TQF-ANN --tqf-self-similarity-weight 0.005
-
-# Strong regularization
-python main.py --models TQF-ANN --tqf-self-similarity-weight 0.01
-```
-
-**Why This Matters**:
-- Encourages fractal self-similarity in learned features
-- Measures correlation between features at different resolutions
-- Higher weight: stronger fractal structure constraint
-- Small values (0.001) recommended to avoid dominating classification loss
-
-**Validation**:
-- Must be in range `[0.0, 10.0]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-box-counting-weight` (float)
-
-**Purpose**: Weight for box-counting fractal dimension regularization. Penalizes deviation from theoretical dimension (1.585).
-
-**Type**: `float`
-
-**Default**: `0.0` (from `TQF_BOX_COUNTING_WEIGHT_DEFAULT` in config.py; opt-in, disabled by default)
-
-**Valid Range**: `[0.0, 10.0]` (from `TQF_BOX_COUNTING_WEIGHT_MIN` to `TQF_BOX_COUNTING_WEIGHT_MAX`)
-
-**Examples**:
-
-```bash
-# No box-counting regularization
-python main.py --models TQF-ANN --tqf-box-counting-weight 0.0
-
-# Gentle guidance (recommended when enabled)
-python main.py --models TQF-ANN --tqf-box-counting-weight 0.001
-
-# Moderate regularization
-python main.py --models TQF-ANN --tqf-box-counting-weight 0.005
-
-# Strong regularization
-python main.py --models TQF-ANN --tqf-box-counting-weight 0.01
-```
-
-**Why This Matters**:
-- Penalizes deviation from theoretical fractal dimension (1.585)
-- Loss = weight * |measured_dim - theoretical_dim|
-- Maintains expected geometric structure during training
-- Small values (0.001) recommended to avoid conflicting with classification
-
-**Validation**:
-- Must be in range `[0.0, 10.0]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-> **Note:** `--tqf-box-counting-scales` was consolidated as an internal constant (`TQF_BOX_COUNTING_SCALES_DEFAULT = 10` in config.py). It is no longer a CLI parameter. The value controls the number of scale levels for box-counting fractal dimension estimation. Related to `--tqf-box-counting-weight` which controls whether box-counting loss is active.
-
----
-
-### 8.4 TQF Attention
-
-#### `--tqf-hop-attention-temp` (float)
-
-**Purpose**: Temperature for hop-distance attention during neighbor aggregation. Controls how neighbor features are weighted in graph convolution layers.
-
-**Type**: `float`
-
-**Default**: `1.0` (from `TQF_HOP_ATTENTION_TEMP_DEFAULT` in config.py)
-
-**Valid Range**: `[0.01, 10.0]` (from `TQF_HOP_ATTENTION_TEMP_MIN` to `TQF_HOP_ATTENTION_TEMP_MAX`)
-
-**Examples**:
-
-```bash
-# Default: Uniform weighting (fastest, bypasses attention computation)
-python main.py --models TQF-ANN --tqf-hop-attention-temp 1.0
-
-# Sharp hop attention (selective, prefer similar neighbors - slower)
-python main.py --models TQF-ANN --tqf-hop-attention-temp 0.5
-
-# Smooth hop attention (more uniform weighting)
-python main.py --models TQF-ANN --tqf-hop-attention-temp 2.0
-```
-
-**How It Works**:
-The temperature controls feature-based attention in neighbor aggregation:
-- Attention scores are computed via dot product between vertex and neighbor features
-- Scores are divided by temperature before softmax normalization
-- Lower temperature -> larger effective scores -> sharper attention distribution
-- Higher temperature -> smaller effective scores -> smoother/uniform distribution
-
-**Performance Note**:
-- **Temperature = 1.0 (default)**: Bypasses expensive attention computation entirely, using uniform neighbor weighting. This provides ~40% faster forward passes.
-- **Temperature != 1.0**: Enables attention path with dot-product computation and softmax normalization, which is significantly slower but may capture more nuanced neighbor relationships.
-
-**Why This Matters**:
-- Controls neighbor aggregation sharpness in graph convolutions
-- Temperature = 1.0: Uniform weighting, fastest (recommended default)
-- Lower temperature (<1.0): Sharp attention, strongly prefer similar neighbors
-- Higher temperature (>1.0): Smooth attention, more uniform neighbor weighting
-
-**Validation**:
-- Must be in range `[0.01, 10.0]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-### 8.5 Training Data Augmentation
+### 8.3 Training Data Augmentation
 
 #### `--z6-data-augmentation` (flag)
 
@@ -1361,7 +1170,7 @@ python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 
 ---
 
-### 8.6 TQF Evaluation-Time Orbit Mixing
+### 8.4 TQF Evaluation-Time Orbit Mixing
 
 Orbit mixing averages predictions over symmetry group operations at evaluation time, exploiting TQF-ANN's hexagonal symmetry structure. Three levels are available:
 
@@ -1433,18 +1242,228 @@ python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
 
 ---
 
-### 8.7 TQF Loss and Regularization
+### 8.4.1 Z6 Orbit Mixing Quality Enhancements
+
+These flags tune *how* ℤ₆ orbit mixing combines the six rotation variants. All are eval-time only, opt-in, and default to the previous behaviour when omitted. Requires `--tqf-use-z6-orbit-mixing`.
+
+#### `--tqf-z6-orbit-mixing-confidence-mode` (str)
+
+**Purpose**: Signal used to score each rotation variant's confidence for weighting.
+
+**Type**: `str` (choices: `max_logit`, `margin`)
+
+**Default**: `max_logit` (from `TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT` in config.py)
+
+**Values**:
+- `max_logit` *(default)*: Maximum logit value per variant — existing behaviour.
+- `margin`: Top-1 minus top-2 logit (decision margin). Rewards variants where the leading class is clear.
+
+**Examples**:
+
+```bash
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-confidence-mode margin
+```
+
+---
+
+#### `--tqf-z6-orbit-mixing-aggregation-mode` (str)
+
+**Purpose**: Space in which confidence-weighted averaging is performed.
+
+**Type**: `str` (choices: `logits`, `probs`, `log_probs`)
+
+**Default**: `logits` (from `TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT` in config.py)
+
+**Values**:
+- `logits` *(default)*: Average raw logits — existing behaviour.
+- `probs`: Average probabilities (softmax-then-weight); output ∈ [0, 1].
+- `log_probs`: Average log-probabilities (geometric mean / product-of-experts); output ≤ 0.
+
+**Examples**:
+
+```bash
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-aggregation-mode log_probs
+```
+
+---
+
+#### `--tqf-z6-orbit-mixing-top-k` (int)
+
+**Purpose**: Keep only the K most confident rotation variants before the weighted average. Intended to exclude noisy or low-confidence rotations from the ensemble.
+
+**Type**: `int` (optional)
+
+**Default**: `None` — use all 6 variants (existing behaviour)
+
+**Valid Range**: `[2, 6]` (from `TQF_Z6_ORBIT_MIXING_TOP_K_MIN`/`MAX` in config.py)
+
+**Examples**:
+
+```bash
+# Use only 4 most confident rotation variants
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-top-k 4
+```
+
+**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+
+---
+
+#### `--tqf-z6-orbit-mixing-adaptive-temp` (flag)
+
+**Purpose**: Enable per-sample adaptive temperature scaling based on orbit entropy. When all rotation variants are similarly confident (high entropy), temperature is raised to soften the weighting and produce a smoother ensemble.
+
+**Type**: `flag` (store_true)
+
+**Default**: `False` (fixed temperature)
+
+**Formula** (per sample b):
+```
+w_base    = softmax(confidence / T, dim=0)
+entropy_b = -sum(w_base * log(w_base + ε))
+T_b       = T × (1 + alpha × entropy_b / log(N))
+weights   = softmax(confidence / T_b, dim=0)
+```
+
+**Examples**:
+
+```bash
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-adaptive-temp
+```
+
+**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+
+---
+
+#### `--tqf-z6-orbit-mixing-adaptive-temp-alpha` (float)
+
+**Purpose**: Sensitivity of adaptive temperature scaling. Larger values produce stronger entropy-driven scaling.
+
+**Type**: `float`
+
+**Default**: `1.0` (from `TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT` in config.py)
+
+**Valid Range**: `[0.1, 10.0]` (from `TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN`/`MAX`)
+
+**Examples**:
+
+```bash
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-adaptive-temp --tqf-z6-orbit-mixing-adaptive-temp-alpha 2.0
+```
+
+---
+
+#### `--tqf-z6-orbit-mixing-rotation-mode` (str)
+
+**Purpose**: Interpolation mode used by `grid_sample` when rotating input images for orbit mixing.
+
+**Type**: `str` (choices: `bilinear`, `bicubic`)
+
+**Default**: `bilinear` (from `TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT` in config.py)
+
+**Values**:
+- `bilinear` *(default)*: Fast, smooth — standard for 28×28 inputs.
+- `bicubic`: Higher-order interpolation — sharper edges, slightly slower.
+
+**Examples**:
+
+```bash
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-rotation-mode bicubic
+```
+
+---
+
+#### `--tqf-z6-orbit-mixing-rotation-padding-mode` (str)
+
+**Purpose**: Padding mode for `grid_sample` — how pixel values outside the image boundary (the dark corners after rotation) are handled.
+
+**Type**: `str` (choices: `zeros`, `border`)
+
+**Default**: `zeros` (from `TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT` in config.py)
+
+**Values**:
+- `zeros` *(default)*: Fill with black (0) — existing behaviour.
+- `border`: Clamp to nearest edge pixel — avoids dark corners that may confuse edge-sensitive features.
+
+**Examples**:
+
+```bash
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-rotation-padding-mode border
+```
+
+---
+
+#### `--tqf-z6-orbit-mixing-rotation-pad` (int)
+
+**Purpose**: Pad the input image with reflect-mode padding before rotation, then center-crop back to 28×28 after rotation. Eliminates zero-corner artefacts by operating in a larger canvas. `0` disables padding (existing behaviour). Typical values: 2–4.
+
+**Type**: `int`
+
+**Default**: `0` (from `TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT` in config.py)
+
+**Valid Range**: `[0, 8]` (from `TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN`/`MAX`)
+
+**Examples**:
+
+```bash
+# Pad with 4px border-reflect before rotating, crop back to 28x28
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --tqf-z6-orbit-mixing-rotation-pad 4
+```
+
+**Combined example — all quality enhancements**:
+
+```bash
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing \
+  --tqf-z6-orbit-mixing-confidence-mode margin \
+  --tqf-z6-orbit-mixing-aggregation-mode log_probs \
+  --tqf-z6-orbit-mixing-top-k 4 \
+  --tqf-z6-orbit-mixing-adaptive-temp \
+  --tqf-z6-orbit-mixing-rotation-mode bicubic \
+  --tqf-z6-orbit-mixing-rotation-padding-mode border
+```
+
+---
+
+### 8.4.2 Z6 Non-Rotation Augmentation (Training-Time)
+
+#### `--tqf-z6-non-rotation-augmentation` (flag)
+
+**Purpose**: Apply lightweight spatial and photometric augmentation during training — independent of and composable with the existing `--z6-data-augmentation` rotation augmentation.
+
+**Type**: `flag` (store_true)
+
+**Default**: `False` (from `TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT` in config.py)
+
+**Augmentations applied** (via `NonRotationAugmentation` in `prepare_datasets.py`):
+1. Random pad-and-crop: padding=2, random 28×28 crop (±2 px translation invariance)
+2. `ColorJitter`: brightness ±10%, contrast ±10%
+
+**Compatibility**:
+- Compatible with `--z6-data-augmentation` (both can be active simultaneously)
+- Compatible with `--tqf-use-z6-orbit-mixing` at evaluation time
+- **Not recommended** combined with `--z6-data-augmentation` *and* `--tqf-use-z6-orbit-mixing` simultaneously — orbit mixing conflicts with rotation augmentation regardless
+
+**Examples**:
+
+```bash
+# Non-rotation augmentation (crop + jitter) + Z6 orbit mixing
+python main.py --models TQF-ANN --tqf-z6-non-rotation-augmentation --tqf-use-z6-orbit-mixing
+```
+
+**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled (augmentation pipeline is shared, but flag only activates for TQF-ANN dataloaders)
+
+---
+
+### 8.5 TQF Loss and Regularization
 
 #### `--tqf-verify-geometry` (flag)
 
-**Purpose**: Enable comprehensive geometry verification and all fractal regularization losses.
+**Purpose**: Enable comprehensive geometry verification.
 
 **Type**: `bool` (action='store_true')
 
 **Default**: `False`
 
 **Behavior**:
-- If enabled: adds self-similarity and box-counting loss terms
 - Verifies geometric properties during training
 - Slightly slower training
 
@@ -1652,6 +1671,61 @@ python main.py --models TQF-ANN --tqf-inversion-loss-weight 0.4
 
 ---
 
+#### `--tqf-z6-orbit-consistency-weight` (float)
+
+**Purpose**: Enable Z6 orbit consistency self-distillation loss during training. Penalises predictions that are inconsistent across Z6 rotation variants via KL divergence from a stop-gradient ensemble soft target.
+
+**Type**: `float` (optional)
+
+**Default**: **DISABLED** (None). Provide a value to enable.
+
+**Valid Range**: `[0.0001, 1.0]` (from `TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MIN`/`MAX` in config.py)
+
+**Mechanism** (`compute_orbit_consistency_loss` in `evaluation.py`):
+1. Start with base logits from the current forward pass (kept in the computation graph)
+2. Run `num_rotations` extra forward passes at randomly sampled Z6 angles {60°, 120°, 180°, 240°, 300°}
+3. Ensemble = mean(detach(all logits)) → soft target = softmax(ensemble)
+4. Loss = mean over variants of KL(log\_softmax(logits) ∥ soft target)
+5. Added to main CE loss: `total_loss = ce_loss + weight × orbit_consistency_loss`
+
+**Examples**:
+
+```bash
+# Enable orbit consistency loss with moderate weight
+python main.py --models TQF-ANN --tqf-z6-orbit-consistency-weight 0.01
+
+# Enable with light weight and more rotation coverage
+python main.py --models TQF-ANN --tqf-z6-orbit-consistency-weight 0.005 --tqf-z6-orbit-consistency-rotations 3
+```
+
+**Note**: Each extra rotation requires a full forward pass per batch, so training is ~(1 + num_rotations)× slower when enabled.
+
+**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+
+---
+
+#### `--tqf-z6-orbit-consistency-rotations` (int)
+
+**Purpose**: Number of extra Z6 rotation forward passes per batch for the orbit consistency loss. These angles are randomly sampled (without replacement) from {60°, 120°, 180°, 240°, 300°}.
+
+**Type**: `int`
+
+**Default**: `2` (from `TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT` in config.py)
+
+**Valid Range**: `[1, 5]` (from `TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN`/`MAX`)
+
+**Note**: Only used when `--tqf-z6-orbit-consistency-weight` is provided.
+
+**Examples**:
+
+```bash
+python main.py --models TQF-ANN --tqf-z6-orbit-consistency-weight 0.01 --tqf-z6-orbit-consistency-rotations 3
+```
+
+**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
+
+---
+
 #### `--tqf-verify-duality-interval` (int)
 
 **Purpose**: Frequency (in epochs) for self-duality verification logging.
@@ -1853,11 +1927,7 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-verify-duality-interval` | int | 10 | [1, num_epochs] | Duality verification interval |
 | `--tqf-verify-geometry` | flag | False | - | Enable geometry verification |
 | `--tqf-geometry-reg-weight` | float | 0.0 | [0.0, 10.0] | Geometry regularization weight (opt-in) |
-| `--tqf-fractal-iterations` | int | 0 (disabled) | [1, 20] | Fractal estimation iterations (opt-in) |
-| `--tqf-self-similarity-weight` | float | 0.0 | [0.0, 10.0] | Self-similarity loss weight (opt-in) |
-| `--tqf-box-counting-weight` | float | 0.0 | [0.0, 10.0] | Box-counting loss weight (opt-in) |
 | `--tqf-use-gradient-checkpointing` | flag | False | - | Enable gradient checkpointing for memory savings |
-| `--tqf-hop-attention-temp` | float | 1.0 | [0.01, 10.0] | Hop attention temperature (1.0 = fast path) |
 | `--z6-data-augmentation` | flag | False (disabled) | - | Enable Z6 rotation data augmentation during training (all models) |
 | `--tqf-use-z6-orbit-mixing` | flag | False | - | Z6 rotation orbit mixing at evaluation |
 | `--tqf-use-d6-orbit-mixing` | flag | False | - | D6 reflection orbit mixing at evaluation |
@@ -1865,6 +1935,17 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-orbit-mixing-temp-rotation` | float | 0.5 | [0.01, 2.0] | Z6 rotation averaging temperature |
 | `--tqf-orbit-mixing-temp-reflection` | float | 0.5 | [0.01, 2.0] | D6 reflection averaging temperature |
 | `--tqf-orbit-mixing-temp-inversion` | float | 0.7 | [0.01, 2.0] | T24 zone-swap averaging temperature |
+| `--tqf-z6-orbit-mixing-confidence-mode` | str | max_logit | max_logit, margin | Z6 variant confidence scoring mode |
+| `--tqf-z6-orbit-mixing-aggregation-mode` | str | logits | logits, probs, log_probs | Z6 ensemble aggregation space |
+| `--tqf-z6-orbit-mixing-top-k` | int | None | [2, 6] | Keep only top-K most confident Z6 variants |
+| `--tqf-z6-orbit-mixing-adaptive-temp` | flag | False | - | Enable per-sample adaptive temperature |
+| `--tqf-z6-orbit-mixing-adaptive-temp-alpha` | float | 1.0 | [0.1, 10.0] | Adaptive temperature entropy sensitivity |
+| `--tqf-z6-orbit-mixing-rotation-mode` | str | bilinear | bilinear, bicubic | Interpolation mode for orbit mixing rotations |
+| `--tqf-z6-orbit-mixing-rotation-padding-mode` | str | zeros | zeros, border | Padding mode for orbit mixing rotations |
+| `--tqf-z6-orbit-mixing-rotation-pad` | int | 0 | [0, 8] | Reflect-pad before rotate then crop (0=off) |
+| `--tqf-z6-non-rotation-augmentation` | flag | False | - | Random crop + jitter augmentation (training) |
+| `--tqf-z6-orbit-consistency-weight` | float | None | [0.0001, 1.0] | Z6 orbit consistency self-distillation loss |
+| `--tqf-z6-orbit-consistency-rotations` | int | 2 | [1, 5] | Extra rotation passes for consistency loss |
 
 ---
 
@@ -2064,11 +2145,6 @@ python main.py --device cpu --num-epochs 5 --num-train 500 --num-seeds 1
      --tqf-z6-equivariance-weight 0.25 --tqf-inversion-loss-weight 0.3
    ```
 
-6. **More fractal iterations:**
-   ```bash
-   python main.py --tqf-fractal-iterations 10
-   ```
-
 ### For Maximum Rotation Invariance
 
 1. **Use T₂₄ symmetry:**
@@ -2084,11 +2160,6 @@ python main.py --device cpu --num-epochs 5 --num-train 500 --num-seeds 1
 3. **Label smoothing:**
    ```bash
    python main.py --label-smoothing 0.15
-   ```
-
-4. **More fractal detail:**
-   ```bash
-   python main.py --tqf-fractal-iterations 10 --tqf-self-similarity-weight 0.2
    ```
 
 ## 13. Troubleshooting
@@ -2291,18 +2362,6 @@ TQF_HIDDEN_DIMENSION_DEFAULT = None  # Auto-tuned to ~650k params
 TQF_SYMMETRY_LEVEL_DEFAULT = 'none'
 Z6_DATA_AUGMENTATION_DEFAULT = False
 
-# TQF fractal parameters (all disabled/opt-in by default)
-TQF_FRACTAL_ITERATIONS_DEFAULT = 0       # Disabled; provide value via CLI to enable
-TQF_FRACTAL_DIM_TOLERANCE_DEFAULT = 0.08  # Internal constant, not CLI-tunable
-TQF_THEORETICAL_FRACTAL_DIM_DEFAULT = 1.585  # Sierpinski triangle dimension
-TQF_FRACTAL_EPSILON_DEFAULT = 1e-8
-TQF_SELF_SIMILARITY_WEIGHT_DEFAULT = 0.0  # Disabled; provide value via CLI to enable
-TQF_BOX_COUNTING_WEIGHT_DEFAULT = 0.0    # Disabled; provide value via CLI to enable
-TQF_BOX_COUNTING_SCALES_DEFAULT = 10     # Internal constant, not CLI-tunable
-
-# TQF attention parameters
-TQF_HOP_ATTENTION_TEMP_DEFAULT = 1.0
-
 # TQF regularization (all disabled/opt-in by default)
 TQF_GEOMETRY_REG_WEIGHT_DEFAULT = 0.0    # Disabled; provide value via CLI to enable
 # Note: Equivariance/invariance/duality loss weights default to None (disabled).
@@ -2310,7 +2369,7 @@ TQF_GEOMETRY_REG_WEIGHT_DEFAULT = 0.0    # Disabled; provide value via CLI to en
 TQF_VERIFY_DUALITY_INTERVAL_DEFAULT = 10
 
 # TQF orbit mixing temperatures
-TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT = 0.3
+TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT = 0.5
 TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT = 0.5
 TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT = 0.7
 
@@ -2341,14 +2400,12 @@ TARGET_PARAMS_TOLERANCE_PERCENT = 1.1
 - `--label-smoothing`: Label confidence
 - `--patience`: Early stopping sensitivity
 - `--tqf-geometry-reg-weight`: Geometric consistency
-- `--tqf-self-similarity-weight`: Fractal structure
 - `--tqf-inversion-loss-weight`: Duality preservation
 
 ### Architecture Parameters
 
 - `--tqf-R`: Lattice size
 - `--tqf-hidden-dim`: Feature dimensionality
-- `--tqf-fractal-iterations`: Fractal detail
 - `--batch-size`: Gradient stability
 
 ### Experimental Parameters
@@ -2465,8 +2522,8 @@ python main.py --models TQF-ANN --results-dir /tmp/my_results
 ---
 **`QED`**
 
-**Last Updated:** February 24, 2026<br>
-**Version:** 1.0.5<br>
+**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

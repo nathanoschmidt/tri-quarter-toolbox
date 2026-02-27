@@ -71,14 +71,7 @@ from config import (
     TQF_RADIUS_R_FIXED,
     TQF_HIDDEN_DIMENSION_DEFAULT,
     TQF_SYMMETRY_LEVEL_DEFAULT,
-    TQF_FRACTAL_ITERATIONS_DEFAULT,
-    TQF_FRACTAL_DIM_TOLERANCE_DEFAULT,
-    TQF_SELF_SIMILARITY_WEIGHT_DEFAULT,
-    TQF_FRACTAL_EPSILON_DEFAULT,
-    TQF_BOX_COUNTING_WEIGHT_DEFAULT,
-    TQF_BOX_COUNTING_SCALES_DEFAULT,
     TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-    TQF_HOP_ATTENTION_TEMP_DEFAULT,
     TQF_DUALITY_TOLERANCE_DEFAULT,
     TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
     TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
@@ -317,15 +310,6 @@ def log_experiment_config(
         sym_ops = sym_ops_map.get(sym_level, '')
         print(f"    Symmetry level                 : {sym_level} {sym_ops}")
 
-        # Fractal Parameters
-        print("\n  Fractal Parameters:")
-        print(f"    Fractal iterations             : {getattr(args, 'tqf_fractal_iterations', TQF_FRACTAL_ITERATIONS_DEFAULT)}")
-        print(f"    Fractal dim tolerance          : {TQF_FRACTAL_DIM_TOLERANCE_DEFAULT} (internal default)")
-        print(f"    Fractal epsilon                : {TQF_FRACTAL_EPSILON_DEFAULT}")
-        print(f"    Self-similarity weight         : {getattr(args, 'tqf_self_similarity_weight', TQF_SELF_SIMILARITY_WEIGHT_DEFAULT)}")
-        print(f"    Box-counting weight            : {getattr(args, 'tqf_box_counting_weight', TQF_BOX_COUNTING_WEIGHT_DEFAULT)}")
-        print(f"    Box-counting scales            : {TQF_BOX_COUNTING_SCALES_DEFAULT} (internal default)")
-
         # Dual Metrics & Geometry Parameters
         print("\n  Dual Metrics & Geometry:")
         print(f"    Geometry regularization weight : {getattr(args, 'tqf_geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)}")
@@ -333,19 +317,10 @@ def log_experiment_config(
         inv_weight = getattr(args, 'tqf_inversion_loss_weight', None)
         inv_status = f"Enabled (weight={inv_weight})" if inv_weight is not None else "Disabled"
         print(f"    Inversion (duality) loss       : {inv_status}")
-        # Hop attention temperature: controls neighbor aggregation sharpness
-        # - < 1.0: Sharp attention, prefer similar neighbors
-        # - = 1.0: Uniform mean pooling (standard GNN)
-        # - > 1.0: Smooth attention, more uniform weighting
-        hop_temp = getattr(args, 'tqf_hop_attention_temp', TQF_HOP_ATTENTION_TEMP_DEFAULT)
-        hop_mode = "sharp" if hop_temp < 1.0 else ("uniform" if hop_temp == 1.0 else "smooth")
-        print(f"    Hop attention temperature      : {hop_temp} ({hop_mode})")
-
         print(f"    Duality tolerance              : {TQF_DUALITY_TOLERANCE_DEFAULT}")
         print(f"    Duality verify interval        : {getattr(args, 'tqf_verify_duality_interval', TQF_VERIFY_DUALITY_INTERVAL_DEFAULT)} epochs")
         verify_geom = getattr(args, 'tqf_verify_geometry', False)
-        verify_geom_status = "Enabled (verifies fractal losses active)" if verify_geom else "Disabled"
-        print(f"    Verify geometry flag           : {verify_geom_status}")
+        print(f"    Verify geometry flag           : {'Enabled' if verify_geom else 'Disabled'}")
 
         # Symmetry/Invariance/Equivariance Losses
         # These losses are enabled by providing a weight value via CLI (None = disabled)

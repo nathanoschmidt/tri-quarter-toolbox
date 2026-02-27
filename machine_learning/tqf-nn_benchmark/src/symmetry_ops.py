@@ -74,6 +74,14 @@ _D6_REFLECTION_INDICES: torch.Tensor = torch.tensor([
     [(2 * k - i) % 6 for i in range(6)] for k in range(6)
 ], dtype=torch.long)  # Shape: (6, 6)
 
+# Pre-computed inverse permutation for each reflection axis.
+# Because reflection is an involution (self-inverse), the inverse of each row
+# equals applying argsort once.  Computing it here avoids a torch.argsort call
+# inside every call to apply_d6_reflection_to_sectors.
+_D6_REFLECTION_INVERSE_INDICES: torch.Tensor = torch.stack([
+    torch.argsort(_D6_REFLECTION_INDICES[k]) for k in range(6)
+])  # Shape: (6, 6)
+
 # D6 operation permutation indices: combines rotation + reflection
 # First 6 rows: rotations only (k=0..5), next 6 rows: reflection + rotation
 # _D6_PERMUTATION_INDICES[op_id, i] gives new index for sector i under operation op_id
@@ -348,24 +356,9 @@ def apply_d6_reflection_to_sectors(
         >>> reflected[0, :, 0]
         tensor([0., 5., 4., 3., 2., 1.])  # Reflected across axis 0
     """
-    # Use pre-computed reflection indices for vectorized operation
-    # _D6_REFLECTION_INDICES[axis] contains the target indices for each source sector
-    # We need the inverse mapping: for each target j, which source i maps to it?
-    # Since reflection is involutive (applying twice = identity), the inverse is the same mapping
-    # i.e., if sector i -> sector j, then sector j -> sector i under the same reflection
-
-    # Get permutation indices for this reflection axis
-    # indices[i] = (2*axis - i) % 6 tells us where sector i's content goes
-    indices = _D6_REFLECTION_INDICES[reflection_axis].to(sector_feats.device)
-
-    # Use index_select to gather sectors: output[:, j, :] = input[:, indices[j], :]
-    # But we need the inverse: output[:, indices[i], :] = input[:, i, :]
-    # Since reflection is an involution, indices applied twice gives identity
-    # So we can use: output = input[:, inverse_indices, :]
-    # where inverse_indices[j] = i such that indices[i] = j
-
-    # For reflection permutations, create inverse by using argsort
-    inverse_indices = torch.argsort(indices)
+    # Use the pre-computed inverse permutation (module-level constant, computed once
+    # at import time).  This avoids a torch.argsort call on every forward pass.
+    inverse_indices = _D6_REFLECTION_INVERSE_INDICES[reflection_axis].to(sector_feats.device)
 
     # Vectorized gather using advanced indexing
     return sector_feats[:, inverse_indices, :]
