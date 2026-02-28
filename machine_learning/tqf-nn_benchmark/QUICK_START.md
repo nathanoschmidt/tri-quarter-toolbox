@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Date:** February 26, 2026<br>
+**Version:** 1.1.1<br>
+**Date:** February 27, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -228,13 +228,8 @@ python src/main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 ```
 
 ```bash
-# TQF-ANN + Z6 symmetry + Z6 equivariance enforcement
-python src/main.py --models TQF-ANN --tqf-symmetry-level Z6 --tqf-z6-equivariance-weight 0.01
-```
-
-```bash
 # Change truncation radius R (controls lattice size; sparsifying lattice because hidden_dim auto-tunes to keep ~650k params)
-python src/main.py --models TQF-ANN --tqf-R 30 --tqf-symmetry-level D6
+python src/main.py --models TQF-ANN --tqf-R 30
 ```
 
 ```bash
@@ -251,12 +246,8 @@ Some common flags to remember:
 - `--tqf-use-z6-orbit-mixing`        ℤ₆ evaluation-time orbit mixing
 - `--tqf-use-d6-orbit-mixing`        D₆ evaluation-time orbit mixing
 - `--tqf-use-t24-orbit-mixing`       full 𝕋₂₄ evaluation-time orbit mixing
-- `--tqf-symmetry-level`             `none` / `Z6` / `D6` / `T24`
-- `--tqf-z6-equivariance-weight`     ℤ₆ rotation equivariance loss (opt-in)
-- `--tqf-d6-equivariance-weight`     D₆ reflection equivariance loss (opt-in)
 - `--tqf-t24-orbit-invariance-weight`  𝕋₂₄ orbit invariance loss (opt-in)
 - `--z6-data-augmentation`            enable ℤ₆ rotation data augmentation (disabled by default)
-- `--tqf-verify-geometry`
 - `--compile`                        (Linux only)
 
 ℤ₆ orbit mixing quality enhancements (all eval-time, opt-in, require `--tqf-use-z6-orbit-mixing`):
@@ -271,7 +262,7 @@ Some common flags to remember:
 
 Training-time augmentation/loss additions (opt-in):
 
-- `--tqf-z6-non-rotation-augmentation`           random crop + brightness/contrast jitter
+- `--non-rotation-data-augmentation`           random crop + brightness/contrast jitter
 - `--tqf-z6-orbit-consistency-weight`            ℤ₆ orbit consistency self-distillation loss weight
 - `--tqf-z6-orbit-consistency-rotations`         extra rotation passes for consistency loss (default: 2)
 
@@ -292,51 +283,43 @@ python src/main.py --models TQF-ANN ResNet-18-Scaled
 - Produces clean head-to-head comparison on rotated MNIST
 - Produces rotated MNIST evaluation for fair TQF comparison
 
-### Symmetry Level Ablation Study
+### Orbit Mixing Ablation Study
 
 ```bash
-# Test impact of different symmetry groups
-for sym in none Z6 D6 T24; do
-  python src/main.py --models TQF-ANN --tqf-symmetry-level $sym --num-seeds 2
-done
+# No orbit mixing (baseline)
+python src/main.py --models TQF-ANN --num-seeds 2
+
+# Z6 orbit mixing (6 input-space rotations)
+python src/main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --num-seeds 2
+
+# D6 orbit mixing (rotations + reflections)
+python src/main.py --models TQF-ANN --tqf-use-d6-orbit-mixing --num-seeds 2
+
+# T24 orbit mixing (full symmetry)
+python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing --num-seeds 2
 ```
 
 **What this does:**
-- none:      No explicit symmetry enforcement (baseline)
-- ℤ₆:       Cyclic group — 60° rotations only
-- D₆:       Dihedral group — rotations + reflections
-- 𝕋₂₄:      Full inversive hexagonal dihedral group (D₆ ⋊ ℤ₂) — rotations + reflections + circle inversion
-- Lets you directly compare how much each layer of symmetry improves rotated MNIST accuracy
+- Compares how much each level of evaluation-time orbit mixing improves rotated MNIST accuracy
+- Each higher level includes all lower levels
+- Z6: 6 full forward passes (input-space rotations)
+- D6: adds feature-space reflection (lightweight, classification head only)
+- T24: adds zone-swap (trivially cheap, argument reordering)
 
-### Equivariance/Orbit Loss Training
+### Orbit Invariance Loss Training
 
-> **Note:** These training-time loss features are experimental. In practice they have not shown accuracy improvements and may slightly hurt performance. For rotation robustness, prefer `--tqf-use-z6-orbit-mixing` instead.
+> **Note:** This training-time loss feature is experimental. In practice it has not shown accuracy improvements. For rotation robustness, prefer `--tqf-use-z6-orbit-mixing` instead.
 
-Features are disabled by default and enabled by providing a weight value:
+Feature is disabled by default and enabled by providing a weight value:
 
 ```bash
-# Train with explicit ℤ₆ rotation equivariance enforcement
-python src/main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01
-
-# Train with D₆ reflection equivariance enforcement
-python src/main.py --models TQF-ANN --tqf-d6-equivariance-weight 0.01
-
-# Train with full 𝕋₂₄ orbit invariance
+# Train with 𝕋₂₄ orbit invariance loss
 python src/main.py --models TQF-ANN --tqf-t24-orbit-invariance-weight 0.005
-
-# Combine all symmetry losses for maximum enforcement
-python src/main.py --models TQF-ANN \
-  --tqf-z6-equivariance-weight 0.01 \
-  --tqf-d6-equivariance-weight 0.01 \
-  --tqf-t24-orbit-invariance-weight 0.005
 ```
 
 **What this does:**
-- Adds auxiliary loss terms that directly penalize symmetry violations during training
-- ℤ₆ loss:   Feature consistency under 60° rotations
-- D₆ loss:   Feature consistency under reflections
+- Adds an auxiliary loss term that penalizes violations of T24 orbit invariance during training
 - 𝕋₂₄ loss:  Orbit consistency across the full 24-element group
-- Helps the model internalize the radial dual triangular lattice geometry
 
 ### Rotation Robustness: Data Augmentation vs. Architecture
 
@@ -368,9 +351,9 @@ python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
 ```bash
 # Custom confidence weighting temperatures
 python src/main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
-  --tqf-orbit-mixing-temp-rotation 0.5 \
-  --tqf-orbit-mixing-temp-reflection 0.5 \
-  --tqf-orbit-mixing-temp-inversion 0.7
+  --tqf-z6-orbit-mixing-temp-rotation 0.5 \
+  --tqf-d6-orbit-mixing-temp-reflection 0.5 \
+  --tqf-t24-orbit-mixing-temp-inversion 0.7
 ```
 Lower temperatures produce sharper weighting (most confident variant dominates); higher temperatures approach uniform averaging.
 
@@ -500,8 +483,8 @@ You're ready—get your gameface on and get to training!
 
 **`QED`**
 
-**Last Updated:** February 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** February 27, 2026<br>
+**Version:** 1.1.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

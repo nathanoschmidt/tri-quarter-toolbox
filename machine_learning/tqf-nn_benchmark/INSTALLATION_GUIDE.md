@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Date:** February 26, 2026<br>
+**Version:** 1.1.1<br>
+**Date:** February 27, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -249,8 +249,8 @@ If you're still wrestling with hassles, or if you're interesting in the heavier 
 
 **`QED`**
 
-**Last Updated:** February 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** February 27, 2026<br>
+**Version:** 1.1.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

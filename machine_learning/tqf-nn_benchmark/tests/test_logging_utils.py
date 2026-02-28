@@ -168,12 +168,7 @@ class TestLogExperimentConfig:
             model='TQF-ANN',
             tqf_R=3.0,
             tqf_hidden_dim=512,
-            tqf_symmetry_level='D6',
-            tqf_geometry_reg_weight=0.01,
-            tqf_rotation_inv_loss_weight=0.001,
-            tqf_inversion_loss_weight=0.001,
-            tqf_verify_duality_interval=10,
-            tqf_verify_geometry=False
+            tqf_rotation_inv_loss_weight=0.001
         )
         seeds: List[int] = [42, 43, 44]
         device = torch.device('cpu')
@@ -253,8 +248,7 @@ class TestLogExperimentConfig:
             num_epochs=200,
             model='TQF-ANN',
             tqf_R=3.0,
-            tqf_hidden_dim=512,
-            tqf_symmetry_level='D6'
+            tqf_hidden_dim=512
         )
         seeds: List[int] = [42]
         device = torch.device('cpu')

@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Date:** February 26, 2026<br>
+**Version:** 1.1.1<br>
+**Date:** February 27, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -309,7 +309,7 @@ pytest --lf
 | test_param_matcher.py | 27 | Varies | Parameter matching and auto-tuning |
 | test_performance.py | 13 | All passing | Performance benchmarks |
 | test_symmetry_ops.py | 53 | All passing | Symmetry ops unit tests (Z6/D6/T24) |
-| test_tqf_ann.py | 47 | All passing | TQF-ANN architecture, k-hop, checkpointing, inner zone caching |
+| test_tqf_ann.py | 47 | All passing | TQF-ANN architecture, k-hop, inner zone caching |
 | test_tqf_ann_integration.py | 41 | Slow/Skip | TQF-ANN end-to-end integration tests |
 | test_verification_features.py | 8 | All passing | Model verification utilities |
 
@@ -322,7 +322,7 @@ pytest --lf
 | cli.py | 95% | 115 | All CLI arguments, validation, defaults, range constant consistency, Z6 enhancements |
 | config.py | 95% | 81 | All constants, range constants, defaults-within-ranges, orbit mixing |
 | dual_metrics.py | 92% | 53 | Metrics, k-hop precomputation, edge cases |
-| models_tqf.py | 90% | 69+ | Architecture, k-hop, checkpointing, inner zone caching |
+| models_tqf.py | 90% | 69+ | Architecture, k-hop, inner zone caching |
 | models_baseline.py | 85% | 13+ | All baseline models (via param_matcher) |
 | datasets.py | 92% | 23 | Loading, transforms, validation |
 | engine.py | 80% | 48 | Training loops, evaluation, orchestration |
@@ -808,7 +808,7 @@ pytest                                                                    # Run 
 pytest test_config.py                                                     # Run specific file
 pytest test_cli.py::TestParseArgsTQFSpecific                              # Run specific class
 pytest -k "test_seed"                                                     # Run tests matching pattern
-pytest test_cli.py::TestParseArgsTQFSpecific::test_tqf_symmetry_level_Z   # Specific test
+pytest test_cli.py::TestParseArgsTQFSpecific::test_tqf_use_z6_orbit_mixing  # Specific test
 ```
 
 ### Selective Execution
@@ -931,8 +931,8 @@ The framework ensures that the TQF-NN implementation maintains high quality, cor
 
 **`QED`**
 
-**Last Updated:** February 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** February 27, 2026<br>
+**Version:** 1.1.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

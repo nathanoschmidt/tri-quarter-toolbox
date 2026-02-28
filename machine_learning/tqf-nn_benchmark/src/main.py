@@ -31,8 +31,8 @@ Execution Flow:
     11. Print final comparison table with rankings
 
 Usage:
-    python main.py --models TQF-ANN FC-MLP --num-seeds 5 --max-epochs 50
-    python main.py --models all --tqf-verify-geometry --batch-size 128
+    python main.py --models TQF-ANN FC-MLP --num-seeds 5 --num-epochs 150
+    python main.py --models all --batch-size 128
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
@@ -64,11 +64,28 @@ Date: February 2026
 
 import logging
 import os
+import subprocess
+import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from cli import parse_args, setup_logging
+
+
+def _get_git_commit() -> Optional[str]:
+    """Return the current git commit hash, or None if not in a git repo."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
 
 
 def verify_parameter_matching(model_configs: Dict[str, Dict]) -> bool:
@@ -174,18 +191,10 @@ def main():
             # Lattice-Graph Structure
             'R': args.tqf_R,
             'hidden_dim': args.tqf_hidden_dim,  # None = auto-tune
-            'symmetry_level': args.tqf_symmetry_level,
-
-            # Geometry/Regularization
-            'verify_geometry': args.tqf_verify_geometry,
-            'geometry_reg_weight': args.tqf_geometry_reg_weight,
 
             # Dual Metrics (hardcoded - not exposed as CLI params per design)
             'use_dual_output': True,
             'use_dual_metric': True,
-
-            # Memory Optimization
-            'use_gradient_checkpointing': args.tqf_use_gradient_checkpointing,
         }
     }
 
@@ -209,9 +218,9 @@ def main():
         logging.info(
             f"Orbit mixing: Z6={args.tqf_use_z6_orbit_mixing}, "
             f"D6={args.tqf_use_d6_orbit_mixing}, T24={args.tqf_use_t24_orbit_mixing} "
-            f"(temps: rot={args.tqf_orbit_mixing_temp_rotation:.2f}, "
-            f"refl={args.tqf_orbit_mixing_temp_reflection:.2f}, "
-            f"inv={args.tqf_orbit_mixing_temp_inversion:.2f})"
+            f"(temps: rot={args.tqf_z6_orbit_mixing_temp_rotation:.2f}, "
+            f"refl={args.tqf_d6_orbit_mixing_temp_reflection:.2f}, "
+            f"inv={args.tqf_t24_orbit_mixing_temp_inversion:.2f})"
         )
     train_loader, val_loader, test_loader_rot, test_loader_unrot = get_dataloaders(
         batch_size=args.batch_size,
@@ -220,7 +229,7 @@ def main():
         num_test_rot=args.num_test_rot,
         num_test_unrot=args.num_test_unrot,
         augment_train=args.z6_data_augmentation,
-        augment_z6_non_rotation=args.tqf_z6_non_rotation_augmentation
+        augment_non_rotation=args.non_rotation_data_augmentation
     )
 
     # Warm up image caches so first training epoch isn't penalized by disk I/O
@@ -242,9 +251,18 @@ def main():
         'test_rot': test_loader_rot
     }
 
+    # Build experiment config for embedding in the results JSON (reproducibility)
+    experiment_config: Dict[str, Any] = {
+        'cli_command': ' '.join(sys.argv),
+        'cli_args': sys.argv[1:],
+    }
+    git_commit = _get_git_commit()
+    if git_commit:
+        experiment_config['git_commit'] = git_commit
+    if args.experiment_label:
+        experiment_config['experiment_label'] = args.experiment_label
+
     # Run experiments with args-driven hyperparameters
-    # Note: Loss features (Z6/D6 equivariance, T24 invariance, inversion duality) are
-    # enabled by providing a weight value via CLI. Weight=None means feature is disabled.
     logging.info("Starting experiments...")
     results = run_multi_seed_experiment(
         model_names=list(model_configs.keys()),
@@ -259,10 +277,6 @@ def main():
         patience=args.patience,
         min_delta=args.min_delta,
         warmup_epochs=args.learning_rate_warmup_epochs,
-        verify_duality_interval=args.tqf_verify_duality_interval,
-        inversion_loss_weight=args.tqf_inversion_loss_weight,
-        z6_equivariance_weight=args.tqf_z6_equivariance_weight,
-        d6_equivariance_weight=args.tqf_d6_equivariance_weight,
         t24_orbit_invariance_weight=args.tqf_t24_orbit_invariance_weight,
         z6_orbit_consistency_weight=args.tqf_z6_orbit_consistency_weight,
         z6_orbit_consistency_rotations=args.tqf_z6_orbit_consistency_rotations,
@@ -271,9 +285,9 @@ def main():
         use_z6_orbit_mixing=args.tqf_use_z6_orbit_mixing,
         use_d6_orbit_mixing=args.tqf_use_d6_orbit_mixing,
         use_t24_orbit_mixing=args.tqf_use_t24_orbit_mixing,
-        orbit_mixing_temp_rotation=args.tqf_orbit_mixing_temp_rotation,
-        orbit_mixing_temp_reflection=args.tqf_orbit_mixing_temp_reflection,
-        orbit_mixing_temp_inversion=args.tqf_orbit_mixing_temp_inversion,
+        z6_orbit_mixing_temp_rotation=args.tqf_z6_orbit_mixing_temp_rotation,
+        d6_orbit_mixing_temp_reflection=args.tqf_d6_orbit_mixing_temp_reflection,
+        t24_orbit_mixing_temp_inversion=args.tqf_t24_orbit_mixing_temp_inversion,
         z6_orbit_mixing_confidence_mode=args.tqf_z6_orbit_mixing_confidence_mode,
         z6_orbit_mixing_aggregation_mode=args.tqf_z6_orbit_mixing_aggregation_mode,
         z6_orbit_mixing_top_k=args.tqf_z6_orbit_mixing_top_k,
@@ -281,7 +295,8 @@ def main():
         z6_orbit_mixing_adaptive_temp_alpha=args.tqf_z6_orbit_mixing_adaptive_temp_alpha,
         z6_orbit_mixing_rotation_mode=args.tqf_z6_orbit_mixing_rotation_mode,
         z6_orbit_mixing_rotation_padding_mode=args.tqf_z6_orbit_mixing_rotation_padding_mode,
-        z6_orbit_mixing_rotation_pad=args.tqf_z6_orbit_mixing_rotation_pad
+        z6_orbit_mixing_rotation_pad=args.tqf_z6_orbit_mixing_rotation_pad,
+        experiment_config=experiment_config if output_path else None
     )
 
     # Statistical comparison

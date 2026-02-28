@@ -67,9 +67,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from config import (
-    TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
     TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
@@ -597,7 +597,7 @@ def compute_statistical_significance(
 
 def adaptive_orbit_mixing(
     logits_per_variant: List[torch.Tensor],
-    temperature: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    temperature: float = TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
     confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
     aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
     top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
@@ -729,9 +729,9 @@ def evaluate_with_orbit_mixing(
     use_z6: bool = False,
     use_d6: bool = False,
     use_t24: bool = False,
-    temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-    temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    temp_rotation: float = TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    temp_reflection: float = TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    temp_inversion: float = TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
     confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
     aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
     top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,

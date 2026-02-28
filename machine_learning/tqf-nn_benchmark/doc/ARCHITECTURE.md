@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Date:** February 26, 2026<br>
+**Version:** 1.1.1<br>
+**Date:** February 27, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -222,7 +222,7 @@ python src/main.py --help
 # Custom configuration
 python src/main.py \
   --models TQF-ANN \
-  --tqf-symmetry-level D6 \
+  --tqf-use-z6-orbit-mixing \
   --tqf-R 3 \
   --learning-rate 0.001 \
   --num-epochs 100
@@ -250,10 +250,6 @@ def _validate_args(args: argparse.Namespace) -> None:
 # Invalid truncation radius (must be > inversion radius r=1)
 python src/main.py --tqf-R 1
 # Error: --tqf-R=1 outside valid range [2, 100]
-
-# Invalid symmetry level
-python src/main.py --tqf-symmetry-level Z8
-# Error: --tqf-symmetry-level='Z8' not in ['none', 'Z6', 'D6', 'T24']
 
 # Invalid learning rate
 python src/main.py --learning-rate 2.0
@@ -295,10 +291,6 @@ NUM_TEST_UNROT_DEFAULT: int = 8000
 # ===== TQF ARCHITECTURE =====
 TQF_TRUNCATION_R_DEFAULT: int = 20
 TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
-TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'  # Orbit pooling disabled by default
-
-# ===== TQF LOSS WEIGHTS (opt-in, all default to 0.0) =====
-TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
 
 # ===== VALIDATION RANGES =====
 TQF_R_MIN: int = 2
@@ -340,7 +332,6 @@ class TQFANN(nn.Module):
         in_features: int = 784,
         hidden_dim: Optional[int] = None,  # Auto-tuned to ~650K params
         R: int = 20,                         # Truncation radius
-        symmetry_level: str = 'none'         # Symmetry group (opt-in)
     ):
         # Initialize layers...
 ```
@@ -353,15 +344,13 @@ from models_tqf import TQFANN
 model = TQFANN(
     in_features=784,          # 28x28 MNIST
     R=20,                     # Truncation radius
-    symmetry_level='none'     # No orbit pooling (default)
 )
 
-# With explicit hidden_dim and D6 symmetry
+# With explicit hidden_dim
 model = TQFANN(
     in_features=784,
     hidden_dim=512,           # Explicit dimension
     R=20,
-    symmetry_level='D6'       # Enable dihedral symmetry
 )
 
 # Forward pass
@@ -1408,38 +1397,6 @@ class SectorBasedRadialBinner(nn.Module):
 - O(E) memory complexity (not O(V²))
 - Precomputed at initialization (O(1) lookup during forward)
 
-#### 6. Gradient Checkpointing
-
-**Problem:** Large R values cause OOM errors due to activation memory during backpropagation.
-
-**Solution:** Optional gradient checkpointing trades compute for memory:
-
-```python
-class TQFANN(nn.Module):
-    def __init__(self, ..., use_gradient_checkpointing: bool = False):
-        self.use_gradient_checkpointing = use_gradient_checkpointing
-
-    def forward(self, x):
-        if self.use_gradient_checkpointing and self.training:
-            from torch.utils.checkpoint import checkpoint
-            outer_feats = checkpoint(self.radial_binner_outer, boundary_feats, ...)
-            inner_feats = checkpoint(self.radial_binner_inner, boundary_feats, ...)
-        else:
-            outer_feats = self.radial_binner_outer(boundary_feats, ...)
-            inner_feats = self.radial_binner_inner(boundary_feats, ...)
-```
-
-**Memory vs Compute Trade-off**:
-
-| Mode | Memory | Compute | Max R (8GB GPU) |
-|------|--------|---------|-----------------|
-| Standard | 100% | 100% | R ~ 12 |
-| Checkpointing | ~40% | ~130% | R ~ 25 |
-
-**When to Use:** Enable via `--tqf-use-gradient-checkpointing` for R >= 15 on memory-constrained GPUs.
-
----
-
 **ℤ₆ Rotation (Cyclic group of order 6):**
 ```python
 def apply_Z6_rotation(features, k):
@@ -1934,12 +1891,7 @@ losses = [cross_entropy(logits[i], labels[i]) for i in range(len(labels))]
 
 ### Debugging Tips
 
-1. **Enable verification features:**
-```bash
-python src/main.py --tqf-verify-geometry --tqf-verify-duality-interval 5
-```
-
-2. **Use small datasets for testing:**
+1. **Use small datasets for testing:**
 ```bash
 python src/main.py --num-train 100 --num-val 50 --num-epochs 3
 ```
@@ -1980,8 +1932,8 @@ A: All code works on CPU. Add `--device cpu` to CLI or remove CUDA checks in cod
 
 **`QED`**
 
-**Last Updated:** February 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** February 27, 2026<br>
+**Version:** 1.1.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

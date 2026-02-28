@@ -8,7 +8,7 @@ enable consistent validation across all CLI inputs.
 Key Features:
 - Comprehensive Argument Parser: 40+ CLI arguments for hyperparameters, architecture, datasets
 - Model Selection: Support for 'all' keyword or individual model names (FC-MLP, CNN-L5, ResNet-18-Scaled, TQF-ANN)
-- TQF Configuration: Lattice radius, hidden dimensions, symmetry level, fractal parameters
+- TQF Configuration: Lattice radius, hidden dimensions, fractal parameters
 - Training Hyperparameters: Learning rate, batch size, epochs, weight decay, label smoothing
 - Dataset Configuration: Configurable train/val/test split sizes for MNIST
 - Validation: Range checking for all numeric parameters with clear error messages
@@ -64,7 +64,6 @@ from config import (
     MAX_EPOCHS_DEFAULT,
     NUM_SEEDS_DEFAULT,
     SEED_DEFAULT,
-    TQF_SYMMETRY_LEVEL_DEFAULT,
     TQF_TRUNCATION_R_DEFAULT,
     LEARNING_RATE_DEFAULT,
     WEIGHT_DECAY_DEFAULT,
@@ -76,12 +75,10 @@ from config import (
     NUM_VAL_DEFAULT,
     NUM_TEST_ROT_DEFAULT,
     NUM_TEST_UNROT_DEFAULT,
-    TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-    TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
     Z6_DATA_AUGMENTATION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
     TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
@@ -90,7 +87,7 @@ from config import (
     TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
-    TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT,
+    NON_ROTATION_DATA_AUGMENTATION_DEFAULT,
     TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_DEFAULT,
     TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT,
     # Numeric range constants (single source of truth in config.py)
@@ -111,12 +108,7 @@ from config import (
     TQF_R_MIN, TQF_R_MAX,
     TQF_HIDDEN_DIM_MIN, TQF_HIDDEN_DIM_MAX,
     TQF_ORBIT_MIXING_TEMP_MIN, TQF_ORBIT_MIXING_TEMP_MAX,
-    TQF_GEOMETRY_REG_WEIGHT_MIN, TQF_GEOMETRY_REG_WEIGHT_MAX,
-    TQF_INVERSION_LOSS_WEIGHT_MIN, TQF_INVERSION_LOSS_WEIGHT_MAX,
-    TQF_Z6_EQUIVARIANCE_WEIGHT_MIN, TQF_Z6_EQUIVARIANCE_WEIGHT_MAX,
-    TQF_D6_EQUIVARIANCE_WEIGHT_MIN, TQF_D6_EQUIVARIANCE_WEIGHT_MAX,
     TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN, TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX,
-    TQF_VERIFY_DUALITY_INTERVAL_MIN, TQF_VERIFY_DUALITY_INTERVAL_MAX,
     TQF_Z6_ORBIT_MIXING_TOP_K_MIN, TQF_Z6_ORBIT_MIXING_TOP_K_MAX,
     TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN, TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX,
     TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN, TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX,
@@ -254,6 +246,16 @@ Result Output:
              f'Ignored when --no-save-results is set.'
     )
 
+    output_group.add_argument(
+        '--experiment-label',
+        type=str,
+        default=None,
+        help='Human-readable label stored in the JSON config section (e.g. '
+             '"02 Z6 orbit mixing T=0.5"). Used by experiment scripts to '
+             'identify what each results file represents. Has no effect on '
+             'training behaviour.'
+    )
+
     # =========================================================================
     # REPRODUCIBILITY SETTINGS
     # =========================================================================
@@ -372,7 +374,7 @@ Result Output:
     # =========================================================================
     data_group = parser.add_argument_group(
         'Dataset Configuration',
-        'Training, validation, and test set sizes'
+        'Training, validation, and test set sizes; training augmentation (all models)'
     )
 
     data_group.add_argument(
@@ -411,6 +413,29 @@ Result Output:
              f'Baseline metric for standard accuracy.'
     )
 
+    data_group.add_argument(
+        '--z6-data-augmentation',
+        action='store_true',
+        dest='z6_data_augmentation',
+        default=Z6_DATA_AUGMENTATION_DEFAULT,
+        help='Enable Z6-aligned rotation augmentation during training for all models. '
+             'When enabled, random rotations at 60-degree intervals (with +/-15 deg jitter) '
+             'are applied to training images to teach rotation robustness. '
+             'Note: conflicts with orbit mixing features; avoid using both together. '
+             'Default: augmentation disabled (False).'
+    )
+
+    data_group.add_argument(
+        '--non-rotation-data-augmentation',
+        action='store_true',
+        dest='non_rotation_data_augmentation',
+        default=NON_ROTATION_DATA_AUGMENTATION_DEFAULT,
+        help='Enable non-rotation training augmentation (random crop + brightness/contrast jitter) '
+             'for all models. Applies random 28×28 crop with 2-pixel padding and ±10%% '
+             'brightness/contrast jitter. Composable with --z6-data-augmentation. '
+             'Default: disabled (False).'
+    )
+
     # =========================================================================
     # TQF CORE ARCHITECTURE PARAMETERS
     # =========================================================================
@@ -439,37 +464,123 @@ Result Output:
              f'Manually set to override auto-tuning.'
     )
 
-    tqf_arch_group.add_argument(
-        '--tqf-symmetry-level',
+    # =========================================================================
+    # TQF Z6 ORBIT MIXING (Evaluation-Time) — PRIMARY FEATURE
+    # =========================================================================
+    # Z6 orbit mixing averages predictions over 6 input-space rotations at
+    # evaluation time. All disabled by default — evaluation uses single pass.
+    tqf_z6_orbit_group = parser.add_argument_group(
+        'TQF Z6 Orbit Mixing (TQF-ANN only, evaluation-time)',
+        'Primary evaluation-time ensemble: average predictions over 6 Z6 input-space rotations '
+        '(0, 60, 120, 180, 240, 300 deg). Cost: ~6x inference. Disabled by default.'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-use-z6-orbit-mixing',
+        action='store_true',
+        default=False,
+        help='Enable Z6 orbit mixing at evaluation time. '
+             'Averages predictions over 6 input-space rotations (0, 60, ..., 300 deg). '
+             'Cost: ~6x inference time. Default: False.'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-temp-rotation',
+        type=float,
+        default=TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+        help='Temperature for Z6 rotation averaging. '
+             'Lower = sharper (most confident rotation dominates). '
+             f'Range: [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]. '
+             f'Default: {TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT}.'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-confidence-mode',
         type=str,
-        default=TQF_SYMMETRY_LEVEL_DEFAULT,
-        choices=['none', 'Z6', 'D6', 'T24'],
-        help=f'Symmetry group for equivariant orbit pooling. '
-             f'Choices: none (fastest, no pooling), Z6 (6x cost, rotation invariance), '
-             f'D6 (12x cost, +reflections), T24 (24x cost, full symmetry). '
-             f'Default: {TQF_SYMMETRY_LEVEL_DEFAULT}.'
+        default=TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
+        choices=['max_logit', 'margin'],
+        help='Confidence signal used to weight each Z6 rotation variant. '
+             'max_logit (default): maximum logit value. '
+             'margin: top-1 minus top-2 logit (decision margin). '
+             f'Default: {TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT}.'
     )
 
-    tqf_arch_group.add_argument(
-        '--z6-data-augmentation',
-        action='store_true',
-        dest='z6_data_augmentation',
-        default=Z6_DATA_AUGMENTATION_DEFAULT,
-        help='Enable Z6-aligned rotation augmentation during training for all models. '
-             'When enabled, random rotations at 60-degree intervals (with +/-15 deg jitter) '
-             'are applied to training images to teach rotation robustness. '
-             'Note: conflicts with orbit mixing features; avoid using both together. '
-             'Default: augmentation disabled (False).'
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-aggregation-mode',
+        type=str,
+        default=TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
+        choices=['logits', 'probs', 'log_probs'],
+        help='Space in which weighted averaging is performed for Z6 orbit mixing. '
+             'logits (default): raw logit space. '
+             'probs: probability space (softmax then average). '
+             'log_probs: log-probability space (geometric mean / product-of-experts). '
+             f'Default: {TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT}.'
     )
 
-    tqf_arch_group.add_argument(
-        '--tqf-z6-non-rotation-augmentation',
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-top-k',
+        type=int,
+        default=TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
+        help=f'If set, keep only the top-K most confident Z6 rotation variants before averaging. '
+             f'None (default) uses all 6. '
+             f'Range: [{TQF_Z6_ORBIT_MIXING_TOP_K_MIN}, {TQF_Z6_ORBIT_MIXING_TOP_K_MAX}]. '
+             f'Requires --tqf-use-z6-orbit-mixing.'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-adaptive-temp',
         action='store_true',
-        dest='tqf_z6_non_rotation_augmentation',
-        default=TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT,
-        help='Enable non-rotation training augmentation (random crop + brightness/contrast jitter). '
-             'Targets the unrotated accuracy gap vs CNN/ResNet without interfering with Z6 structure. '
-             'Composable with --z6-data-augmentation. Default: disabled (False).'
+        dest='tqf_z6_orbit_mixing_adaptive_temp',
+        default=TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
+        help='Enable per-sample adaptive temperature for Z6 orbit mixing. '
+             'Scales temperature up when all rotation variants have similar confidence '
+             '(high entropy), allowing smoother averaging in ambiguous cases. '
+             'Default: disabled (False).'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-adaptive-temp-alpha',
+        type=float,
+        default=TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
+        help=f'Sensitivity of adaptive temperature scaling. '
+             f'0 = no adaptation; higher values strengthen entropy scaling. '
+             f'Range: [{TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN}, {TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX}]. '
+             f'Default: {TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT}. '
+             f'Only used when --tqf-z6-orbit-mixing-adaptive-temp is set.'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-rotation-mode',
+        type=str,
+        default=TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
+        choices=['bilinear', 'bicubic'],
+        help='Interpolation mode used when rotating images for Z6 orbit mixing. '
+             'bilinear (default): faster, slightly smoother edges. '
+             'bicubic: higher-order interpolation, may reduce aliasing artefacts. '
+             f'Default: {TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT}.'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-rotation-padding-mode',
+        type=str,
+        default=TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
+        choices=['zeros', 'border'],
+        help='Padding mode for rotated image corners. '
+             'zeros (default): black (zero) fill for out-of-bounds regions. '
+             'border: replicate edge pixels; avoids zero-corner artefacts. '
+             f'Default: {TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT}.'
+    )
+
+    tqf_z6_orbit_group.add_argument(
+        '--tqf-z6-orbit-mixing-rotation-pad',
+        type=int,
+        default=TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
+        help=f'Pixels to pad before rotating then crop back to 28×28. '
+             f'0 (default) = no padding (standard rotation). '
+             f'>0 = reflect-pad to (28+2*pad)×(28+2*pad), rotate in padded space, '
+             f'then center-crop back to 28×28. Eliminates zero corner artefacts. '
+             f'Range: [{TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN}, {TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX}]. '
+             f'Suggested value: 4.'
     )
 
     # =========================================================================
@@ -478,32 +589,6 @@ Result Output:
     # Equivariance: f(g·x) = g·f(x) - features transform correctly with input
     # These losses are DISABLED by default. Providing a weight value enables
     # the corresponding loss feature.
-    tqf_equiv_group = parser.add_argument_group(
-        'TQF Equivariance Losses (TQF-ANN only)',
-        'Z6/D6 equivariance losses enforce f(transform(x)) = transform(f(x)). '
-        'Disabled by default. Provide a weight value to enable.'
-    )
-
-    tqf_equiv_group.add_argument(
-        '--tqf-z6-equivariance-weight',
-        type=float,
-        default=None,
-        help=f'Enable and set weight for Z6 rotation equivariance loss. '
-             f'Enforces f(rotate(x)) = rotate(f(x)) for 60-degree rotations. '
-             f'Disabled by default. Provide a value in range '
-             f'[{TQF_Z6_EQUIVARIANCE_WEIGHT_MIN}, {TQF_Z6_EQUIVARIANCE_WEIGHT_MAX}] to enable.'
-    )
-
-    tqf_equiv_group.add_argument(
-        '--tqf-d6-equivariance-weight',
-        type=float,
-        default=None,
-        help=f'Enable and set weight for D6 reflection equivariance loss. '
-             f'Enforces f(reflect(x)) = reflect(f(x)) for reflections. '
-             f'Disabled by default. Provide a value in range '
-             f'[{TQF_D6_EQUIVARIANCE_WEIGHT_MIN}, {TQF_D6_EQUIVARIANCE_WEIGHT_MAX}] to enable.'
-    )
-
     # =========================================================================
     # TQF INVARIANCE LOSSES
     # =========================================================================
@@ -551,60 +636,19 @@ Result Output:
     )
 
     # =========================================================================
-    # TQF DUALITY LOSSES
+    # TQF D6/T24 ORBIT MIXING (Evaluation-Time) — SECONDARY FEATURES
     # =========================================================================
-    # Duality: circle inversion bijection consistency (primal <-> dual lattice)
-    # This loss is DISABLED by default. Providing a weight value enables it.
-    tqf_duality_group = parser.add_argument_group(
-        'TQF Duality Losses (TQF-ANN only)',
-        'Circle inversion duality consistency loss (opt-in). '
-        'Disabled by default. Provide a weight value to enable.'
+    # D6 adds feature-space reflections on top of Z6 rotations.
+    # T24 further adds inner/outer zone-swap variants.
+    # Both disabled by default; each requires --tqf-use-z6-orbit-mixing or
+    # produces a superset evaluation independently.
+    tqf_d6t24_orbit_group = parser.add_argument_group(
+        'TQF D6/T24 Orbit Mixing (TQF-ANN only, evaluation-time)',
+        'Secondary evaluation-time ensembles extending Z6 with reflections (D6) and '
+        'zone-swap variants (T24). D6: +6 lightweight head passes. T24: +18. Disabled by default.'
     )
 
-    tqf_duality_group.add_argument(
-        '--tqf-inversion-loss-weight',
-        type=float,
-        default=None,
-        help=f'Enable and set weight for circle inversion duality consistency loss. '
-             f'Penalizes inconsistency between primal and dual lattice representations. '
-             f'Disabled by default. Provide a value in range '
-             f'[{TQF_INVERSION_LOSS_WEIGHT_MIN}, {TQF_INVERSION_LOSS_WEIGHT_MAX}] to enable.'
-    )
-
-    tqf_duality_group.add_argument(
-        '--tqf-verify-duality-interval',
-        type=int,
-        default=TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-        help=f'Frequency (in epochs) for self-duality verification. '
-             f'Range: [{TQF_VERIFY_DUALITY_INTERVAL_MIN}, num_epochs]. '
-             f'Default: {TQF_VERIFY_DUALITY_INTERVAL_DEFAULT}. '
-             f'Verifies circle inversion preserves mathematical duality.'
-    )
-
-    # =========================================================================
-    # TQF ORBIT MIXING (Evaluation-Time)
-    # =========================================================================
-    # Orbit mixing averages predictions across symmetry-transformed inputs/features
-    # at evaluation time. Z6 uses input-space rotation (6 full forward passes),
-    # D6 adds feature-space reflections, T24 adds zone-swap (inner <-> outer).
-    # All disabled by default — evaluation uses single forward pass.
-    tqf_orbit_group = parser.add_argument_group(
-        'TQF Orbit Mixing (TQF-ANN only, evaluation-time)',
-        'Evaluation-time prediction averaging over symmetry orbits. '
-        'Z6: 6 input-space rotations. D6: +6 feature-space reflections. '
-        'T24: +12 zone-swap variants. All disabled by default.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-use-z6-orbit-mixing',
-        action='store_true',
-        default=False,
-        help='Enable Z6 orbit mixing at evaluation time. '
-             'Averages predictions over 6 input-space rotations (0, 60, ..., 300 deg). '
-             'Cost: ~6x inference time. Default: False.'
-    )
-
-    tqf_orbit_group.add_argument(
+    tqf_d6t24_orbit_group.add_argument(
         '--tqf-use-d6-orbit-mixing',
         action='store_true',
         default=False,
@@ -613,7 +657,7 @@ Result Output:
              'Cost: ~6x full forward + 6 lightweight head passes. Default: False.'
     )
 
-    tqf_orbit_group.add_argument(
+    tqf_d6t24_orbit_group.add_argument(
         '--tqf-use-t24-orbit-mixing',
         action='store_true',
         default=False,
@@ -622,167 +666,24 @@ Result Output:
              'Cost: ~6x full forward + 18 lightweight head passes. Default: False.'
     )
 
-    tqf_orbit_group.add_argument(
-        '--tqf-orbit-mixing-temp-rotation',
+    tqf_d6t24_orbit_group.add_argument(
+        '--tqf-d6-orbit-mixing-temp-reflection',
         type=float,
-        default=TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-        help='Temperature for Z6 rotation averaging. '
-             'Lower = sharper (most confident rotation dominates). '
-             f'Range: [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]. '
-             f'Default: {TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT}.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-orbit-mixing-temp-reflection',
-        type=float,
-        default=TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+        default=TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
         help='Temperature for D6 reflection averaging. '
              'Softer than rotation because some digits are asymmetric under reflection. '
              f'Range: [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]. '
-             f'Default: {TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT}.'
+             f'Default: {TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT}.'
     )
 
-    tqf_orbit_group.add_argument(
-        '--tqf-orbit-mixing-temp-inversion',
+    tqf_d6t24_orbit_group.add_argument(
+        '--tqf-t24-orbit-mixing-temp-inversion',
         type=float,
-        default=TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
-        help='Temperature for T24 inversion (zone-swap) averaging. '
+        default=TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+        help='Temperature for T24 zone-swap averaging. '
              'Softest because circle inversion is the most abstract symmetry. '
              f'Range: [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]. '
-             f'Default: {TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT}.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-confidence-mode',
-        type=str,
-        default=TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
-        choices=['max_logit', 'margin'],
-        help='Confidence signal used to weight each Z6 rotation variant. '
-             'max_logit (default): maximum logit value. '
-             'margin: top-1 minus top-2 logit (decision margin). '
-             f'Default: {TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT}.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-aggregation-mode',
-        type=str,
-        default=TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
-        choices=['logits', 'probs', 'log_probs'],
-        help='Space in which weighted averaging is performed for Z6 orbit mixing. '
-             'logits (default): raw logit space. '
-             'probs: probability space (softmax then average). '
-             'log_probs: log-probability space (geometric mean / product-of-experts). '
-             f'Default: {TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT}.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-top-k',
-        type=int,
-        default=TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
-        help=f'If set, keep only the top-K most confident Z6 rotation variants before averaging. '
-             f'None (default) uses all 6. '
-             f'Range: [{TQF_Z6_ORBIT_MIXING_TOP_K_MIN}, {TQF_Z6_ORBIT_MIXING_TOP_K_MAX}]. '
-             f'Requires --tqf-use-z6-orbit-mixing.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-adaptive-temp',
-        action='store_true',
-        dest='tqf_z6_orbit_mixing_adaptive_temp',
-        default=TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_DEFAULT,
-        help='Enable per-sample adaptive temperature for Z6 orbit mixing. '
-             'Scales temperature up when all rotation variants have similar confidence '
-             '(high entropy), allowing smoother averaging in ambiguous cases. '
-             'Default: disabled (False).'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-adaptive-temp-alpha',
-        type=float,
-        default=TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
-        help=f'Sensitivity of adaptive temperature scaling. '
-             f'0 = no adaptation; higher values strengthen entropy scaling. '
-             f'Range: [{TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MIN}, {TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_MAX}]. '
-             f'Default: {TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT}. '
-             f'Only used when --tqf-z6-orbit-mixing-adaptive-temp is set.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-rotation-mode',
-        type=str,
-        default=TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
-        choices=['bilinear', 'bicubic'],
-        help='Interpolation mode used when rotating images for Z6 orbit mixing. '
-             'bilinear (default): faster, slightly smoother edges. '
-             'bicubic: higher-order interpolation, may reduce aliasing artefacts. '
-             f'Default: {TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT}.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-rotation-padding-mode',
-        type=str,
-        default=TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
-        choices=['zeros', 'border'],
-        help='Padding mode for rotated image corners. '
-             'zeros (default): black (zero) fill for out-of-bounds regions. '
-             'border: replicate edge pixels; avoids zero-corner artefacts. '
-             f'Default: {TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT}.'
-    )
-
-    tqf_orbit_group.add_argument(
-        '--tqf-z6-orbit-mixing-rotation-pad',
-        type=int,
-        default=TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
-        help=f'Pixels to pad before rotating then crop back to 28×28. '
-             f'0 (default) = no padding (standard rotation). '
-             f'>0 = reflect-pad to (28+2*pad)×(28+2*pad), rotate in padded space, '
-             f'then center-crop back to 28×28. Eliminates zero corner artefacts. '
-             f'Range: [{TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN}, {TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX}]. '
-             f'Suggested value: 4.'
-    )
-
-    # =========================================================================
-    # TQF GEOMETRY REGULARIZATION
-    # =========================================================================
-    tqf_geom_group = parser.add_argument_group(
-        'TQF Geometry Regularization (TQF-ANN only)',
-        'Geometry verification and regularization settings'
-    )
-
-    tqf_geom_group.add_argument(
-        '--tqf-verify-geometry',
-        action='store_true',
-        default=False,
-        help='Enable geometry verification and regularization. '
-             'Adds self-similarity and box-counting loss terms.'
-    )
-
-    tqf_geom_group.add_argument(
-        '--tqf-geometry-reg-weight',
-        type=float,
-        default=TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-        help=f'Overall geometry regularization weight. '
-             f'Range: [{TQF_GEOMETRY_REG_WEIGHT_MIN}, {TQF_GEOMETRY_REG_WEIGHT_MAX}]. '
-             f'Default: {TQF_GEOMETRY_REG_WEIGHT_DEFAULT} (disabled). '
-             f'Recommended: 0.001-0.01 when enabled.'
-    )
-
-    # =========================================================================
-    # TQF MEMORY OPTIMIZATION PARAMETERS
-    # =========================================================================
-    tqf_mem_group = parser.add_argument_group(
-        'TQF Memory Optimization (TQF-ANN only)',
-        'Settings for reducing GPU memory usage with large R values'
-    )
-
-    tqf_mem_group.add_argument(
-        '--tqf-use-gradient-checkpointing',
-        action='store_true',
-        default=False,
-        help='Enable gradient checkpointing to reduce memory usage during training. '
-             'Trades more compute time for less activation memory. '
-             'Recommended for large R values (R >= 15) on memory-constrained GPUs. '
-             'Default: False.'
+             f'Default: {TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT}.'
     )
 
     # Parse arguments
@@ -945,42 +846,7 @@ def _validate_args(args: argparse.Namespace) -> None:
                 f"[{TQF_HIDDEN_DIM_MIN}, {TQF_HIDDEN_DIM_MAX}]"
             )
 
-    if args.tqf_symmetry_level not in ['Z6', 'D6', 'T24', 'none']:
-        errors.append(
-            f"--tqf-symmetry-level={args.tqf_symmetry_level} invalid. "
-            f"Must be one of: Z6, D6, T24, none"
-        )
-
-    # TQF loss weights
-    if not (TQF_GEOMETRY_REG_WEIGHT_MIN <= args.tqf_geometry_reg_weight <= TQF_GEOMETRY_REG_WEIGHT_MAX):
-        errors.append(
-            f"--tqf-geometry-reg-weight={args.tqf_geometry_reg_weight} outside valid range "
-            f"[{TQF_GEOMETRY_REG_WEIGHT_MIN}, {TQF_GEOMETRY_REG_WEIGHT_MAX}]"
-        )
-
     # TQF loss weights - only validate when provided (not None)
-    # These weights enable the corresponding loss when provided with a value
-    if args.tqf_inversion_loss_weight is not None:
-        if not (TQF_INVERSION_LOSS_WEIGHT_MIN <= args.tqf_inversion_loss_weight <= TQF_INVERSION_LOSS_WEIGHT_MAX):
-            errors.append(
-                f"--tqf-inversion-loss-weight={args.tqf_inversion_loss_weight} outside valid range "
-                f"[{TQF_INVERSION_LOSS_WEIGHT_MIN}, {TQF_INVERSION_LOSS_WEIGHT_MAX}]"
-            )
-
-    if args.tqf_z6_equivariance_weight is not None:
-        if not (TQF_Z6_EQUIVARIANCE_WEIGHT_MIN <= args.tqf_z6_equivariance_weight <= TQF_Z6_EQUIVARIANCE_WEIGHT_MAX):
-            errors.append(
-                f"--tqf-z6-equivariance-weight={args.tqf_z6_equivariance_weight} outside valid range "
-                f"[{TQF_Z6_EQUIVARIANCE_WEIGHT_MIN}, {TQF_Z6_EQUIVARIANCE_WEIGHT_MAX}]"
-            )
-
-    if args.tqf_d6_equivariance_weight is not None:
-        if not (TQF_D6_EQUIVARIANCE_WEIGHT_MIN <= args.tqf_d6_equivariance_weight <= TQF_D6_EQUIVARIANCE_WEIGHT_MAX):
-            errors.append(
-                f"--tqf-d6-equivariance-weight={args.tqf_d6_equivariance_weight} outside valid range "
-                f"[{TQF_D6_EQUIVARIANCE_WEIGHT_MIN}, {TQF_D6_EQUIVARIANCE_WEIGHT_MAX}]"
-            )
-
     if args.tqf_t24_orbit_invariance_weight is not None:
         if not (TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN <= args.tqf_t24_orbit_invariance_weight <= TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX):
             errors.append(
@@ -1003,9 +869,9 @@ def _validate_args(args: argparse.Namespace) -> None:
 
     # TQF orbit mixing temperatures
     for temp_name, temp_val in [
-        ('--tqf-orbit-mixing-temp-rotation', args.tqf_orbit_mixing_temp_rotation),
-        ('--tqf-orbit-mixing-temp-reflection', args.tqf_orbit_mixing_temp_reflection),
-        ('--tqf-orbit-mixing-temp-inversion', args.tqf_orbit_mixing_temp_inversion),
+        ('--tqf-z6-orbit-mixing-temp-rotation', args.tqf_z6_orbit_mixing_temp_rotation),
+        ('--tqf-d6-orbit-mixing-temp-reflection', args.tqf_d6_orbit_mixing_temp_reflection),
+        ('--tqf-t24-orbit-mixing-temp-inversion', args.tqf_t24_orbit_mixing_temp_inversion),
     ]:
         if not (TQF_ORBIT_MIXING_TEMP_MIN <= temp_val <= TQF_ORBIT_MIXING_TEMP_MAX):
             errors.append(
@@ -1037,50 +903,7 @@ def _validate_args(args: argparse.Namespace) -> None:
             f"[{TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MIN}, {TQF_Z6_ORBIT_MIXING_ROTATION_PAD_MAX}]"
         )
 
-    # Orbit mixing + orbit pooling conflict warning
-    any_orbit_mixing: bool = (
-        args.tqf_use_z6_orbit_mixing
-        or args.tqf_use_d6_orbit_mixing
-        or args.tqf_use_t24_orbit_mixing
-    )
-    if any_orbit_mixing and args.tqf_symmetry_level != 'none':
-        print(
-            f"WARNING: Both orbit mixing and orbit pooling "
-            f"(--tqf-symmetry-level={args.tqf_symmetry_level}) are enabled. "
-            f"These mechanisms may conflict — orbit pooling destroys rotation-specific "
-            f"information that orbit mixing needs.",
-            file=sys.stdout
-        )
-
-    # Orbit mixing + equivariance loss conflict warning
-    any_equiv_loss: bool = (
-        args.tqf_z6_equivariance_weight is not None
-        or args.tqf_d6_equivariance_weight is not None
-    )
-    if any_orbit_mixing and any_equiv_loss:
-        print(
-            "WARNING: Both orbit mixing and equivariance loss are enabled. "
-            "These features conflict — equivariance loss constrains training-time "
-            "representations that orbit mixing needs to vary at evaluation time. "
-            "Experimental results show this combination reduces rotation accuracy "
-            "(62.83% vs 67.42% with orbit mixing alone). "
-            "Recommendation: use orbit mixing OR equivariance loss, not both.",
-            file=sys.stdout
-        )
-
-    # TQF verification - validate minimum only, auto-correct maximum
-    if args.tqf_verify_duality_interval < TQF_VERIFY_DUALITY_INTERVAL_MIN:
-        errors.append(
-            f"--tqf-verify-duality-interval={args.tqf_verify_duality_interval} must be >= "
-            f"{TQF_VERIFY_DUALITY_INTERVAL_MIN}"
-        )
-
     # Cross-parameter checks with auto-correction
-    if args.tqf_verify_duality_interval > args.num_epochs:
-        original_verify_interval: int = args.tqf_verify_duality_interval
-        args.tqf_verify_duality_interval = args.num_epochs
-        print(f"WARNING: --tqf-verify-duality-interval={original_verify_interval} > --num-epochs={args.num_epochs}. "
-              f"Overriding tqf-verify-duality-interval to {args.tqf_verify_duality_interval}.", file=sys.stdout)
     if args.patience >= args.num_epochs:
         original_patience: int = args.patience
         args.patience = args.num_epochs
@@ -1138,4 +961,3 @@ if __name__ == "__main__":
     args = parse_args()
     print("Argument parsing successful!")
     print(f"Models: {args.models}")
-    print(f"TQF Symmetry Level: {args.tqf_symmetry_level}")

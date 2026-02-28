@@ -6,6 +6,28 @@ All notable changes to these TQF-NN benchmark tools will be documented in this f
 
 ---
 
+## [1.1.1] - 2026-02-27
+
+### Added
+- `--experiment-label` CLI argument — optional human-readable label stored in the results JSON `config` section to identify what each run represents (e.g. `"02 Z6 orbit mixing T=0.5"`). Has no effect on training.
+- Experiment config section in results JSON — every `data/output/results_*.json` file now records `cli_command` (the exact `sys.argv` string to reproduce the run), `cli_args` (parsed list), `git_commit` (HEAD hash at run time), and `experiment_label` (if provided). Written once on the first seed save.
+
+### Changed
+- Renamed all orbit-mixing temperature flags and constants for precision: `--tqf-orbit-mixing-temp-rotation` to `--tqf-z6-orbit-mixing-temp-rotation`, `--tqf-z6-orbit-mixing-temp-reflection` to `--tqf-d6-orbit-mixing-temp-reflection`, and `--tqf-z6-orbit-mixing-temp-inversion` to `--tqf-t24-orbit-mixing-temp-inversion`.
+- Renamed `--tqf-z6-non-rotation-augmentation` to `--non-rotation-data-augmentation`. The `tqf-z6-` prefix was incorrect — the augmentation applies to all models via the shared training DataLoader, not TQF-ANN only. The flag and its config constant are now named consistently with `--z6-data-augmentation`.
+- Reorganized/reordered the CLI parameter usage `--help` message.
+
+### Removed
+- `--tqf-inversion-loss-weight` CLI parameter (obsolete).
+- `--tqf-verify-duality-interval` CLI parameter (obsolete).
+- `--tqf-use-gradient-checkpointing` CLI parameter (obsolete).
+- `--tqf-symmetry-level` CLI parameter (obsolete).
+- `--tqf-z6-equivariance-weight` CLI parameter (obsolete).
+- `--tqf-d6-equivariance-weight` CLI parameter (obsolete).
+- `--tqf-verify-geometry` CLI parameter (obsolete).
+- `--tqf-geometry-reg-weight` CLI parameter (obsolete).
+
+
 ## [1.1.0] - 2026-02-26
 
 ### Added
@@ -24,7 +46,7 @@ All new CLI flags require `--tqf-use-z6-orbit-mixing` and default to the existin
 
 **Training-Time Augmentation and Loss Additions (opt-in)**
 
-- `--tqf-z6-non-rotation-augmentation` — lightweight non-rotation training augmentation: random pad-and-crop (±2 px) plus ColorJitter (brightness/contrast ±10%). Independent of and composable with `--z6-data-augmentation`. Implemented in `NonRotationAugmentation` class in `prepare_datasets.py`.
+- `--non-rotation-data-augmentation` — lightweight non-rotation training augmentation: random pad-and-crop (±2 px) plus ColorJitter (brightness/contrast ±10%). Independent of and composable with `--z6-data-augmentation`. Implemented in `NonRotationAugmentation` class in `prepare_datasets.py`.
 - `--tqf-z6-orbit-consistency-weight` — ℤ₆ orbit consistency self-distillation loss (disabled by default). Penalises rotation-inconsistent predictions via KL divergence from a stop-gradient ensemble soft target. Added to total loss: `total_loss = ce_loss + weight × consistency_loss`. Range [0.0001, 1.0].
 - `--tqf-z6-orbit-consistency-rotations` — number of extra Z6 rotation passes per batch for the consistency loss (range [1, 5]; default: 2). Each extra pass requires one additional full forward pass.
 

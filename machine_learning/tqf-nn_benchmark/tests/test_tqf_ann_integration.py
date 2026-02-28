@@ -101,7 +101,6 @@ class TestTQFANNIntegration(unittest.TestCase):
             hidden_dim=32,
             num_classes=10,
             R=5.0,  # Small for fast tests
-            symmetry_level='Z6',
         )
 
     def test_model_has_explicit_vertices(self) -> None:
@@ -292,36 +291,15 @@ class TestTQFANNIntegration(unittest.TestCase):
 class TestTQFANNSymmetryLevels(unittest.TestCase):
     """Test TQF-ANN with different symmetry levels."""
 
-    def test_symmetry_none(self) -> None:
-        """Test TQF-ANN with no symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='none')
+    def test_symmetry_default(self) -> None:
+        """Test TQF-ANN with default settings."""
+        model = TQFANN(R=4.0, hidden_dim=16)
         x = torch.randn(2, 784)
         logits = model(x)
         self.assertEqual(logits.shape, (2, 10))
 
-    def test_symmetry_z6(self) -> None:
-        """Test TQF-ANN with Z6 rotational symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='Z6')
-        x = torch.randn(2, 784)
-        logits = model(x)
-        self.assertEqual(logits.shape, (2, 10))
-
-        # Verify Z6 symmetry properties
+        # Verify 6 angular sectors
         self.assertEqual(len(model.sector_partitions), 6)
-
-    def test_symmetry_d6(self) -> None:
-        """Test TQF-ANN with D6 dihedral symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='D6')
-        x = torch.randn(2, 784)
-        logits = model(x)
-        self.assertEqual(logits.shape, (2, 10))
-
-    def test_symmetry_t24(self) -> None:
-        """Test TQF-ANN with T24 full symmetry."""
-        model = TQFANN(R=4.0, hidden_dim=16, symmetry_level='T24')
-        x = torch.randn(2, 784)
-        logits = model(x)
-        self.assertEqual(logits.shape, (2, 10))
 
 
 class TestTQFANNScalability(unittest.TestCase):
@@ -444,13 +422,13 @@ class TestT24SymmetryGroup(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Create TQF-ANN models once for all tests in this class."""
         cls.model_z6 = TQFANN(
-            hidden_dim=32, R=5.0, symmetry_level='Z6',
+            hidden_dim=32, R=5.0,
         )
         cls.model_d6 = TQFANN(
-            hidden_dim=32, R=5.0, symmetry_level='D6',
+            hidden_dim=32, R=5.0,
         )
         cls.model_t24 = TQFANN(
-            hidden_dim=32, R=5.0, symmetry_level='T24',
+            hidden_dim=32, R=5.0,
         )
 
     def test_t24_verification_method_exists(self) -> None:
@@ -581,7 +559,6 @@ class TestSymmetryOperationsIntegration(unittest.TestCase):
             hidden_dim=32,
             num_classes=10,
             R=5.0,
-            symmetry_level='D6',
         )
 
     def test_feature_caching(self) -> None:

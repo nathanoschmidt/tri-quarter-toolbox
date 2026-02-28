@@ -140,8 +140,8 @@ import torch.nn.functional as F
 from typing import List, Tuple, Optional, Dict, Union, Callable
 
 from config import (
-    TQF_TRUNCATION_R_DEFAULT, TQF_RADIUS_R_FIXED, TQF_SYMMETRY_LEVEL_DEFAULT,
-    DROPOUT_DEFAULT, TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
+    TQF_TRUNCATION_R_DEFAULT, TQF_RADIUS_R_FIXED,
+    DROPOUT_DEFAULT,
 )
 
 from dual_metrics import (
@@ -152,13 +152,6 @@ from dual_metrics import (
     compute_angular_sector, eisenstein_to_cartesian
 )
 
-# Import symmetry operations for symmetry-level-aware orbit pooling
-from symmetry_ops import (
-    apply_z6_rotation_to_sectors,
-    apply_d6_operation_to_sectors,
-    generate_t24_group,
-    T24Operation
-)
 
 def compute_radial_layer_indices(
     vertices: List['ExplicitLatticeVertex'],
@@ -446,7 +439,7 @@ class T24EquivariantHybridBinner(nn.Module):
     """
 
     def __init__(
-        self, R: float, hidden_dim: int, symmetry_level: str, num_layers: int,
+        self, R: float, hidden_dim: int, num_layers: int,
         use_dual_metric: bool,
         outer_vertices: List[ExplicitLatticeVertex],
         inner_vertices: List[ExplicitLatticeVertex],
@@ -461,7 +454,6 @@ class T24EquivariantHybridBinner(nn.Module):
         Args:
             R: Truncation radius
             hidden_dim: Hidden dimension (constant for all layers)
-            symmetry_level: Symmetry group ('none', 'Z6', 'D6', 'T24')
             num_layers: Number of graph convolution layers
             use_dual_metric: Whether to use dual metric
             outer_vertices: List of outer zone vertices
@@ -475,7 +467,6 @@ class T24EquivariantHybridBinner(nn.Module):
 
         self.R: float = R
         self.hidden_dim: int = hidden_dim
-        self.symmetry_level: str = symmetry_level
         self.num_conv_layers: int = num_layers
         self.use_dual_metric: bool = use_dual_metric
         self.dropout: float = dropout
@@ -776,7 +767,6 @@ class BijectionDualOutputHead(nn.Module):
 
     def __init__(
         self, hidden_dim: int, num_classes: int = 10, r_sq: float = 1.0,
-        verify_geometry: bool = False,
         inversion_map: Optional[Dict[int, int]] = None,
         outer_vertices: Optional[List[ExplicitLatticeVertex]] = None,
         inner_vertices: Optional[List[ExplicitLatticeVertex]] = None,
@@ -790,7 +780,6 @@ class BijectionDualOutputHead(nn.Module):
             hidden_dim: Hidden dimension for features
             num_classes: Number of output classes
             r_sq: Inversion radius squared (fixed at 1.0)
-            verify_geometry: Whether to compute geometry loss
             inversion_map: Geometric bijection from outer to inner vertices
             outer_vertices: List of outer zone vertices (excluding boundary, for inversion)
             inner_vertices: List of inner zone vertices (excluding boundary, for inversion)
@@ -1362,19 +1351,12 @@ class TQFANN(nn.Module):
         Truncation radius for lattice (default: 10)
     r : float
         Inversion radius (fixed at 1.0 per TQF spec)
-    symmetry_level : str
-        Symmetry group to use: 'none', 'Z6', 'D6', or 'T24' (default: 'none')
     use_dual_output : bool
         Enable dual inner/outer output (default: True)
     use_dual_metric : bool
         Enable dual metric for radial binning (default: True)
     dropout : float
         Dropout probability (default: 0.2)
-    verify_geometry : bool
-        Enable geometry verification (default: False).
-    geometry_reg_weight : float
-        Weight for geometry regularization loss (default: 0.0; opt-in).
-        Controls how strongly geometric consistency is enforced during training.
 
     Verification:
     ------------
@@ -1394,27 +1376,17 @@ class TQFANN(nn.Module):
         num_classes: int = 10,
         R: float = TQF_TRUNCATION_R_DEFAULT,
         r: float = TQF_RADIUS_R_FIXED,
-        symmetry_level: str = TQF_SYMMETRY_LEVEL_DEFAULT,
         use_dual_output: bool = True,
         use_dual_metric: bool = True,
         dropout: float = DROPOUT_DEFAULT,
-        verify_geometry: bool = False,
-        geometry_reg_weight: float = TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-        use_gradient_checkpointing: bool = False
     ):
         """
         Initialize TQF-ANN model.
 
         Args:
             See class docstring for parameter descriptions.
-            use_gradient_checkpointing: If True, use gradient checkpointing to reduce
-                memory usage during training. Trades ~30% more compute for ~60% less
-                activation memory, enabling larger R values on memory-constrained GPUs.
         """
         super().__init__()
-
-        # Store gradient checkpointing flag
-        self.use_gradient_checkpointing: bool = use_gradient_checkpointing
 
         # Auto-tune hidden_dim if not provided
         if hidden_dim is None:
@@ -1427,17 +1399,9 @@ class TQFANN(nn.Module):
         self.num_classes: int = num_classes
         self.R: float = R
         self.r: float = r
-        # symmetry_level controls orbit pooling in apply_symmetry_orbit_pooling():
-        # - 'none': No orbit pooling (ablation baseline)
-        # - 'Z6': Average over 6 Z6 rotation orbits for rotation invariance
-        # - 'D6': Average over 12 D6 operations (rotations + reflections)
-        # - 'T24': Average over 24 T24 operations (full symmetry)
-        # The orbit pooling is applied in forward() after sector aggregation.
-        self.symmetry_level: str = symmetry_level
         self.use_dual_output: bool = use_dual_output
         self.use_dual_metric: bool = use_dual_metric
         self.dropout: float = dropout
-        self.verify_geometry: bool = verify_geometry
 
         # Build triangular lattice with explicit Eisenstein coordinates
         (
@@ -1505,7 +1469,7 @@ class TQFANN(nn.Module):
         # 3. Native T24 equivariance (Z6 rotations, D6 reflections, Z2 inversion)
         # 4. Shared conv weights across all sectors and zones
         self.radial_binner = T24EquivariantHybridBinner(
-            R=R, hidden_dim=hidden_dim, symmetry_level=symmetry_level,
+            R=R, hidden_dim=hidden_dim,
             num_layers=num_radial_layers, use_dual_metric=use_dual_metric,
             outer_vertices=self.outer_zone_vertices,
             inner_vertices=self.inner_zone_vertices,
@@ -1523,7 +1487,6 @@ class TQFANN(nn.Module):
         # Create dual output head with hidden_dim (constant for all modes)
         self.dual_output = BijectionDualOutputHead(
             hidden_dim=hidden_dim, num_classes=num_classes, r_sq=r * r,
-            verify_geometry=verify_geometry,
             inversion_map=self.inversion_map,
             outer_vertices=self.outer_vertices,
             inner_vertices=self.inner_vertices,
@@ -1533,14 +1496,6 @@ class TQFANN(nn.Module):
 
         # No projection needed - all dimensions are constant hidden_dim
         self.inner_to_outer_proj = None
-
-        # Pre-compute D6 source indices for orbit pooling (avoids recomputing every forward)
-        if self.symmetry_level in ['D6', 'T24']:
-            from symmetry_ops import _D6_PERMUTATION_INDICES
-            d6_source_indices = torch.zeros_like(_D6_PERMUTATION_INDICES)
-            for op_idx in range(12):
-                d6_source_indices[op_idx] = torch.argsort(_D6_PERMUTATION_INDICES[op_idx])
-            self.register_buffer('_d6_source_indices', d6_source_indices)
 
     def verify_dualities(self, verbose: bool = False) -> Dict[str, bool]:
         """
@@ -1855,113 +1810,6 @@ class TQFANN(nn.Module):
 
         return [color_classes[i] for i in range(6)]
 
-    def apply_symmetry_orbit_pooling(
-        self,
-        sector_feats: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Apply symmetry-level-aware orbit pooling to sector features.
-
-        This is the core implementation of the --tqf-symmetry-level feature.
-        Different symmetry levels apply different amounts of orbit pooling:
-
-        - 'none': No pooling - features used directly (ablation baseline)
-        - 'Z6': Average over 6 Z6 rotations (60 deg increments) for rotation invariance
-        - 'D6': Average over 12 D6 operations (6 rotations + 6 reflections)
-        - 'T24': Average over 24 T24 operations (D6 + circle inversion Z2)
-
-        WHY: Orbit pooling achieves symmetry invariance by averaging over the
-             symmetry group orbit. This ensures the output is invariant to the
-             specified symmetry transformations.
-
-        HOW: For each operation in the symmetry group:
-             1. Transform sector features using the symmetry operation
-             2. Accumulate transformed features
-             3. Average over all operations to get invariant representation
-
-        WHAT: Returns sector features that are invariant to the specified symmetry group.
-
-        Mathematical Foundation:
-            For symmetry group G with |G| elements, orbit pooling computes:
-            f_invariant(x) = (1/|G|) * sum_{g in G} g*f(x)
-
-            This averaging operation projects features onto the G-invariant subspace.
-
-        Args:
-            sector_feats: Sector-aggregated features, shape (batch, 6, hidden_dim)
-
-        Returns:
-            Symmetry-invariant features, shape (batch, 6, hidden_dim)
-
-        Example:
-            >>> model = TQFANN(R=5.0, hidden_dim=32, symmetry_level='D6')
-            >>> sector_feats = torch.randn(2, 6, 32)
-            >>> invariant_feats = model.apply_symmetry_orbit_pooling(sector_feats)
-            >>> # invariant_feats is now D6-invariant
-        """
-        # Handle 'none' case - no symmetry pooling (ablation baseline)
-        if self.symmetry_level == 'none':
-            return sector_feats
-
-        batch_size, num_sectors, hidden_dim = sector_feats.shape
-        device = sector_feats.device
-
-        if self.symmetry_level == 'Z6':
-            # Z6: Average over 6 rotations (60 deg * k for k=0,1,2,3,4,5)
-            # Vectorized: compute all rotations at once using index gathering
-            # Rotation k maps sector i -> sector (i + k) % 6
-            # Z6 rotation indices: for each rotation k, the source index for each target
-            z6_indices = torch.arange(6, device=device).unsqueeze(0).expand(6, -1)  # (6, 6)
-            # z6_indices[k, i] = (i - k) % 6 gives the source sector for target sector i under rotation k
-            offsets = torch.arange(6, device=device).unsqueeze(1)  # (6, 1)
-            z6_source_indices = (z6_indices - offsets) % 6  # (6, 6)
-
-            # Gather all rotations: shape (6, batch, 6, hidden_dim)
-            all_rotations = sector_feats[:, z6_source_indices, :]  # (batch, 6, 6, hidden_dim)
-            all_rotations = all_rotations.permute(1, 0, 2, 3)  # (6, batch, 6, hidden_dim)
-
-            # Average over all 6 rotations
-            pooled_feats = all_rotations.mean(dim=0)
-
-        elif self.symmetry_level == 'D6':
-            # D6: Average over 12 operations (6 rotations + 6 reflected rotations)
-            # Use pre-computed source indices (cached in __init__)
-            # Gather all D6 transformations: (batch, 12, 6, hidden_dim)
-            all_transforms = sector_feats[:, self._d6_source_indices, :]  # (batch, 12, 6, hidden_dim)
-
-            # Average over all 12 operations
-            pooled_feats = all_transforms.mean(dim=1)
-
-        elif self.symmetry_level == 'T24':
-            # T24: Average over all 24 operations (D6 x Z2)
-            # D6 permutations are applied, then optionally circle inversion
-            # Use pre-computed source indices (cached in __init__)
-            # Apply all 12 D6 operations (without inversion)
-            d6_transforms = sector_feats[:, self._d6_source_indices, :]  # (batch, 12, 6, hidden_dim)
-
-            # Get inversion function from dual output layer
-            inversion_fn: Callable[[torch.Tensor], torch.Tensor] = (
-                self.dual_output.apply_circle_inversion_bijection
-            )
-
-            # Apply inversion to get the other 12 operations
-            # Reshape for batch processing: (batch * 12, 6, hidden_dim)
-            d6_flat = d6_transforms.reshape(batch_size * 12, num_sectors, hidden_dim)
-            d6_inverted_flat = inversion_fn(d6_flat)
-            d6_inverted = d6_inverted_flat.reshape(batch_size, 12, num_sectors, hidden_dim)
-
-            # Concatenate: 12 non-inverted + 12 inverted = 24 operations
-            all_transforms = torch.cat([d6_transforms, d6_inverted], dim=1)  # (batch, 24, 6, hidden_dim)
-
-            # Average over all 24 operations
-            pooled_feats = all_transforms.mean(dim=1)
-
-        else:
-            # Unrecognized symmetry level - return features unchanged (passthrough)
-            return sector_feats
-
-        return pooled_feats
-
     def forward(
         self, x: torch.Tensor, return_inv_loss: bool = False, return_geometry_loss: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
@@ -2005,23 +1853,10 @@ class TQFANN(nn.Module):
 
         # Process both zones through T24-equivariant radial binner
         # Uses (B,2,6,L,H) layout with O(L²) adjacency and native T24 equivariance
-        if self.use_gradient_checkpointing and self.training:
-            from torch.utils.checkpoint import checkpoint
-            outer_sector_feats, inner_sector_feats = checkpoint(
-                self.radial_binner,
-                boundary_feats,
-                self.use_dual_metric,
-                use_reentrant=False
-            )
-        else:
-            outer_sector_feats, inner_sector_feats = self.radial_binner(
-                boundary_feats,
-                use_hop_attention=self.use_dual_metric
-            )
-
-        # T24 binner returns sector features directly - apply orbit pooling
-        inner_sector_feats = self.apply_symmetry_orbit_pooling(inner_sector_feats)
-        outer_sector_feats = self.apply_symmetry_orbit_pooling(outer_sector_feats)
+        outer_sector_feats, inner_sector_feats = self.radial_binner(
+            boundary_feats,
+            use_hop_attention=self.use_dual_metric
+        )
 
         # Apply classification to both outer and inner sector features
         outer_logits_per_sector: torch.Tensor = self.dual_output.classification_head(outer_sector_feats)

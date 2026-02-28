@@ -102,11 +102,9 @@ from config import (
     WEIGHT_DECAY_DEFAULT,
     LABEL_SMOOTHING_DEFAULT,
     LEARNING_RATE_WARMUP_EPOCHS,
-    TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
-    TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
     TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
     TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
@@ -235,8 +233,6 @@ class TrainingEngine:
         learning_rate: float = LEARNING_RATE_DEFAULT,
         weight_decay: float = WEIGHT_DECAY_DEFAULT,
         label_smoothing: float = LABEL_SMOOTHING_DEFAULT,
-        use_geometry_reg: bool = False,
-        geometry_weight: float = TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
         use_amp: bool = True,
         warmup_epochs: int = LEARNING_RATE_WARMUP_EPOCHS,
         num_epochs: int = MAX_EPOCHS_DEFAULT,
@@ -249,8 +245,6 @@ class TrainingEngine:
             learning_rate: Learning rate
             weight_decay: L2 regularization weight
             label_smoothing: Label smoothing factor (0=hard labels, 0.1=standard)
-            use_geometry_reg: Enable geometric preservation loss (TQF only)
-            geometry_weight: Weight for geometric regularization
             use_amp: Enable automatic mixed precision (faster on RTX GPUs)
             warmup_epochs: Number of epochs for linear LR warmup (0 disables warmup)
             num_epochs: Total number of training epochs (for scheduler T_max)
@@ -282,8 +276,6 @@ class TrainingEngine:
                 logging.warning(f"torch.compile failed, continuing without compilation: {e}")
 
         self.device: torch.device = device
-        self.use_geometry_reg: bool = use_geometry_reg
-        self.geometry_weight: float = geometry_weight
         self.use_amp: bool = use_amp and torch.cuda.is_available()
 
         # Optimizer setup with L2 regularization (weight decay)
@@ -354,14 +346,9 @@ class TrainingEngine:
         self.train_losses: List[float] = []
         self.val_losses: List[float] = []
         self.val_accuracies: List[float] = []
-        self.geometry_losses: List[float] = []
 
         # Cache model capability checks (performance optimization)
         # Avoids repeated hasattr/introspection calls in training loop
-        self._supports_geometry_loss: bool = (
-            hasattr(self.model, 'forward') and
-            'return_geometry_loss' in self.model.forward.__code__.co_varnames
-        )
         self._supports_inv_loss: bool = (
             hasattr(self.model, 'forward') and
             'return_inv_loss' in self.model.forward.__code__.co_varnames
@@ -373,9 +360,6 @@ class TrainingEngine:
     def train_epoch(
         self,
         train_loader: DataLoader,
-        inversion_loss_weight: Optional[float] = None,
-        z6_equivariance_weight: Optional[float] = None,
-        d6_equivariance_weight: Optional[float] = None,
         t24_orbit_invariance_weight: Optional[float] = None,
         z6_orbit_consistency_weight: Optional[float] = None,
         z6_orbit_consistency_rotations: int = 2
@@ -388,9 +372,6 @@ class TrainingEngine:
 
         Args:
             train_loader: Training data loader
-            inversion_loss_weight: Weight for inversion loss (None=disabled, TQF only)
-            z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
-            d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
             t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
             z6_orbit_consistency_weight: Weight for Z6 orbit consistency self-distillation loss
                 (None=disabled). When enabled, extra Z6 rotations are run each batch and KL
@@ -401,17 +382,10 @@ class TrainingEngine:
             Dict of loss metrics
         """
         # Determine which losses are enabled based on weight being provided
-        use_inversion_loss: bool = inversion_loss_weight is not None
-        use_z6_equivariance_loss: bool = z6_equivariance_weight is not None
-        use_d6_equivariance_loss: bool = d6_equivariance_weight is not None
         use_t24_orbit_invariance_loss: bool = t24_orbit_invariance_weight is not None
         use_orbit_consistency_loss: bool = z6_orbit_consistency_weight is not None
         self.model.train()
         total_cls_loss: float = 0.0
-        total_inversion_loss: float = 0.0
-        total_geom_loss: float = 0.0
-        total_z6_equiv_loss: float = 0.0
-        total_d6_equiv_loss: float = 0.0
         total_t24_orbit_loss: float = 0.0
         total_orbit_consistency_loss: float = 0.0
         num_batches: int = 0
@@ -424,78 +398,11 @@ class TrainingEngine:
 
             # Forward pass with AMP (PyTorch 2.8+ API)
             with torch.amp.autocast('cuda', enabled=self.use_amp):
-                # Use cached capability checks (performance optimization)
-                if self._supports_geometry_loss:
-                    # TQF model with geometry support
-                    if self.use_geometry_reg and use_inversion_loss:
-                        # Request both geometry and inversion losses
-                        outputs: Union[torch.Tensor, Tuple] = self.model(
-                            inputs,
-                            return_inv_loss=True,
-                            return_geometry_loss=True
-                        )
-                        logits, inversion_loss, geom_loss = outputs
-                    elif self.use_geometry_reg:
-                        # Request geometry loss (requires both flags per DualOutput API)
-                        # Note: inversion_loss is computed but not added to total loss here
-                        outputs: Union[torch.Tensor, Tuple] = self.model(
-                            inputs,
-                            return_inv_loss=True,
-                            return_geometry_loss=True
-                        )
-                        logits, inversion_loss, geom_loss = outputs
-                        # Explicitly ignore inversion_loss in this path (not weighted in loss)
-                        inversion_loss = None
-                    elif use_inversion_loss:
-                        # Request only inversion loss (not geometry)
-                        outputs: Union[torch.Tensor, Tuple] = self.model(
-                            inputs,
-                            return_inv_loss=True
-                        )
-                        logits, inversion_loss = outputs
-                        geom_loss = None
-                    else:
-                        # Standard forward pass (no additional losses)
-                        logits: torch.Tensor = self.model(inputs)
-                        inversion_loss = None
-                        geom_loss = None
-                elif self._supports_inv_loss:
-                    # TQF model with inversion loss support only (legacy compatibility path)
-                    outputs = self.model(inputs, return_inv_loss=use_inversion_loss)
-                    if use_inversion_loss:
-                        logits, inversion_loss = outputs
-                    else:
-                        logits = outputs
-                        inversion_loss = None
-                    geom_loss = None
-                else:
-                    # Non-TQF model
-                    logits = self.model(inputs)
-                    inversion_loss = None
-                    geom_loss = None
+                # Standard forward pass
+                logits: torch.Tensor = self.model(inputs)
 
                 # Classification loss
                 cls_loss: torch.Tensor = self.criterion(logits, labels)
-
-                # Z6 Rotation Equivariance Loss (TQF only)
-                z6_equiv_loss: Optional[torch.Tensor] = None
-                if use_z6_equivariance_loss and self._has_sector_features:
-                    from symmetry_ops import compute_z6_rotation_equivariance_loss
-                    sector_feats: Optional[torch.Tensor] = self.model.get_cached_sector_features()
-                    if sector_feats is not None:
-                        z6_equiv_loss = compute_z6_rotation_equivariance_loss(
-                            self.model, inputs, sector_feats, num_rotations=3
-                        )
-
-                # D6 Reflection Equivariance Loss (TQF only)
-                d6_equiv_loss: Optional[torch.Tensor] = None
-                if use_d6_equivariance_loss and self._has_sector_features:
-                    from symmetry_ops import compute_d6_reflection_equivariance_loss
-                    sector_feats: Optional[torch.Tensor] = self.model.get_cached_sector_features()
-                    if sector_feats is not None:
-                        d6_equiv_loss = compute_d6_reflection_equivariance_loss(
-                            self.model, inputs, sector_feats, num_reflections=3
-                        )
 
                 # T24 Orbit Invariance Loss (TQF only)
                 t24_orbit_loss: Optional[torch.Tensor] = None
@@ -510,15 +417,6 @@ class TrainingEngine:
 
                 # Total loss
                 loss: torch.Tensor = cls_loss
-                if use_inversion_loss and inversion_loss is not None:
-                    loss = loss + inversion_loss_weight * inversion_loss
-                if self.use_geometry_reg and geom_loss is not None:
-                    loss = loss + self.geometry_weight * geom_loss
-
-                if use_z6_equivariance_loss and z6_equiv_loss is not None:
-                    loss = loss + z6_equivariance_weight * z6_equiv_loss
-                if use_d6_equivariance_loss and d6_equiv_loss is not None:
-                    loss = loss + d6_equivariance_weight * d6_equiv_loss
                 if use_t24_orbit_invariance_loss and t24_orbit_loss is not None:
                     loss = loss + t24_orbit_invariance_weight * t24_orbit_loss
 
@@ -544,14 +442,6 @@ class TrainingEngine:
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
-            if use_inversion_loss and inversion_loss is not None:
-                total_inversion_loss += inversion_loss.item()
-            if self.use_geometry_reg and geom_loss is not None:
-                total_geom_loss += geom_loss.item()
-            if use_z6_equivariance_loss and z6_equiv_loss is not None:
-                total_z6_equiv_loss += z6_equiv_loss.item()
-            if use_d6_equivariance_loss and d6_equiv_loss is not None:
-                total_d6_equiv_loss += d6_equiv_loss.item()
             if use_t24_orbit_invariance_loss and t24_orbit_loss is not None:
                 total_t24_orbit_loss += t24_orbit_loss.item()
             if use_orbit_consistency_loss and orbit_consistency_loss is not None:
@@ -564,20 +454,6 @@ class TrainingEngine:
         metrics: Dict[str, float] = {
             'cls_loss': total_cls_loss / num_batches if num_batches > 0 else 0.0,
         }
-
-        if use_inversion_loss:
-            metrics['inversion_loss'] = total_inversion_loss / num_batches if num_batches > 0 else 0.0
-
-        if self.use_geometry_reg:
-            geom_avg: float = total_geom_loss / num_batches if num_batches > 0 else 0.0
-            metrics['geom_loss'] = geom_avg
-            self.geometry_losses.append(geom_avg)
-
-        if use_z6_equivariance_loss:
-            metrics['z6_equiv_loss'] = total_z6_equiv_loss / num_batches if num_batches > 0 else 0.0
-
-        if use_d6_equivariance_loss:
-            metrics['d6_equiv_loss'] = total_d6_equiv_loss / num_batches if num_batches > 0 else 0.0
 
         if use_t24_orbit_invariance_loss:
             metrics['t24_orbit_loss'] = total_t24_orbit_loss / num_batches if num_batches > 0 else 0.0
@@ -692,13 +568,9 @@ class TrainingEngine:
         num_epochs: int = MAX_EPOCHS_DEFAULT,
         early_stopping_patience: int = PATIENCE_DEFAULT,
         min_delta: float = MIN_DELTA_DEFAULT,
-        inversion_loss_weight: Optional[float] = None,
-        z6_equivariance_weight: Optional[float] = None,
-        d6_equivariance_weight: Optional[float] = None,
         t24_orbit_invariance_weight: Optional[float] = None,
         z6_orbit_consistency_weight: Optional[float] = None,
         z6_orbit_consistency_rotations: int = 2,
-        verify_duality_interval: int = TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
         verbose: bool = True
     ) -> Dict:
         """
@@ -713,11 +585,7 @@ class TrainingEngine:
             num_epochs: Maximum number of epochs
             early_stopping_patience: Patience for early stopping
             min_delta: Minimum improvement to count as progress
-            inversion_loss_weight: Weight for inversion loss (None=disabled, TQF only)
-            z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
-            d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
             t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
-            verify_duality_interval: Epochs between self-duality checks (TQF only)
             verbose: Whether to print progress
         Returns:
             Dict with training history and best model info
@@ -736,9 +604,6 @@ class TrainingEngine:
             # Train one epoch
             train_metrics: Dict[str, float] = self.train_epoch(
                 train_loader,
-                inversion_loss_weight=inversion_loss_weight,
-                z6_equivariance_weight=z6_equivariance_weight,
-                d6_equivariance_weight=d6_equivariance_weight,
                 t24_orbit_invariance_weight=t24_orbit_invariance_weight,
                 z6_orbit_consistency_weight=z6_orbit_consistency_weight,
                 z6_orbit_consistency_rotations=z6_orbit_consistency_rotations
@@ -765,11 +630,6 @@ class TrainingEngine:
             else:
                 patience_counter += 1
 
-            # Periodic self-duality verification (TQF only, silent on success)
-            _ = self.verify_self_duality_periodic(
-                val_loader, epoch, verify_duality_interval
-            )
-
             # Learning rate scheduling
             self.scheduler.step()
 
@@ -786,9 +646,6 @@ class TrainingEngine:
                     val_acc=val_acc,
                     lr=self.optimizer.param_groups[0]['lr'],
                     elapsed=epoch_time,
-                    geom_loss=train_metrics.get('geom_loss'),
-                    z6_equiv_loss=train_metrics.get('z6_equiv_loss'),
-                    d6_equiv_loss=train_metrics.get('d6_equiv_loss'),
                     t24_orbit_loss=train_metrics.get('t24_orbit_loss')
                 )
 
@@ -819,7 +676,6 @@ class TrainingEngine:
             'train_losses': self.train_losses,
             'val_losses': self.val_losses,
             'val_accuracies': self.val_accuracies,
-            'geometry_losses': self.geometry_losses if self.use_geometry_reg else []
         }
 
 def set_seed(seed: int) -> None:
@@ -852,10 +708,6 @@ def run_single_seed_experiment(
     patience: int = PATIENCE_DEFAULT,
     min_delta: float = MIN_DELTA_DEFAULT,
     warmup_epochs: int = LEARNING_RATE_WARMUP_EPOCHS,
-    verify_duality_interval: int = TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-    inversion_loss_weight: Optional[float] = None,
-    z6_equivariance_weight: Optional[float] = None,
-    d6_equivariance_weight: Optional[float] = None,
     t24_orbit_invariance_weight: Optional[float] = None,
     z6_orbit_consistency_weight: Optional[float] = None,
     z6_orbit_consistency_rotations: int = 2,
@@ -866,9 +718,9 @@ def run_single_seed_experiment(
     use_z6_orbit_mixing: bool = False,
     use_d6_orbit_mixing: bool = False,
     use_t24_orbit_mixing: bool = False,
-    orbit_mixing_temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-    orbit_mixing_temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    z6_orbit_mixing_temp_rotation: float = TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    d6_orbit_mixing_temp_reflection: float = TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    t24_orbit_mixing_temp_inversion: float = TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
     z6_orbit_mixing_confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
     z6_orbit_mixing_aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
     z6_orbit_mixing_top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
@@ -897,10 +749,6 @@ def run_single_seed_experiment(
         patience: Early stopping patience
         min_delta: Minimum improvement for early stopping
         warmup_epochs: Number of epochs for linear LR warmup
-        verify_duality_interval: Epochs between self-duality checks (TQF only)
-        inversion_loss_weight: Weight for inversion loss (None=disabled, TQF only)
-        z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
-        d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
         t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
         z6_orbit_consistency_weight: Weight for orbit consistency loss (None=disabled, TQF only)
         z6_orbit_consistency_rotations: Number of extra rotations per batch for consistency loss
@@ -910,9 +758,9 @@ def run_single_seed_experiment(
         use_z6_orbit_mixing: Enable Z6 rotation orbit mixing at evaluation
         use_d6_orbit_mixing: Enable D6 reflection orbit mixing at evaluation
         use_t24_orbit_mixing: Enable T24 zone-swap orbit mixing at evaluation
-        orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
-        orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
-        orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
+        z6_orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
+        d6_orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
+        t24_orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
         z6_orbit_mixing_confidence_mode: Confidence signal mode ('max_logit' or 'margin')
         z6_orbit_mixing_aggregation_mode: Aggregation space ('logits', 'probs', 'log_probs')
         z6_orbit_mixing_top_k: Top-K variant selection (None = use all 6)
@@ -944,33 +792,21 @@ def run_single_seed_experiment(
             f"(deviation: {deviation_pct:.2f}%, target: +/-{TARGET_PARAMS_TOLERANCE_PERCENT}%)"
         )
 
-    # ===== Enable geometry regularization for TQF models =====
-    # Geometry regularization is controlled by geometry_reg_weight (independent of verify_geometry)
-    # verify_geometry controls validation/debugging features, not training loss
-    geometry_weight: float = model_config.get('geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)
-    use_geometry_reg: bool = 'TQF' in model_name and geometry_weight > 0.0
-
-    # Training engine with specified learning rate, weight decay, label smoothing, warmup, and geometry reg
+    # Training engine with specified learning rate, weight decay, label smoothing, and warmup
     engine: TrainingEngine = TrainingEngine(
         model,
         device,
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         label_smoothing=label_smoothing,
-        use_geometry_reg=use_geometry_reg,
-        geometry_weight=geometry_weight,
         warmup_epochs=warmup_epochs,
         num_epochs=num_epochs,
         use_compile=use_compile
     )
 
     # Determine TQF-specific loss weights (only applied for TQF models)
-    # Weights are passed through to engine.train(); non-TQF models ignore them
     # A weight value enables the loss; None means disabled
     is_tqf_model: bool = 'TQF' in model_name
-    apply_inversion_weight: Optional[float] = inversion_loss_weight if is_tqf_model else None
-    apply_z6_weight: Optional[float] = z6_equivariance_weight if is_tqf_model else None
-    apply_d6_weight: Optional[float] = d6_equivariance_weight if is_tqf_model else None
     apply_t24_weight: Optional[float] = t24_orbit_invariance_weight if is_tqf_model else None
     apply_z6_orbit_consistency_weight: Optional[float] = z6_orbit_consistency_weight if is_tqf_model else None
 
@@ -982,13 +818,9 @@ def run_single_seed_experiment(
         num_epochs=num_epochs,
         early_stopping_patience=patience,
         min_delta=min_delta,
-        inversion_loss_weight=apply_inversion_weight,
-        z6_equivariance_weight=apply_z6_weight,
-        d6_equivariance_weight=apply_d6_weight,
         t24_orbit_invariance_weight=apply_t24_weight,
         z6_orbit_consistency_weight=apply_z6_orbit_consistency_weight,
         z6_orbit_consistency_rotations=z6_orbit_consistency_rotations,
-        verify_duality_interval=verify_duality_interval,
         verbose=verbose
     )
     train_time: float = time.time() - start_time
@@ -1004,9 +836,9 @@ def run_single_seed_experiment(
             use_z6=use_z6_orbit_mixing,
             use_d6=use_d6_orbit_mixing,
             use_t24=use_t24_orbit_mixing,
-            temp_rotation=orbit_mixing_temp_rotation,
-            temp_reflection=orbit_mixing_temp_reflection,
-            temp_inversion=orbit_mixing_temp_inversion,
+            temp_rotation=z6_orbit_mixing_temp_rotation,
+            temp_reflection=d6_orbit_mixing_temp_reflection,
+            temp_inversion=t24_orbit_mixing_temp_inversion,
             confidence_mode=z6_orbit_mixing_confidence_mode,
             aggregation_mode=z6_orbit_mixing_aggregation_mode,
             top_k=z6_orbit_mixing_top_k,
@@ -1082,10 +914,6 @@ def run_multi_seed_experiment(
     patience: int = PATIENCE_DEFAULT,
     min_delta: float = MIN_DELTA_DEFAULT,
     warmup_epochs: int = LEARNING_RATE_WARMUP_EPOCHS,
-    verify_duality_interval: int = TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-    inversion_loss_weight: Optional[float] = None,
-    z6_equivariance_weight: Optional[float] = None,
-    d6_equivariance_weight: Optional[float] = None,
     t24_orbit_invariance_weight: Optional[float] = None,
     z6_orbit_consistency_weight: Optional[float] = None,
     z6_orbit_consistency_rotations: int = 2,
@@ -1094,9 +922,9 @@ def run_multi_seed_experiment(
     use_z6_orbit_mixing: bool = False,
     use_d6_orbit_mixing: bool = False,
     use_t24_orbit_mixing: bool = False,
-    orbit_mixing_temp_rotation: float = TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-    orbit_mixing_temp_reflection: float = TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    orbit_mixing_temp_inversion: float = TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
+    z6_orbit_mixing_temp_rotation: float = TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    d6_orbit_mixing_temp_reflection: float = TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    t24_orbit_mixing_temp_inversion: float = TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT,
     z6_orbit_mixing_confidence_mode: str = TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT,
     z6_orbit_mixing_aggregation_mode: str = TQF_Z6_ORBIT_MIXING_AGGREGATION_MODE_DEFAULT,
     z6_orbit_mixing_top_k: Optional[int] = TQF_Z6_ORBIT_MIXING_TOP_K_DEFAULT,
@@ -1104,7 +932,8 @@ def run_multi_seed_experiment(
     z6_orbit_mixing_adaptive_temp_alpha: float = TQF_Z6_ORBIT_MIXING_ADAPTIVE_TEMP_ALPHA_DEFAULT,
     z6_orbit_mixing_rotation_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT,
     z6_orbit_mixing_rotation_padding_mode: str = TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT,
-    z6_orbit_mixing_rotation_pad: int = TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT
+    z6_orbit_mixing_rotation_pad: int = TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT,
+    experiment_config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, List[Dict]]:
     """
     Run multi-seed experiments for multiple models.
@@ -1125,10 +954,6 @@ def run_multi_seed_experiment(
         patience: Early stopping patience
         min_delta: Minimum improvement for early stopping
         warmup_epochs: Number of epochs for linear LR warmup
-        verify_duality_interval: Epochs between self-duality checks (TQF only)
-        inversion_loss_weight: Weight for inversion loss (None=disabled, TQF only)
-        z6_equivariance_weight: Weight for Z6 equivariance loss (None=disabled, TQF only)
-        d6_equivariance_weight: Weight for D6 equivariance loss (None=disabled, TQF only)
         t24_orbit_invariance_weight: Weight for T24 orbit invariance loss (None=disabled, TQF only)
         z6_orbit_consistency_weight: Weight for orbit consistency loss (None=disabled, TQF only)
         z6_orbit_consistency_rotations: Number of extra rotations per batch for consistency loss
@@ -1136,9 +961,9 @@ def run_multi_seed_experiment(
         use_z6_orbit_mixing: Enable Z6 rotation orbit mixing at evaluation
         use_d6_orbit_mixing: Enable D6 reflection orbit mixing at evaluation
         use_t24_orbit_mixing: Enable T24 zone-swap orbit mixing at evaluation
-        orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
-        orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
-        orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
+        z6_orbit_mixing_temp_rotation: Temperature for Z6 rotation averaging
+        d6_orbit_mixing_temp_reflection: Temperature for D6 reflection averaging
+        t24_orbit_mixing_temp_inversion: Temperature for T24 zone-swap averaging
         z6_orbit_mixing_confidence_mode: Confidence signal mode ('max_logit' or 'margin')
         z6_orbit_mixing_aggregation_mode: Aggregation space ('logits', 'probs', 'log_probs')
         z6_orbit_mixing_top_k: Top-K variant selection (None = use all 6)
@@ -1177,10 +1002,6 @@ def run_multi_seed_experiment(
                 patience,
                 min_delta,
                 warmup_epochs,
-                verify_duality_interval,
-                inversion_loss_weight,
-                z6_equivariance_weight,
-                d6_equivariance_weight,
                 t24_orbit_invariance_weight,
                 z6_orbit_consistency_weight=z6_orbit_consistency_weight,
                 z6_orbit_consistency_rotations=z6_orbit_consistency_rotations,
@@ -1191,9 +1012,9 @@ def run_multi_seed_experiment(
                 use_z6_orbit_mixing=use_z6_orbit_mixing,
                 use_d6_orbit_mixing=use_d6_orbit_mixing,
                 use_t24_orbit_mixing=use_t24_orbit_mixing,
-                orbit_mixing_temp_rotation=orbit_mixing_temp_rotation,
-                orbit_mixing_temp_reflection=orbit_mixing_temp_reflection,
-                orbit_mixing_temp_inversion=orbit_mixing_temp_inversion,
+                z6_orbit_mixing_temp_rotation=z6_orbit_mixing_temp_rotation,
+                d6_orbit_mixing_temp_reflection=d6_orbit_mixing_temp_reflection,
+                t24_orbit_mixing_temp_inversion=t24_orbit_mixing_temp_inversion,
                 z6_orbit_mixing_confidence_mode=z6_orbit_mixing_confidence_mode,
                 z6_orbit_mixing_aggregation_mode=z6_orbit_mixing_aggregation_mode,
                 z6_orbit_mixing_top_k=z6_orbit_mixing_top_k,
@@ -1205,9 +1026,11 @@ def run_multi_seed_experiment(
             )
             model_results.append(result)
 
-            # Incrementally save to disk so results survive crashes/session expiry
+            # Incrementally save to disk so results survive crashes/session expiry.
+            # Pass experiment_config only on the first write so it is stored once.
             if output_path:
-                save_seed_result_to_disk(result, output_path)
+                cfg = experiment_config if seed_idx == 1 else None
+                save_seed_result_to_disk(result, output_path, cfg)
 
         all_results[model_name] = model_results
 

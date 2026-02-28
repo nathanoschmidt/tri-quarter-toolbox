@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Date:** February 26, 2026<br>
+**Version:** 1.1.1<br>
+**Date:** February 27, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -164,9 +164,9 @@ Key CLI flags (focus on ℤ₆ for simplicity and efficiency):
 - `--tqf-use-d6-orbit-mixing`: Enables D₆ orbit mixing (ℤ₆ rotations + 6 reflections). Use for stronger reflection invariance.
 - `--tqf-use-t24-orbit-mixing`: Enables full 𝕋₂₄ orbit mixing (D₆ + circle inversions). Ideal for exploiting inner/outer zone duality, but requires inversion support.
 - Temperature controls (adjust weighting softness):
-  - `--tqf-orbit-mixing-temp-rotation`: Temperature for rotation averaging (default: 0.5).
-  - `--tqf-orbit-mixing-temp-reflection`: Temperature for reflection averaging (default: 0.5).
-  - `--tqf-orbit-mixing-temp-inversion`: Temperature for inversion averaging (default: 0.7).
+  - `--tqf-z6-orbit-mixing-temp-rotation`: Temperature for rotation averaging (default: 0.5).
+  - `--tqf-d6-orbit-mixing-temp-reflection`: Temperature for reflection averaging (default: 0.5).
+  - `--tqf-t24-orbit-mixing-temp-inversion`: Temperature for inversion averaging (default: 0.7).
 
 ℤ₆ orbit mixing quality enhancements (all eval-time, opt-in, require `--tqf-use-z6-orbit-mixing`):
 - `--tqf-z6-orbit-mixing-confidence-mode`: Variant confidence scoring — `max_logit` (default) or `margin`.
@@ -178,7 +178,7 @@ Key CLI flags (focus on ℤ₆ for simplicity and efficiency):
 - `--tqf-z6-orbit-mixing-rotation-pad`: Reflect-pad-rotate-crop to eliminate corner artefacts (default: 0).
 
 Training-time additions (opt-in):
-- `--tqf-z6-non-rotation-augmentation`: Random crop (pad=2) + ColorJitter ±10% during training.
+- `--non-rotation-data-augmentation`: Random crop (pad=2) + ColorJitter ±10% during training.
 - `--tqf-z6-orbit-consistency-weight`: ℤ₆ orbit consistency self-distillation loss weight (KL divergence from stop-gradient ensemble; disabled by default).
 - `--tqf-z6-orbit-consistency-rotations`: Extra rotation passes for consistency loss (default: 2; range [1, 5]).
 
@@ -189,30 +189,19 @@ Example: Enable ℤ₆ orbit mixing for evaluation robustness:
 python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 ```
 
-### Symmetry Enforcement Losses (TQF-ANN, Experimental)
-> **Note:** These training-time loss features are experimental and have not shown accuracy improvements in practice — they may slightly hurt performance. For rotation robustness, use `--tqf-use-z6-orbit-mixing` instead.
+### Symmetry Enforcement Loss (TQF-ANN, Experimental)
+> **Note:** These training-time loss features are experimental and have not shown accuracy improvements in practice. For rotation robustness, use `--tqf-use-z6-orbit-mixing` instead.
 
-Explicit symmetry enforcement through equivariance and/or invariance losses during training.
-Features are disabled by default and enabled by providing a weight value:
+Explicit symmetry enforcement through invariance loss during training.
+Feature is disabled by default and enabled by providing a weight value:
 ```bash
-# Z6 rotation equivariance loss (disabled by default)
---tqf-z6-equivariance-weight 0.01           Enable and set weight for Z6 loss
-
-# D6 reflection equivariance loss (disabled by default)
---tqf-d6-equivariance-weight 0.01           Enable and set weight for D6 loss
-
 # T24 orbit invariance loss (disabled by default)
 --tqf-t24-orbit-invariance-weight 0.005     Enable and set weight for T24 loss
 ```
 
-**Example: Train with Z6 equivariance loss over 50 epochs max**
+**Example: Train with T24 orbit invariance loss**
 ```bash
-python src/main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01 --num-epochs 50
-```
-
-**Example: Train with full symmetry enforcement over 150 epochs max**
-```bash
-python src/main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01 --tqf-d6-equivariance-weight 0.01 --tqf-t24-orbit-invariance-weight 0.005 --num-epochs 150
+python src/main.py --models TQF-ANN --tqf-t24-orbit-invariance-weight 0.005 --num-epochs 150
 ```
 
 See full documentation in [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
@@ -321,8 +310,8 @@ See some of our future TODO items in [`FUTURE_TODO.md`](FUTURE_TODO.md).
 
 **`QED`**
 
-**Last Updated:** February 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** February 27, 2026<br>
+**Version:** 1.1.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

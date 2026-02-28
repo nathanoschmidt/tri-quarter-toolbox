@@ -543,7 +543,7 @@ def get_dataloaders(
     num_test_rot: int = NUM_TEST_ROT_DEFAULT,
     num_test_unrot: int = NUM_TEST_UNROT_DEFAULT,
     augment_train: bool = True,
-    augment_z6_non_rotation: bool = False
+    augment_non_rotation: bool = False
 ) -> Tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
     """
     Create stratified, reproducible DataLoaders for TQF-ANN experiments.
@@ -569,7 +569,7 @@ def get_dataloaders(
         num_test_rot: Number of rotated test samples (stratified across 10 classes x 6 angles)
         num_test_unrot: Number of unrotated test samples
         augment_train: Whether to apply Z6 rotation augmentation to training data
-        augment_z6_non_rotation: Whether to apply non-rotation augmentation (random
+        augment_non_rotation: Whether to apply non-rotation augmentation (random
             crop + brightness/contrast jitter). Composable with augment_train.
 
     Returns:
@@ -595,7 +595,7 @@ def get_dataloaders(
         pil_augmentations.append(
             Z6AlignedRotation(jitter=15.0)  # Z6 angles (0°,60°,...,300°) + ±15° jitter
         )
-    if augment_z6_non_rotation:
+    if augment_non_rotation:
         # Non-rotation augmentation: random crop + brightness/contrast jitter
         # Applied after Z6 rotation (if enabled) and before ToTensor
         pil_augmentations.append(NonRotationAugmentation())

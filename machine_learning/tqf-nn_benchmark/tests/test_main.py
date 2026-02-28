@@ -11,7 +11,7 @@ Key Test Coverage:
 - Parameter Count Tolerance: ±5% tolerance for matched architectures
 - Auto-Tuning Validation: Correct hidden dimension calculation for parameter matching
 - Model Configuration Assembly: Proper configuration dict construction from CLI args
-- TQF Model Config: R, hidden_dim, symmetry_level
+- TQF Model Config: R, hidden_dim
 - Baseline Model Config: Hidden dimensions, layer counts for FC-MLP, CNN-L5, ResNet-18-Scaled
 - Device Management: Correct CPU/CUDA device assignment for models and data
 - Device Consistency: Model and batch tensors on same device throughout training
@@ -230,22 +230,17 @@ class TestCLIParameterIntegration:
             assert hasattr(args, 'min_delta')
             assert args.min_delta == 0.001
 
-    def test_equivariance_loss_parameters_exist_in_args(self) -> None:
+    def test_invariance_loss_parameter_exists_in_args(self) -> None:
         """
-        WHY: All equivariance/invariance weight parameters must be accessible
-        HOW: Parse args with equivariance/invariance weights
-        WHAT: Expect all weight attributes exist with correct values
+        WHY: T24 orbit invariance weight parameter must be accessible
+        HOW: Parse args with invariance weight
+        WHAT: Expect weight attribute exists with correct value
         """
         from cli import parse_args
-        with patch('sys.argv', ['test', '--tqf-z6-equivariance-weight', '0.02',
-                                '--tqf-d6-equivariance-weight', '0.015',
+        with patch('sys.argv', ['test',
                                 '--tqf-t24-orbit-invariance-weight', '0.008']):
             args = parse_args()
-            assert hasattr(args, 'tqf_z6_equivariance_weight')
-            assert hasattr(args, 'tqf_d6_equivariance_weight')
             assert hasattr(args, 'tqf_t24_orbit_invariance_weight')
-            assert args.tqf_z6_equivariance_weight == 0.02
-            assert args.tqf_d6_equivariance_weight == 0.015
             assert args.tqf_t24_orbit_invariance_weight == 0.008
 
 def run_tests(verbosity: int = 2):

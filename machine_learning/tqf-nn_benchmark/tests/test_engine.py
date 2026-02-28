@@ -875,109 +875,6 @@ class TestTQFSpecificLosses:
         assert geom_loss.dim() == 0, "Geometry loss should be scalar"
         assert geom_loss.item() >= 0, "Geometry loss should be non-negative"
 
-    def test_training_engine_uses_geometry_weight(self) -> None:
-        """
-        WHY: TrainingEngine should apply geometry_weight to geometry loss
-        HOW: Verify TrainingEngine constructor accepts and stores geometry weight
-        WHAT: Expect geometry_weight attribute set correctly
-        """
-        from engine import TrainingEngine
-        from models_tqf import TQFANN
-
-        model = TQFANN(R=10, hidden_dim=32)
-        device = torch.device('cpu')
-
-        # Create engine with geometry regularization enabled
-        engine = TrainingEngine(
-            model=model,
-            device=device,
-            use_geometry_reg=True,
-            geometry_weight=0.05
-        )
-
-        assert engine.use_geometry_reg == True, "use_geometry_reg should be True"
-        assert engine.geometry_weight == 0.05, "geometry_weight should be 0.05"
-
-    def test_training_engine_geometry_disabled_when_weight_zero(self) -> None:
-        """
-        WHY: geometry_weight=0 should effectively disable geometry regularization
-        HOW: Create TrainingEngine with use_geometry_reg=False
-        WHAT: Expect no geometry loss computation
-        """
-        from engine import TrainingEngine
-        from models_tqf import TQFANN
-
-        model = TQFANN(R=10, hidden_dim=32)
-        device = torch.device('cpu')
-
-        # Create engine with geometry regularization disabled
-        engine = TrainingEngine(
-            model=model,
-            device=device,
-            use_geometry_reg=False,
-            geometry_weight=0.0
-        )
-
-        assert engine.use_geometry_reg == False, "use_geometry_reg should be False"
-        assert engine.geometry_weight == 0.0, "geometry_weight should be 0.0"
-
-
-class TestInversionLossApplication:
-    """Test suite for inversion loss application in training.
-
-    Features are enabled by providing a weight value (not None).
-    Features are disabled by default (weight=None).
-    """
-
-    def test_inversion_loss_weight_defaults_to_none(self) -> None:
-        """
-        WHY: inversion_loss_weight should default to None (disabled by default)
-        HOW: Check the run_single_seed_experiment function signature
-        WHAT: Expect default value is None (feature disabled when not provided)
-        """
-        from engine import run_single_seed_experiment
-        import inspect
-        sig = inspect.signature(run_single_seed_experiment)
-        default = sig.parameters['inversion_loss_weight'].default
-        assert default is None, f"inversion_loss_weight should default to None, got {default}"
-
-    def test_inversion_loss_enabled_when_weight_provided(self) -> None:
-        """
-        WHY: Inversion loss should be enabled when a weight value is provided
-        HOW: Check that feature is enabled when weight is not None for TQF model
-        WHAT: Expect loss to be applied
-        """
-        # The logic is: use_inversion_loss = inversion_loss_weight is not None
-        model_name = 'TQF-ANN'
-        inversion_loss_weight = 0.001  # Provided weight enables feature
-        use_inversion_loss = inversion_loss_weight is not None
-        apply_inversion_loss = use_inversion_loss and 'TQF' in model_name
-        assert apply_inversion_loss is True
-
-    def test_inversion_loss_disabled_when_weight_none(self) -> None:
-        """
-        WHY: Inversion loss should be disabled when weight is None
-        HOW: Check that feature is disabled when weight is None
-        WHAT: Expect loss not to be applied
-        """
-        model_name = 'TQF-ANN'
-        inversion_loss_weight = None  # None = disabled
-        use_inversion_loss = inversion_loss_weight is not None
-        apply_inversion_loss = use_inversion_loss and 'TQF' in model_name
-        assert apply_inversion_loss is False
-
-    def test_inversion_loss_not_applied_for_baseline(self) -> None:
-        """
-        WHY: Inversion loss should NOT be applied for baseline models
-        HOW: Check that feature is not applied for non-TQF model even with weight
-        WHAT: Expect loss not to be applied for FC-MLP
-        """
-        model_name = 'FC-MLP'
-        inversion_loss_weight = 0.001  # Even with weight provided
-        use_inversion_loss = inversion_loss_weight is not None
-        apply_inversion_loss = use_inversion_loss and 'TQF' in model_name
-        assert apply_inversion_loss is False
-
 
 class TestT24OrbitInvarianceLossApplication:
     """Test suite for T24 orbit invariance loss application in training.
@@ -1053,11 +950,8 @@ class TestLossWeightParameters:
         import inspect
         sig = inspect.signature(run_multi_seed_experiment)
 
-        # All 4 weight parameters should exist
+        # All weight parameters should exist
         weight_params = [
-            'inversion_loss_weight',
-            'z6_equivariance_weight',
-            'd6_equivariance_weight',
             't24_orbit_invariance_weight'
         ]
         for param in weight_params:
@@ -1074,9 +968,6 @@ class TestLossWeightParameters:
         sig = inspect.signature(run_multi_seed_experiment)
 
         weight_params = [
-            'inversion_loss_weight',
-            'z6_equivariance_weight',
-            'd6_equivariance_weight',
             't24_orbit_invariance_weight'
         ]
         for param in weight_params:
@@ -1112,9 +1003,6 @@ class TestLossWeightParameters:
         sig = inspect.signature(TrainingEngine.train_epoch)
 
         weight_params = [
-            'inversion_loss_weight',
-            'z6_equivariance_weight',
-            'd6_equivariance_weight',
             't24_orbit_invariance_weight'
         ]
         for param in weight_params:

@@ -14,15 +14,9 @@ Key Test Coverage:
 - TQF-Specific Parameters:
   - Lattice Configuration: --tqf-R (truncation radius) range validation (2-100)
   - Architecture: --tqf-hidden-dim range validation
-  - Symmetry Levels: Z6, D6, T24, none (group theory validation)
   - Binning Schemes: dyadic radial binning
 - Loss Function Weights (Opt-In Features):
-  - Equivariance: --tqf-z6-equivariance-weight, --tqf-d6-equivariance-weight
   - Invariance: --tqf-t24-orbit-invariance-weight
-  - Inversion: --tqf-inversion-loss-weight
-  - Geometry: --tqf-geometry-reg-weight
-- Advanced Features:
-  - Geometry Verification: --tqf-verify-geometry flag
 - Complex Argument Combinations: Multiple TQF parameters together
 - Boundary Value Testing: Min/max values for all numeric parameters
 - Error Handling: Invalid values, out-of-range values, incompatible combinations
@@ -203,16 +197,6 @@ class TestParseArgsDefaults:
         with patch('sys.argv', ['test_cli.py']):
             args = parse_args()
             assert args.num_seeds == config.NUM_SEEDS_DEFAULT
-
-    def test_default_tqf_symmetry_level(self) -> None:
-        """
-        WHY: TQF models need default symmetry setting
-        HOW: Parse args and check tqf_symmetry_level
-        WHAT: Expect config.TQF_SYMMETRY_LEVEL_DEFAULT (D6)
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_symmetry_level == config.TQF_SYMMETRY_LEVEL_DEFAULT
 
     def test_default_device_auto(self) -> None:
         """
@@ -441,56 +425,6 @@ class TestParseArgsValidation:
 class TestParseArgsTQFSpecific:
     """Test TQF-specific argument parsing."""
 
-    def test_tqf_symmetry_level_Z6(self) -> None:
-        """
-        WHY: Z6 is valid symmetry level
-        HOW: Parse with --tqf-symmetry-level Z6
-        WHAT: Expect Z6 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-symmetry-level', 'Z6']):
-            args = parse_args()
-            assert args.tqf_symmetry_level == 'Z6'
-
-    def test_tqf_symmetry_level_D6(self) -> None:
-        """
-        WHY: D6 is valid and default symmetry level
-        HOW: Parse with --tqf-symmetry-level D6
-        WHAT: Expect D6 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-symmetry-level', 'D6']):
-            args = parse_args()
-            assert args.tqf_symmetry_level == 'D6'
-
-    def test_tqf_symmetry_level_T24(self) -> None:
-        """
-        WHY: T24 is valid maximum symmetry level
-        HOW: Parse with --tqf-symmetry-level T24
-        WHAT: Expect T24 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-symmetry-level', 'T24']):
-            args = parse_args()
-            assert args.tqf_symmetry_level == 'T24'
-
-    def test_tqf_symmetry_level_none(self) -> None:
-        """
-        WHY: 'none' disables symmetry for ablation studies
-        HOW: Parse with --tqf-symmetry-level none
-        WHAT: Expect 'none' in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-symmetry-level', 'none']):
-            args = parse_args()
-            assert args.tqf_symmetry_level == 'none'
-
-    def test_tqf_symmetry_level_invalid_fails(self) -> None:
-        """
-        WHY: Invalid symmetry level should be rejected
-        HOW: Parse with invalid value
-        WHAT: Expect SystemExit
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-symmetry-level', 'invalid']):
-            with pytest.raises(SystemExit):
-                parse_args()
-
     def test_tqf_R_within_range(self) -> None:
         """
         WHY: Truncation radius must be valid
@@ -555,66 +489,6 @@ class TestParseArgsTQFSpecific:
             assert args.tqf_hidden_dim == 512
             assert TQF_HIDDEN_DIM_MIN <= args.tqf_hidden_dim <= TQF_HIDDEN_DIM_MAX
 
-    def test_z6_equivariance_weight_default_none(self) -> None:
-        """
-        WHY: Z6 equivariance loss should be disabled by default
-        HOW: Parse without --tqf-z6-equivariance-weight
-        WHAT: Expect None (feature disabled)
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_z6_equivariance_weight is None
-
-    def test_z6_equivariance_weight_enables_feature(self) -> None:
-        """
-        WHY: User enables Z6 equivariance loss by providing a weight
-        HOW: Parse with --tqf-z6-equivariance-weight 0.01
-        WHAT: Expect 0.01 (feature enabled)
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-z6-equivariance-weight', '0.01']):
-            args = parse_args()
-            assert args.tqf_z6_equivariance_weight == 0.01
-
-    def test_z6_equivariance_weight_custom_value(self) -> None:
-        """
-        WHY: User can specify custom Z6 weight
-        HOW: Parse with --tqf-z6-equivariance-weight 0.02
-        WHAT: Expect 0.02 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-z6-equivariance-weight', '0.02']):
-            args = parse_args()
-            assert args.tqf_z6_equivariance_weight == 0.02
-
-    def test_d6_equivariance_weight_default_none(self) -> None:
-        """
-        WHY: D6 equivariance loss should be disabled by default
-        HOW: Parse without --tqf-d6-equivariance-weight
-        WHAT: Expect None (feature disabled)
-        """
-        with patch('sys.argv', ['test_cli.py']):
-            args = parse_args()
-            assert args.tqf_d6_equivariance_weight is None
-
-    def test_d6_equivariance_weight_enables_feature(self) -> None:
-        """
-        WHY: User enables D6 equivariance loss by providing a weight
-        HOW: Parse with --tqf-d6-equivariance-weight 0.01
-        WHAT: Expect 0.01 (feature enabled)
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-d6-equivariance-weight', '0.01']):
-            args = parse_args()
-            assert args.tqf_d6_equivariance_weight == 0.01
-
-    def test_d6_equivariance_weight_custom_value(self) -> None:
-        """
-        WHY: User can specify custom D6 weight
-        HOW: Parse with --tqf-d6-equivariance-weight 0.015
-        WHAT: Expect 0.015 in args
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-d6-equivariance-weight', '0.015']):
-            args = parse_args()
-            assert args.tqf_d6_equivariance_weight == 0.015
-
     def test_t24_orbit_weight_default_none(self) -> None:
         """
         WHY: T24 orbit invariance loss should be disabled by default
@@ -644,20 +518,6 @@ class TestParseArgsTQFSpecific:
         with patch('sys.argv', ['test_cli.py', '--tqf-t24-orbit-invariance-weight', '0.008']):
             args = parse_args()
             assert args.tqf_t24_orbit_invariance_weight == 0.008
-
-    def test_all_equivariance_weights_combined(self) -> None:
-        """
-        WHY: User can enable all equivariance/invariance losses by providing weights
-        HOW: Parse with all three weight parameters
-        WHAT: Expect all weights set (features enabled)
-        """
-        with patch('sys.argv', ['test_cli.py', '--tqf-z6-equivariance-weight', '0.01',
-                                '--tqf-d6-equivariance-weight', '0.01',
-                                '--tqf-t24-orbit-invariance-weight', '0.005']):
-            args = parse_args()
-            assert args.tqf_z6_equivariance_weight == 0.01
-            assert args.tqf_d6_equivariance_weight == 0.01
-            assert args.tqf_t24_orbit_invariance_weight == 0.005
 
     # NOTE: --tqf-box-counting-weight and --tqf-box-counting-scales tests removed —
     # fractal loss features removed from codebase
@@ -737,57 +597,11 @@ class TestComplexArgumentCombinations:
             'test_cli.py',
             '--models', 'TQF-ANN',
             '--tqf-R', '20',
-            '--tqf-symmetry-level', 'D6',
-            '--tqf-geometry-reg-weight', '0.5'
         ]
         with patch('sys.argv', argv):
             args = parse_args()
             assert args.models == ['TQF-ANN']
             assert args.tqf_R == 20
-            assert args.tqf_symmetry_level == 'D6'
-            assert args.tqf_geometry_reg_weight == 0.5
-
-    def test_tqf_verify_geometry_flag_parsing(self) -> None:
-        """
-        WHY: --tqf-verify-geometry flag should enable geometry verification
-        HOW: Parse with and without the flag
-        WHAT: Expect correct boolean value set
-        """
-        # Test with flag enabled
-        argv_enabled: List[str] = [
-            'test_cli.py',
-            '--models', 'TQF-ANN',
-            '--tqf-verify-geometry'
-        ]
-        with patch('sys.argv', argv_enabled):
-            args = parse_args()
-            assert args.tqf_verify_geometry == True
-
-        # Test without flag (default)
-        argv_disabled: List[str] = [
-            'test_cli.py',
-            '--models', 'TQF-ANN'
-        ]
-        with patch('sys.argv', argv_disabled):
-            args = parse_args()
-            assert args.tqf_verify_geometry == False
-
-    def test_tqf_geometry_reg_weight_default(self) -> None:
-        """
-        WHY: --tqf-geometry-reg-weight should have correct default value
-        HOW: Parse without specifying the weight
-        WHAT: Expect default value from config (0.0, disabled by default)
-        """
-        from config import TQF_GEOMETRY_REG_WEIGHT_DEFAULT
-
-        argv: List[str] = [
-            'test_cli.py',
-            '--models', 'TQF-ANN'
-        ]
-        with patch('sys.argv', argv):
-            args = parse_args()
-            assert args.tqf_geometry_reg_weight == TQF_GEOMETRY_REG_WEIGHT_DEFAULT
-            assert args.tqf_geometry_reg_weight == 0.0  # Disabled by default (opt-in)
 
     def test_baseline_models_ignore_tqf_params(self) -> None:
         """
@@ -806,46 +620,6 @@ class TestComplexArgumentCombinations:
             # Args should parse successfully even though TQF params present
 
 
-class TestInversionLossCLIFlags:
-    """Test suite for inversion loss CLI weight parameter.
-
-    Features are enabled by providing a weight value (not None).
-    Features are disabled by default (weight=None).
-    """
-
-    def test_inversion_loss_weight_default_none(self) -> None:
-        """
-        WHY: Inversion loss should be disabled by default (opt-in feature)
-        HOW: Parse without specifying the weight
-        WHAT: Expect tqf_inversion_loss_weight to be None (disabled)
-        """
-        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
-            args = parse_args()
-            assert args.tqf_inversion_loss_weight is None
-
-    def test_inversion_loss_weight_enables_feature(self) -> None:
-        """
-        WHY: User enables inversion loss by providing a weight value
-        HOW: Parse with --tqf-inversion-loss-weight 0.001
-        WHAT: Expect weight set (feature enabled)
-        """
-        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-inversion-loss-weight', '0.001']):
-            args = parse_args()
-            assert args.tqf_inversion_loss_weight == 0.001
-
-    def test_inversion_loss_weight_custom(self) -> None:
-        """
-        WHY: User should be able to set custom inversion loss weight
-        HOW: Parse with --tqf-inversion-loss-weight 0.05
-        WHAT: Expect weight to be 0.05
-        """
-        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-inversion-loss-weight', '0.05']):
-            args = parse_args()
-            assert args.tqf_inversion_loss_weight == 0.05
-
-
 class TestCombinedLossFlags:
     """Test suite for combined symmetry/invariance loss weight scenarios.
 
@@ -861,33 +635,17 @@ class TestCombinedLossFlags:
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
             args = parse_args()
-            assert args.tqf_inversion_loss_weight is None
-            assert args.tqf_z6_equivariance_weight is None
-            assert args.tqf_d6_equivariance_weight is None
             assert args.tqf_t24_orbit_invariance_weight is None
 
-    def test_inversion_loss_enabled_with_weight(self) -> None:
+    def test_invariance_loss_enabled(self) -> None:
         """
-        WHY: User enables inversion loss by providing a weight
-        HOW: Parse with inversion weight
-        WHAT: Expect inversion weight set (feature enabled)
-        """
-        with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-inversion-loss-weight', '0.02']):
-            args = parse_args()
-            assert args.tqf_inversion_loss_weight == 0.02
-
-    def test_equivariance_and_invariance_losses_combined(self) -> None:
-        """
-        WHY: User should be able to enable both equivariance and invariance losses
-        HOW: Parse with Z6 equivariance + T24 invariance weights
-        WHAT: Expect both weights set (features enabled)
+        WHY: User should be able to enable T24 invariance loss
+        HOW: Parse with T24 invariance weight
+        WHAT: Expect weight set (feature enabled)
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-z6-equivariance-weight', '0.01',
                                '--tqf-t24-orbit-invariance-weight', '0.005']):
             args = parse_args()
-            assert args.tqf_z6_equivariance_weight == 0.01
             assert args.tqf_t24_orbit_invariance_weight == 0.005
 
 
@@ -972,9 +730,9 @@ class TestOrbitMixingFlags:
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
             args = parse_args()
-            assert args.tqf_orbit_mixing_temp_rotation == 0.5
-            assert args.tqf_orbit_mixing_temp_reflection == 0.5
-            assert args.tqf_orbit_mixing_temp_inversion == 0.7
+            assert args.tqf_z6_orbit_mixing_temp_rotation == 0.5
+            assert args.tqf_d6_orbit_mixing_temp_reflection == 0.5
+            assert args.tqf_t24_orbit_mixing_temp_inversion == 0.7
 
     def test_custom_temperatures(self) -> None:
         """
@@ -983,13 +741,13 @@ class TestOrbitMixingFlags:
         WHAT: Expect values match what was provided
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-orbit-mixing-temp-rotation', '0.5',
-                               '--tqf-orbit-mixing-temp-reflection', '0.8',
-                               '--tqf-orbit-mixing-temp-inversion', '1.0']):
+                               '--tqf-z6-orbit-mixing-temp-rotation', '0.5',
+                               '--tqf-d6-orbit-mixing-temp-reflection', '0.8',
+                               '--tqf-t24-orbit-mixing-temp-inversion', '1.0']):
             args = parse_args()
-            assert args.tqf_orbit_mixing_temp_rotation == 0.5
-            assert args.tqf_orbit_mixing_temp_reflection == 0.8
-            assert args.tqf_orbit_mixing_temp_inversion == 1.0
+            assert args.tqf_z6_orbit_mixing_temp_rotation == 0.5
+            assert args.tqf_d6_orbit_mixing_temp_reflection == 0.8
+            assert args.tqf_t24_orbit_mixing_temp_inversion == 1.0
 
     def test_temperature_validation_too_low(self) -> None:
         """
@@ -998,7 +756,7 @@ class TestOrbitMixingFlags:
         WHAT: Expect SystemExit from validation
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-orbit-mixing-temp-rotation', '0.001']):
+                               '--tqf-z6-orbit-mixing-temp-rotation', '0.001']):
             with pytest.raises(SystemExit):
                 parse_args()
 
@@ -1009,7 +767,7 @@ class TestOrbitMixingFlags:
         WHAT: Expect SystemExit from validation
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-orbit-mixing-temp-inversion', '15.0']):
+                               '--tqf-t24-orbit-mixing-temp-inversion', '15.0']):
             with pytest.raises(SystemExit):
                 parse_args()
 
@@ -1089,23 +847,7 @@ class TestCLIConfigRangeConstantConsistency:
         """Test loss weight ranges match between CLI and config."""
         import cli
         pairs = [
-            'TQF_GEOMETRY_REG_WEIGHT_MIN', 'TQF_GEOMETRY_REG_WEIGHT_MAX',
-            'TQF_INVERSION_LOSS_WEIGHT_MIN', 'TQF_INVERSION_LOSS_WEIGHT_MAX',
-            'TQF_Z6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_Z6_EQUIVARIANCE_WEIGHT_MAX',
-            'TQF_D6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_D6_EQUIVARIANCE_WEIGHT_MAX',
             'TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN', 'TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX',
-        ]
-        for name in pairs:
-            cli_val = getattr(cli, name)
-            config_val = getattr(config, name)
-            assert cli_val == config_val, \
-                f"cli.{name} ({cli_val}) != config.{name} ({config_val})"
-
-    def test_verification_range_constants_match(self) -> None:
-        """Test verification ranges match between CLI and config."""
-        import cli
-        pairs = [
-            'TQF_VERIFY_DUALITY_INTERVAL_MIN', 'TQF_VERIFY_DUALITY_INTERVAL_MAX',
         ]
         for name in pairs:
             cli_val = getattr(cli, name)
@@ -1118,9 +860,9 @@ class TestCLIConfigRangeConstantConsistency:
         import cli
         defaults = [
             'Z6_DATA_AUGMENTATION_DEFAULT',
-            'TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT',
-            'TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT',
-            'TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT',
+            'TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT',
+            'TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT',
+            'TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT',
         ]
         for name in defaults:
             cli_val = getattr(cli, name)
@@ -1224,15 +966,15 @@ class TestZ6OrbitMixingEnhancements:
             args = parse_args()
             assert args.tqf_z6_orbit_mixing_rotation_pad == 0
 
-    def test_z6_non_rotation_aug_default_false(self) -> None:
+    def test_non_rotation_aug_default_false(self) -> None:
         """
         WHY: non-rotation augmentation should default to False
         HOW: Parse without the flag
-        WHAT: Expect args.tqf_z6_non_rotation_augmentation is False
+        WHAT: Expect args.non_rotation_data_augmentation is False
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN']):
             args = parse_args()
-            assert args.tqf_z6_non_rotation_augmentation is False
+            assert args.non_rotation_data_augmentation is False
 
     def test_z6_orbit_consistency_weight_default_none(self) -> None:
         """
@@ -1345,16 +1087,16 @@ class TestZ6OrbitMixingEnhancements:
             args = parse_args()
             assert args.tqf_z6_orbit_mixing_rotation_pad == 4
 
-    def test_z6_non_rotation_aug_enabled(self) -> None:
+    def test_non_rotation_aug_enabled(self) -> None:
         """
         WHY: User should be able to enable non-rotation augmentation
-        HOW: Parse with --tqf-z6-non-rotation-augmentation
-        WHAT: Expect args.tqf_z6_non_rotation_augmentation is True
+        HOW: Parse with --non-rotation-data-augmentation
+        WHAT: Expect args.non_rotation_data_augmentation is True
         """
         with patch('sys.argv', ['test_cli.py', '--models', 'TQF-ANN',
-                               '--tqf-z6-non-rotation-augmentation']):
+                               '--non-rotation-data-augmentation']):
             args = parse_args()
-            assert args.tqf_z6_non_rotation_augmentation is True
+            assert args.non_rotation_data_augmentation is True
 
     def test_z6_orbit_consistency_weight_valid(self) -> None:
         """
@@ -1454,7 +1196,7 @@ class TestZ6OrbitMixingEnhancements:
             'TQF_Z6_ORBIT_MIXING_ROTATION_MODE_DEFAULT',
             'TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT',
             'TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT',
-            'TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT',
+            'NON_ROTATION_DATA_AUGMENTATION_DEFAULT',
             'TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_DEFAULT',
         ]
         for name in defaults:

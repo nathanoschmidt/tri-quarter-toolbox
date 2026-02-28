@@ -313,11 +313,6 @@ class TestCachedHasattrChecks(unittest.TestCase):
 
         # Verify cached checks match hasattr
         self.assertEqual(
-            engine._supports_geometry_loss,
-            hasattr(model, 'forward') and 'return_geometry_loss' in model.forward.__code__.co_varnames,
-            "_supports_geometry_loss mismatch"
-        )
-        self.assertEqual(
             engine._supports_inv_loss,
             hasattr(model, 'forward') and 'return_inv_loss' in model.forward.__code__.co_varnames,
             "_supports_inv_loss mismatch"
@@ -353,7 +348,6 @@ class TestCachedHasattrChecks(unittest.TestCase):
         engine = TrainingEngine(model, device)
 
         # Baseline models should not have TQF-specific features
-        self.assertFalse(engine._supports_geometry_loss)
         self.assertFalse(engine._supports_inv_loss)
         self.assertFalse(engine._has_sector_features)
         self.assertFalse(engine._has_dual_output)
@@ -541,7 +535,6 @@ class TestModelIntegration(unittest.TestCase):
             model,
             device,
             label_smoothing=0.1,
-            use_geometry_reg=True,
             use_amp=False  # Disable AMP for CPU testing
         )
 
@@ -552,10 +545,9 @@ class TestModelIntegration(unittest.TestCase):
         dataset = TensorDataset(inputs, labels)
         loader = DataLoader(dataset, batch_size=batch_size)
 
-        # Run one training epoch (inversion loss enabled via weight)
+        # Run one training epoch
         metrics = engine.train_epoch(
-            loader,
-            inversion_loss_weight=0.001
+            loader
         )
 
         # Verify metrics returned

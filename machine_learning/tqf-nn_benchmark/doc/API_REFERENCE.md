@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Last Updated:** February 26, 2026<br>
+**Version:** 1.1.1<br>
+**Last Updated:** February 27, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -252,26 +252,8 @@ print(f"Available models: {models}")
   - Default: `None` (auto-tuned to match ~650K params)
   - Range: [8, 512] if manually specified
 
-- `--tqf-symmetry-level`: Symmetry group for orbit pooling
-  - Type: `str`
-  - Default: `'none'` (from `TQF_SYMMETRY_LEVEL_DEFAULT`, orbit pooling disabled)
-  - Choices: `['none', 'Z6', 'D6', 'T24']`
-
-**TQF Equivariance Losses (TQF-ANN only):**
-Features are disabled by default and enabled by providing a weight value.
-- `--tqf-z6-equivariance-weight`: Enable and set weight for Z6 rotation equivariance loss (disabled by default)
-- `--tqf-d6-equivariance-weight`: Enable and set weight for D6 reflection equivariance loss (disabled by default)
-
 **TQF Invariance Losses (TQF-ANN only):**
 - `--tqf-t24-orbit-invariance-weight`: Enable and set weight for T24 orbit invariance loss (disabled by default)
-
-**TQF Duality Losses (TQF-ANN only):**
-- `--tqf-inversion-loss-weight`: Enable and set weight for circle inversion duality loss (disabled by default)
-- `--tqf-verify-duality-interval`: Epochs between duality checks (default: 10)
-
-**TQF Geometry Regularization (TQF-ANN only, opt-in):**
-- `--tqf-verify-geometry`: Enable geometry verification
-- `--tqf-geometry-reg-weight`: Weight (default: 0.0, disabled)
 
 **Example:**
 ```python
@@ -279,7 +261,7 @@ from cli import parse_args
 
 args = parse_args()
 print(f"Training {args.models} for {args.num_epochs} epochs")
-print(f"TQF symmetry: {args.tqf_symmetry_level}")
+print(f"Z6 orbit mixing: {args.tqf_use_z6_orbit_mixing}")
 ```
 
 **Command-Line Usage:**
@@ -290,8 +272,8 @@ python src/main.py
 # Train all models with 10 seeds
 python src/main.py --num-seeds 10
 
-# Train only TQF-ANN with T24 symmetry
-python src/main.py --models TQF-ANN --tqf-symmetry-level T24
+# Train only TQF-ANN with Z6 orbit mixing
+python src/main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 
 # Custom dataset sizes
 python src/main.py --num-train 10000 --num-val 1000 --num-test-rot 2000
@@ -323,7 +305,7 @@ python src/main.py --num-epochs 10 --num-train 1000 --num-val 200
 ```
 ValueError: --learning-rate=2.0 outside valid range (0.0, 1.0]
 ValueError: --batch-size=0 must be >= 1
-ValueError: --tqf-symmetry-level='invalid' not in ['none', 'Z6', 'D6', 'T24']
+ValueError: --num-train=1005 must be divisible by 10 for balanced class distribution
 ```
 
 ---
@@ -379,33 +361,10 @@ TQFANN(
     num_classes: int = 10,
     R: int = 20,
     r: float = 1.0,
-    symmetry_level: str = 'none',
     use_dual_output: bool = True,
-    use_gradient_checkpointing: bool = False,
     dropout: float = 0.2
 )
 ```
-
-**Additional Parameters:**
-
-- `use_gradient_checkpointing` (bool): Enable gradient checkpointing for memory optimization
-  - **Default**: `False` (standard training with all activations stored)
-  - **Purpose**: Trade compute time for memory savings during training
-  - **Effect when True**:
-    - Discards intermediate activations during forward pass
-    - Recomputes activations on-the-fly during backward pass
-    - Reduces activation memory by ~60%
-    - Increases training time by ~30% per epoch
-  - **Use cases**:
-    - GPU memory constrained (8GB or less)
-    - Large R values (R >= 15)
-    - OOM errors during training
-  - **Implementation details**:
-    - Applies to radial binner forward passes (inner and outer zones)
-    - Only active during `model.train()` mode
-    - Uses PyTorch's `torch.utils.checkpoint.checkpoint()` internally
-    - Gradients are mathematically identical (no approximation)
-  - **Recommendation**: Keep `False` unless hitting OOM errors; enable for R >= 15 on 8GB GPUs
 
 **Graph Convolution:**
 
@@ -433,18 +392,10 @@ Each vertex connects to at most 6 neighbors, respecting the radial dual triangul
 from models_tqf import TQFANN
 import torch
 
-# Default: Baseline mode (no orbit pooling, fastest)
+# Default: Baseline mode (fastest)
 model = TQFANN(
     hidden_dim=128,
     R=20
-    # symmetry_level='none' is default (no orbit pooling)
-)
-
-# With D6 symmetry enabled (opt-in for rotation invariance)
-model_d6 = TQFANN(
-    hidden_dim=128,
-    R=20,
-    symmetry_level='D6'  # Enable D6 orbit pooling
 )
 
 # Standard forward pass
@@ -480,16 +431,6 @@ print(f"Parameters: {model.count_parameters():,}")
   - **Default**: 1.0 (from `TQF_RADIUS_R_FIXED`)
   - **Note**: Hardcoded, not user-configurable
 
-- `symmetry_level` (str): Symmetry group for orbit aggregation
-  - **Default**: `'none'` (from `TQF_SYMMETRY_LEVEL_DEFAULT`, orbit pooling disabled)
-  - **Choices**: `['none', 'Z6', 'D6', 'T24']`
-  - **Why**:
-    - `'none'`: No symmetry (baseline, fastest)
-    - `'Z6'`: 6-fold rotational symmetry (60-degree increments)
-    - `'D6'`: Rotations + 6 reflection axes (dihedral group)
-    - `'T24'`: Full group with circle inversion (order 24)
-  - **Recommendation**: Start with 'none' for baseline; enable D6 for rotation invariance tasks
-
 - `use_dual_output` (bool): Enable dual zone output
   - **Default**: True
 
@@ -498,14 +439,6 @@ print(f"Parameters: {model.count_parameters():,}")
 
 - `dropout` (float): Dropout probability
   - **Default**: 0.2
-
-- `verify_geometry` (bool): Enable geometry verification
-  - **Default**: False
-
-**Regularization Weights:**
-
-- `geometry_reg_weight` (float): Weight for geometric regularization
-  - **Default**: 0.0 (from `TQF_GEOMETRY_REG_WEIGHT_DEFAULT`, disabled; opt-in via CLI)
 
 **Methods:**
 
@@ -548,8 +481,8 @@ print(f"Parameters: {model.count_parameters():,}")
 from models_tqf import TQFANN
 import torch
 
-# Initialize model (with D6 symmetry enabled for this example)
-model: TQFANN = TQFANN(R=20, symmetry_level='D6')
+# Initialize model
+model: TQFANN = TQFANN(R=20)
 
 # Standard forward pass
 x: torch.Tensor = torch.randn(32, 784)  # Batch of 32 images
@@ -601,7 +534,7 @@ print(f"Total parameters: {params:,}")
 
 **Example:**
 ```python
-model: TQFANN = TQFANN(R=20, verify_geometry=True)
+model: TQFANN = TQFANN(R=20)
 duality_metrics: Dict[str, float] = model.verify_self_duality()
 
 print(f"Max duality error: {duality_metrics['max_error']:.2e}")
@@ -821,7 +754,7 @@ mlp = get_model('FC-MLP', hidden_dims=[512, 512], dropout=0.3)
 
 # Instantiate TQF-ANN
 from models_tqf import TQFANN
-tqf = get_model('TQF-ANN', R=20, symmetry_level='T24')
+tqf = get_model('TQF-ANN', R=20)
 
 # Parameter counts
 print(f"MLP: {mlp.count_parameters():,} params")
@@ -1075,7 +1008,7 @@ results: Dict[str, Any] = run_single_seed_experiment(
     learning_rate=0.0003,
     device=torch.device('cuda'),
     R=18,
-    symmetry_level='D6'  # Enable D6 orbit pooling (opt-in)
+    use_z6_orbit_mixing=True  # Enable Z6 orbit mixing at evaluation
 )
 
 print(f"Test accuracy (rotated): {results['test_rotated_acc']:.2f}%")
@@ -1145,7 +1078,7 @@ results: Dict[str, Any] = run_multi_seed_experiment(
     learning_rate=0.0003,
     device=torch.device('cuda'),
     R=18,
-    symmetry_level='D6'  # Enable D6 orbit pooling (opt-in)
+    use_z6_orbit_mixing=True  # Enable Z6 orbit mixing at evaluation
 )
 
 print(f"Mean test accuracy: {results['mean_test_rotated_acc']:.2f}% "
@@ -1688,18 +1621,8 @@ TQF_RADIUS_R_FIXED: float = 1.0  # Fixed inversion radius
 # Model capacity
 TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 
-# Symmetry
-TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'
-TQF_SYMMETRY_CHOICES: List[str] = ['none', 'Z6', 'D6', 'T24']
-
 # Z6 augmentation (applies to all models)
 Z6_DATA_AUGMENTATION_DEFAULT: bool = False
-
-# Regularization weights (all opt-in, disabled by default)
-TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
-
-# Verification
-TQF_VERIFY_DUALITY_INTERVAL_DEFAULT: int = 10
 ```
 
 ---
@@ -2204,7 +2127,6 @@ results = run_single_seed_experiment(
     learning_rate=args.learning_rate,
     device=device,
     R=args.tqf_truncation_R,
-    symmetry_level=args.tqf_symmetry_level
 )
 
 print(f"Test accuracy (rotated): {results['test_rotated_acc']:.2f}%")
@@ -2259,7 +2181,6 @@ from param_matcher import tune_d_for_params, estimate_tqf_params
 
 # Custom configuration
 R: int = 25
-symmetry_level: str = 'T24'
 
 # Auto-tune hidden dimension
 d_hidden: int = tune_d_for_params(R, target_params=650000)
@@ -2269,11 +2190,6 @@ print(f"Auto-tuned hidden_dim: {d_hidden}")
 model: TQFANN = TQFANN(
     hidden_dim=d_hidden,
     R=R,
-    symmetry_level=symmetry_level,
-    geometry_reg_weight=0.15,
-    inv_loss_weight=0.25,
-    verify_duality_interval=10,
-    verify_geometry=True
 )
 
 # Verify parameter count
@@ -2388,8 +2304,8 @@ See the project MEMORY.md for the latest benchmark results with optimal configur
 
 **`QED`**
 
-**Last Updated:** February 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** February 27, 2026<br>
+**Version:** 1.1.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

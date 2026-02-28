@@ -541,61 +541,6 @@ TQF_RADIUS_R_FIXED: float = 1.0
 #      Decision: 512 provides good expressiveness while matching parameter constraint.
 TQF_HIDDEN_DIMENSION_DEFAULT: int = 512
 
-# TQF_SYMMETRY_LEVEL_DEFAULT
-# --------------------------
-# WHAT: Symmetry group to enforce in TQF architecture.
-#
-# HOW: Specifies which mathematical symmetry group the network should respect.
-#      Options: 'none' (no symmetry), 'Z6' (6-fold rotation), 'D6' (dihedral),
-#      'T24' (full triangle group, includes Z6, D6, and reflections).
-#      - Default: 'none' (opt-in for symmetry enforcement)
-#      - CLI override: --tqf-symmetry-level {none, Z6, D6, T24}
-#      - Affects: Network architecture, equivariance constraints, inference cost
-#
-# WHY: Symmetry groups encode geometric priors for rotation invariance. The TQF
-#      framework is designed to exploit these symmetries for better generalization.
-#      Mathematical background:
-#      1. Z6 (cyclic): 6-fold rotational symmetry (60-degree increments)
-#      2. D6 (dihedral): Z6 + reflection symmetry (12 elements total)
-#      3. T24 (triangle): Full symmetry group of radial dual lattice (24 elements)
-#      Performance characteristics:
-#      - 'none': Standard forward pass, fastest inference
-#      - 'Z6': 6x inference cost, improves rotated accuracy +1-2%
-#      - 'D6': 12x inference cost, adds reflection robustness
-#      - 'T24': 24x inference cost, maximum symmetry enforcement
-#      Default 'none' provides baseline performance; enable higher symmetry levels
-#      via CLI when rotation invariance is specifically required.
-TQF_SYMMETRY_LEVEL_DEFAULT: str = 'none'
-
-###################################################################################
-# TQF REGULARIZATION WEIGHTS ######################################################
-###################################################################################
-
-# TQF_GEOMETRY_REG_WEIGHT_DEFAULT
-# -------------------------------
-# WHAT: Weight for geometry preservation regularization loss.
-#
-# HOW: Penalizes deviations from ideal hyperbolic geometry. Added to total loss as:
-#      total_loss = classification_loss + geometry_weight * geometry_loss.
-#      - Default: 0.0 (disabled, opt-in via CLI)
-#      - CLI override: --tqf-geometry-reg-weight F
-#      - Recommended range when enabled: 0.001 to 0.01
-#
-# WHY: TQF's geometric structure (dual metrics, hyperbolic distances) can be
-#      preserved during training via this regularization term. Geometry loss measures:
-#      1. Triangle inequality violations (non-metric distances)
-#      2. Symmetry breaking (loss of Z6/D6 equivariance)
-#      3. Hyperbolic property violations (negative curvature)
-#      Default 0.0 allows baseline training without geometric constraints.
-#      Enable via CLI when geometric preservation is specifically required.
-TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
-
-# Note: TQF equivariance/invariance/duality loss weights have been removed from
-# config.py as these features are disabled by default. Users enable them by
-# providing the weight value directly via CLI (e.g., --tqf-z6-equivariance-weight 0.01).
-# See cli.py for valid ranges: Z6 [0.001, 2.0], D6 [0.001, 0.05], T24 [0.001, 0.02], Inversion [0.0, 10.0].
-
-
 ###################################################################################
 # TQF DUAL METRICS PARAMETERS #####################################################
 ###################################################################################
@@ -619,26 +564,6 @@ TQF_GEOMETRY_REG_WEIGHT_DEFAULT: float = 0.0
 #      Decision: 1% allows reasonable numerical error while catching major issues.
 TQF_DUALITY_TOLERANCE_DEFAULT: float = 0.01
 
-# TQF_VERIFY_DUALITY_INTERVAL_DEFAULT
-# -----------------------------------
-# WHAT: Epoch interval for running duality verification checks.
-#
-# HOW: Every N epochs, compute dual metric consistency and check against DUALITY_TOLERANCE.
-#      Emits warnings if duality violations detected (but training continues).
-#      - Default: 10 epochs
-#      - CLI override: --tqf-verify-duality-interval N
-#      - Purpose: Catch geometry degradation early (diagnostic tool)
-#
-# WHY: Duality verification is computationally expensive (requires full distance matrix
-#      computation). Checking every epoch would slow training by ~20%. Checking every
-#      10 epochs is a reasonable compromise:
-#      1. Frequent enough to catch issues before they compound
-#      2. Infrequent enough to have minimal performance impact
-#      3. Standard practice: Verification checks typically run every 5-20 epochs
-#      If duality violations detected, can enable --tqf-verify-geometry for full diagnostic.
-#      Decision: 10 epochs balances diagnostic frequency with computational efficiency.
-TQF_VERIFY_DUALITY_INTERVAL_DEFAULT: int = 10
-
 # Z6_DATA_AUGMENTATION_DEFAULT
 # -----------------------------
 # WHAT: Whether to apply Z6-aligned rotation augmentation during training.
@@ -658,13 +583,13 @@ TQF_VERIFY_DUALITY_INTERVAL_DEFAULT: int = 10
 #      Decision: False by default. Enable explicitly when needed.
 Z6_DATA_AUGMENTATION_DEFAULT: bool = False
 
-# TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT
-# ---------------------------------------
+# TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT
+# ------------------------------------------
 # WHAT: Temperature for Z6 rotation confidence weighting in orbit mixing.
 #
 # HOW: Controls sharpness of max-logit weighting across 6 rotation variants.
 #      - Default: 0.5 (experimentally optimal for rotation accuracy)
-#      - CLI override: --tqf-orbit-mixing-temp-rotation
+#      - CLI override: --tqf-z6-orbit-mixing-temp-rotation
 #      - Range: [0.01, 2.0]
 #      - Lower = sharper (best rotation dominates), Higher = more uniform averaging
 #
@@ -673,30 +598,30 @@ Z6_DATA_AUGMENTATION_DEFAULT: bool = False
 #      T=0.5 achieves the best rotation accuracy (67.42%), outperforming both
 #      sharper (T=0.3) and softer (T=1.0 → 67.27%, T=2.0 → 65.45%) settings.
 #      Decision: 0.5 is the experimentally validated optimum.
-TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT: float = 0.5
+TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT: float = 0.5
 
-# TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT
-# -----------------------------------------
+# TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT
+# --------------------------------------------
 # WHAT: Temperature for D6 reflection confidence weighting in orbit mixing.
 #
 # HOW: Controls sharpness of weighting between base and reflected feature variants.
 #      - Default: 0.5 (moderate — some digits are asymmetric under reflection)
-#      - CLI override: --tqf-orbit-mixing-temp-reflection
+#      - CLI override: --tqf-d6-orbit-mixing-temp-reflection
 #      - Range: [0.01, 2.0]
 #
 # WHY: Reflections are a weaker symmetry for digit recognition because some digits
 #      (e.g., 6/9, 2/5) are not reflection-symmetric. Softer weighting than rotation
 #      prevents reflected variants from overriding correct base predictions.
 #      Decision: 0.5 provides moderate contribution without overwhelming base.
-TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT: float = 0.5
+TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT: float = 0.5
 
-# TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
-# ----------------------------------------
+# TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+# --------------------------------------------
 # WHAT: Temperature for T24 zone-swap confidence weighting in orbit mixing.
 #
 # HOW: Controls sharpness of weighting between normal and zone-swapped variants.
 #      - Default: 0.7 (soft — circle inversion is the most abstract symmetry)
-#      - CLI override: --tqf-orbit-mixing-temp-inversion
+#      - CLI override: --tqf-t24-orbit-mixing-temp-inversion
 #      - Range: [0.01, 2.0]
 #
 # WHY: Zone-swap (exchanging inner/outer roles) is the most abstract T24 operation.
@@ -704,7 +629,7 @@ TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT: float = 0.5
 #      them produces less reliable predictions. Soft weighting (high temperature)
 #      prevents the zone-swap variant from dominating.
 #      Decision: 0.7 gives gentle contribution without diluting primary predictions.
-TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT: float = 0.7
+TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT: float = 0.7
 
 # TQF_Z6_ORBIT_MIXING_CONFIDENCE_MODE_DEFAULT
 # -----------------------------------------
@@ -790,16 +715,17 @@ TQF_Z6_ORBIT_MIXING_ROTATION_PADDING_MODE_DEFAULT: str = 'zeros'
 #      - CLI override: --tqf-z6-orbit-mixing-rotation-pad INT
 TQF_Z6_ORBIT_MIXING_ROTATION_PAD_DEFAULT: int = 0
 
-# TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT
-# ----------------------------------------
+# NON_ROTATION_DATA_AUGMENTATION_DEFAULT
+# ----------------------------------
 # WHAT: Enable non-rotation training augmentation (random crop + brightness jitter).
 #
 # HOW: When True, adds random crop (pad=2, 28×28 crop) and slight brightness /
 #      contrast jitter (±10%) to the training transform. Works independently of
-#      Z6 rotation augmentation — can be used with or without it.
+#      Z6 rotation augmentation — can be used with or without it. Applies to
+#      all models (shared training dataset).
 #      - Default: False (disabled, backward-compatible)
-#      - CLI override: --tqf-z6-non-rotation-augmentation
-TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT: bool = False
+#      - CLI override: --non-rotation-data-augmentation
+NON_ROTATION_DATA_AUGMENTATION_DEFAULT: bool = False
 
 # TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_DEFAULT / _ROTATIONS_DEFAULT
 # ----------------------------------------------------------
@@ -881,21 +807,8 @@ TQF_Z6_ORBIT_CONSISTENCY_WEIGHT_MAX: float = 1.0
 TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MIN: int = 1
 TQF_Z6_ORBIT_CONSISTENCY_ROTATIONS_MAX: int = 5
 
-# TQF loss weight ranges
-TQF_GEOMETRY_REG_WEIGHT_MIN: float = 0.0
-TQF_GEOMETRY_REG_WEIGHT_MAX: float = 10.0
-TQF_INVERSION_LOSS_WEIGHT_MIN: float = 0.0
-TQF_INVERSION_LOSS_WEIGHT_MAX: float = 10.0
-TQF_Z6_EQUIVARIANCE_WEIGHT_MIN: float = 0.001
-TQF_Z6_EQUIVARIANCE_WEIGHT_MAX: float = 2.0
-TQF_D6_EQUIVARIANCE_WEIGHT_MIN: float = 0.001
-TQF_D6_EQUIVARIANCE_WEIGHT_MAX: float = 0.05
 TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN: float = 0.001
 TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX: float = 0.02
-
-# TQF verification ranges
-TQF_VERIFY_DUALITY_INTERVAL_MIN: int = 1
-TQF_VERIFY_DUALITY_INTERVAL_MAX: int = 100
 
 ###################################################################################
 # PARAMETER MATCHING CONFIGURATION ################################################
@@ -1080,18 +993,12 @@ assert TQF_TRUNCATION_R_DEFAULT > TQF_RADIUS_R_FIXED, \
     "Truncation radius must exceed inversion radius"
 assert TQF_HIDDEN_DIM_MIN <= TQF_HIDDEN_DIMENSION_DEFAULT <= TQF_HIDDEN_DIM_MAX, \
     f"Hidden dimension must be in [{TQF_HIDDEN_DIM_MIN}, {TQF_HIDDEN_DIM_MAX}]"
-assert TQF_SYMMETRY_LEVEL_DEFAULT in ['none', 'Z6', 'D6', 'T24'], \
-    "Invalid symmetry level"
-# Regularization weight assertions
-assert TQF_GEOMETRY_REG_WEIGHT_MIN <= TQF_GEOMETRY_REG_WEIGHT_DEFAULT <= TQF_GEOMETRY_REG_WEIGHT_MAX, \
-    f"Geometry reg weight must be in [{TQF_GEOMETRY_REG_WEIGHT_MIN}, {TQF_GEOMETRY_REG_WEIGHT_MAX}]"
-
 # Orbit mixing temperature assertions
-assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
+assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
     f"Rotation temperature must be in [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]"
-assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
+assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
     f"Reflection temperature must be in [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]"
-assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
+assert TQF_ORBIT_MIXING_TEMP_MIN <= TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT <= TQF_ORBIT_MIXING_TEMP_MAX, \
     f"Inversion temperature must be in [{TQF_ORBIT_MIXING_TEMP_MIN}, {TQF_ORBIT_MIXING_TEMP_MAX}]"
 
 # Note: Equivariance/invariance/duality loss weight assertions removed - these features

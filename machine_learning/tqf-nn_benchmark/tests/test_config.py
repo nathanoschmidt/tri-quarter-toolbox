@@ -182,11 +182,6 @@ class TestTQFArchitectureParameters(unittest.TestCase):
         """Test that truncation radius exceeds base radius."""
         self.assertGreater(config.TQF_TRUNCATION_R_DEFAULT, config.TQF_RADIUS_R_FIXED)
 
-    def test_symmetry_level_valid(self) -> None:
-        """Test that symmetry level is valid."""
-        valid: List[str] = ['none', 'Z6', 'D6', 'T24']
-        self.assertIn(config.TQF_SYMMETRY_LEVEL_DEFAULT, valid)
-
     def test_tqf_radius_type(self) -> None:
         """Test TQF_RADIUS_R_FIXED is float."""
         self.assertIsInstance(config.TQF_RADIUS_R_FIXED, float)
@@ -427,10 +422,6 @@ class TestRangeConstants(unittest.TestCase):
     def test_tqf_loss_weight_ranges_exist(self) -> None:
         """Test that all TQF loss weight range constants exist."""
         pairs = [
-            ('TQF_GEOMETRY_REG_WEIGHT_MIN', 'TQF_GEOMETRY_REG_WEIGHT_MAX'),
-            ('TQF_INVERSION_LOSS_WEIGHT_MIN', 'TQF_INVERSION_LOSS_WEIGHT_MAX'),
-            ('TQF_Z6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_Z6_EQUIVARIANCE_WEIGHT_MAX'),
-            ('TQF_D6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_D6_EQUIVARIANCE_WEIGHT_MAX'),
             ('TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN', 'TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX'),
         ]
         for min_name, max_name in pairs:
@@ -441,11 +432,6 @@ class TestRangeConstants(unittest.TestCase):
         """Test that orbit mixing temperature range constants exist."""
         self.assertTrue(hasattr(config, 'TQF_ORBIT_MIXING_TEMP_MIN'))
         self.assertTrue(hasattr(config, 'TQF_ORBIT_MIXING_TEMP_MAX'))
-
-    def test_verification_ranges_exist(self) -> None:
-        """Test that verification range constants exist."""
-        self.assertTrue(hasattr(config, 'TQF_VERIFY_DUALITY_INTERVAL_MIN'))
-        self.assertTrue(hasattr(config, 'TQF_VERIFY_DUALITY_INTERVAL_MAX'))
 
     def test_all_min_less_than_max(self) -> None:
         """Test that MIN < MAX for all range constant pairs.
@@ -471,12 +457,7 @@ class TestRangeConstants(unittest.TestCase):
             ('TQF_R_MIN', 'TQF_R_MAX'),
             ('TQF_HIDDEN_DIM_MIN', 'TQF_HIDDEN_DIM_MAX'),
             ('TQF_ORBIT_MIXING_TEMP_MIN', 'TQF_ORBIT_MIXING_TEMP_MAX'),
-            ('TQF_GEOMETRY_REG_WEIGHT_MIN', 'TQF_GEOMETRY_REG_WEIGHT_MAX'),
-            ('TQF_INVERSION_LOSS_WEIGHT_MIN', 'TQF_INVERSION_LOSS_WEIGHT_MAX'),
-            ('TQF_Z6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_Z6_EQUIVARIANCE_WEIGHT_MAX'),
-            ('TQF_D6_EQUIVARIANCE_WEIGHT_MIN', 'TQF_D6_EQUIVARIANCE_WEIGHT_MAX'),
             ('TQF_T24_ORBIT_INVARIANCE_WEIGHT_MIN', 'TQF_T24_ORBIT_INVARIANCE_WEIGHT_MAX'),
-            ('TQF_VERIFY_DUALITY_INTERVAL_MIN', 'TQF_VERIFY_DUALITY_INTERVAL_MAX'),
         ]
         for min_name, max_name in pairs:
             min_val = getattr(config, min_name)
@@ -546,25 +527,11 @@ class TestDefaultsWithinRanges(unittest.TestCase):
             self.assertLessEqual(default_val, max_val,
                 f"{default_name} ({default_val}) must be <= {max_name} ({max_val})")
 
-    def test_tqf_weight_defaults_within_ranges(self) -> None:
-        """Test TQF regularization weight defaults are within bounds."""
-        checks = [
-            ('TQF_GEOMETRY_REG_WEIGHT_MIN', 'TQF_GEOMETRY_REG_WEIGHT_DEFAULT', 'TQF_GEOMETRY_REG_WEIGHT_MAX'),
-        ]
-        for min_name, default_name, max_name in checks:
-            min_val = getattr(config, min_name)
-            default_val = getattr(config, default_name)
-            max_val = getattr(config, max_name)
-            self.assertGreaterEqual(default_val, min_val,
-                f"{default_name} ({default_val}) must be >= {min_name} ({min_val})")
-            self.assertLessEqual(default_val, max_val,
-                f"{default_name} ({default_val}) must be <= {max_name} ({max_val})")
-
     def test_orbit_mixing_temp_defaults_within_ranges(self) -> None:
         """Test orbit mixing temperature defaults are within bounds."""
-        for default_name in ['TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT',
-                             'TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT',
-                             'TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT']:
+        for default_name in ['TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT',
+                             'TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT',
+                             'TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT']:
             default_val: float = getattr(config, default_name)
             self.assertGreaterEqual(default_val, config.TQF_ORBIT_MIXING_TEMP_MIN,
                 f"{default_name} ({default_val}) must be >= TQF_ORBIT_MIXING_TEMP_MIN ({config.TQF_ORBIT_MIXING_TEMP_MIN})")
@@ -589,18 +556,18 @@ class TestOrbitMixingAndAugmentationDefaults(unittest.TestCase):
 
     def test_orbit_mixing_temp_rotation_default(self) -> None:
         """Test rotation temperature default is 0.5 (experimentally optimal)."""
-        self.assertIsInstance(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT, float)
-        self.assertEqual(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT, 0.5)
+        self.assertIsInstance(config.TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT, float)
+        self.assertEqual(config.TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT, 0.5)
 
     def test_orbit_mixing_temp_reflection_default(self) -> None:
         """Test reflection temperature default is 0.5 (moderate weighting)."""
-        self.assertIsInstance(config.TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT, float)
-        self.assertEqual(config.TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT, 0.5)
+        self.assertIsInstance(config.TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT, float)
+        self.assertEqual(config.TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT, 0.5)
 
     def test_orbit_mixing_temp_inversion_default(self) -> None:
         """Test inversion temperature default is 0.7 (soft weighting)."""
-        self.assertIsInstance(config.TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT, float)
-        self.assertEqual(config.TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT, 0.7)
+        self.assertIsInstance(config.TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT, float)
+        self.assertEqual(config.TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT, 0.7)
 
     def test_orbit_mixing_temp_ordering(self) -> None:
         """Test that temperatures follow rotation <= reflection < inversion.
@@ -609,10 +576,10 @@ class TestOrbitMixingAndAugmentationDefaults(unittest.TestCase):
              operations. Rotation is most reliable (sharp or equal to
              reflection), inversion is most abstract (soft).
         """
-        self.assertLessEqual(config.TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-                             config.TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT)
-        self.assertLess(config.TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-                        config.TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT)
+        self.assertLessEqual(config.TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+                             config.TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT)
+        self.assertLess(config.TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+                        config.TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT)
 
     def test_orbit_mixing_temp_range_constants(self) -> None:
         """Test orbit mixing temperature range constants have sensible values."""

@@ -3,8 +3,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Date:** February 26, 2026<br>
+**Version:** 1.1.1<br>
+**Date:** February 27, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-ee4c2c.svg)](https://pytorch.org/)
@@ -24,8 +24,10 @@
 7. [Dataset Configuration](#7-dataset-configuration)
 8. [TQF-Specific Parameters](#8-tqf-specific-parameters)
    - [8.1 Core TQF Architecture](#81-core-tqf-architecture)
-   - [8.2 TQF Symmetry Groups](#82-tqf-symmetry-groups)
-   - [8.3 TQF Loss and Regularization](#83-tqf-loss-and-regularization)
+   - [8.2 Training Data Augmentation](#82-training-data-augmentation)
+   - [8.3 TQF Evaluation-Time Orbit Mixing](#83-tqf-evaluation-time-orbit-mixing)
+   - [8.4 TQF Loss and Regularization](#84-tqf-loss-and-regularization)
+   - [8.5 TQF Graph Convolution](#85-tqf-graph-convolution)
 9. [Complete Parameter Reference Table](#9-complete-parameter-reference-table)
 10. [Validation Rules and Constraints](#10-validation-rules-and-constraints)
 11. [Example Workflows](#11-example-workflows)
@@ -131,18 +133,11 @@ python main.py --num-epochs 150 --num-seeds 10
 ### TQF-Specific Examples
 
 ```bash
-# TQF with ℤ₆ symmetry only (rotations)
-python main.py --models TQF-ANN --tqf-symmetry-level Z6
+# TQF with Z6 orbit mixing (recommended for rotation robustness)
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 
-# TQF with D₆ symmetry (rotations + reflections)
-python main.py --models TQF-ANN --tqf-symmetry-level D6
-
-# TQF with full T₂₄ symmetry (rotations + reflections + inversion)
-python main.py --models TQF-ANN --tqf-symmetry-level T24
-
-# TQF with no symmetry (ablation study)
-python main.py --models TQF-ANN --tqf-symmetry-level none
-
+# TQF with full T24 orbit mixing
+python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing
 ```
 
 ---
@@ -580,18 +575,15 @@ python main.py --weight-decay 0.001
 
 **Expected Impact**:
 - **0.00001**: Minimal regularization, faster convergence, higher risk of overfitting
-- **0.00005**: Light regularization, good for TQF-ANN (already has geometric regularization)
+- **0.00005**: Light regularization, good for TQF-ANN when other loss terms are active
 - **0.0001 (default)**: Standard regularization, balanced approach
 - **0.0005**: Strong regularization, slower convergence, better generalization
 - **0.001**: Very strong, may underfit
 
 **Interaction with TQF Regularization**:
 - TQF-ANN has additional regularization via:
-  - `--tqf-geometry-reg-weight` (geometric consistency)
-  - `--tqf-z6-equivariance-weight` (Z6 rotation equivariance)
-  - `--tqf-d6-equivariance-weight` (D6 reflection equivariance)
   - `--tqf-t24-orbit-invariance-weight` (T24 orbit invariance)
-  - `--tqf-inversion-loss-weight` (circle inversion duality)
+  - `--tqf-z6-orbit-consistency-weight` (orbit consistency self-distillation)
 - Recommendation: Use lower `weight_decay` (0.00005) when TQF regularizations are strong
 - Baseline models typically use standard `weight_decay` (0.0001)
 
@@ -1082,68 +1074,7 @@ python main.py --models TQF-ANN --tqf-R 20 --tqf-hidden-dim 512
 
 ---
 
-### 8.2 TQF Symmetry Groups
-
-#### `--tqf-symmetry-level` (str)
-
-**Purpose**: Symmetry group for equivariant feature reduction and orbit pooling.
-
-**Type**: `str`
-
-**Default**: `'none'` (from `TQF_SYMMETRY_LEVEL_DEFAULT` in config.py)
-
-**Valid Options**:
-- `'none'` - No symmetry exploitation (default, fastest inference)
-- `'Z6'` - Cyclic group (6 rotations by 60deg, 6x inference cost)
-- `'D6'` - Dihedral group (6 rotations + 6 reflections, 12x inference cost)
-- `'T24'` - Full T24 symmetry (rotations + reflections + inversion, 24x inference cost)
-
-**Implementation Details**:
-Different symmetry levels apply orbit pooling with different group sizes:
-- `'none'`: No orbit pooling, features used directly (baseline)
-- `'Z6'`: Averages features over 6 Z6 rotation orbits
-- `'D6'`: Averages features over 12 D6 operations (rotations + reflections)
-- `'T24'`: Averages features over 24 T24 operations (D6 + circle inversion)
-
-**Examples**:
-
-```bash
-# No symmetry (default, fastest)
-python main.py --models TQF-ANN --tqf-symmetry-level none
-
-# Rotations only (ℤ₆)
-python main.py --models TQF-ANN --tqf-symmetry-level Z6
-
-# Rotations + reflections (D₆)
-python main.py --models TQF-ANN --tqf-symmetry-level D6
-
-# Full symmetry (T₂₄)
-python main.py --models TQF-ANN --tqf-symmetry-level T24
-```
-
-**Why This Matters**:
-- **`none`**: Fastest inference, baseline performance
-- **`ℤ₆`**: Rotation invariance via 6-fold symmetry (+1-2% rotated accuracy)
-- **`D₆`**: Adds reflection symmetry (mirror invariance)
-- **`T₂₄`**: Full symmetry exploitation including circle inversion
-
-**Expected Performance**:
-- Rotated accuracy: none < ℤ₆ < D₆ < T₂₄
-- Inference cost: none < ℤ₆ (6x) < D₆ (12x) < T₂₄ (24x)
-
-**Computational Impact** (inference cost relative to `none`):
-- ℤ₆: 6x inference cost (6 rotation orbits)
-- D₆: 12x inference cost (12 group elements)
-- T₂₄: 24x inference cost (24 group elements)
-
-**Validation**:
-- Must be in `['none', 'Z6', 'D6', 'T24']`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-### 8.3 Training Data Augmentation
+### 8.2 Training Data Augmentation
 
 #### `--z6-data-augmentation` (flag)
 
@@ -1170,7 +1101,7 @@ python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
 
 ---
 
-### 8.4 TQF Evaluation-Time Orbit Mixing
+### 8.3 TQF Evaluation-Time Orbit Mixing
 
 Orbit mixing averages predictions over symmetry group operations at evaluation time, exploiting TQF-ANN's hexagonal symmetry structure. Three levels are available:
 
@@ -1198,23 +1129,23 @@ Each higher level includes all lower levels. Temperature parameters control conf
 
 **Default**: `False`
 
-#### `--tqf-orbit-mixing-temp-rotation` (float)
+#### `--tqf-z6-orbit-mixing-temp-rotation` (float)
 
 **Purpose**: Temperature for Z6 rotation confidence weighting. Lower = sharper (most confident rotation dominates).
 
-**Default**: `0.5` (from `TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
+**Default**: `0.5` (from `TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
 
-#### `--tqf-orbit-mixing-temp-reflection` (float)
+#### `--tqf-d6-orbit-mixing-temp-reflection` (float)
 
 **Purpose**: Temperature for D6 reflection confidence weighting.
 
-**Default**: `0.5` (from `TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
+**Default**: `0.5` (from `TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
 
-#### `--tqf-orbit-mixing-temp-inversion` (float)
+#### `--tqf-t24-orbit-mixing-temp-inversion` (float)
 
 **Purpose**: Temperature for T24 zone-swap confidence weighting. Softest because circle inversion is the most abstract symmetry.
 
-**Default**: `0.7` (from `TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
+**Default**: `0.7` (from `TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT` in config.py) | **Range**: `[0.01, 2.0]`
 
 **Examples**:
 
@@ -1233,16 +1164,16 @@ python main.py --models TQF-ANN CNN-L5 --tqf-use-z6-orbit-mixing
 
 # Custom temperatures
 python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing \
-  --tqf-orbit-mixing-temp-rotation 0.3 \
-  --tqf-orbit-mixing-temp-reflection 0.8 \
-  --tqf-orbit-mixing-temp-inversion 1.0
+  --tqf-z6-orbit-mixing-temp-rotation 0.3 \
+  --tqf-d6-orbit-mixing-temp-reflection 0.8 \
+  --tqf-t24-orbit-mixing-temp-inversion 1.0
 ```
 
 **Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled (orbit mixing only applies to TQF models)
 
 ---
 
-### 8.4.1 Z6 Orbit Mixing Quality Enhancements
+### 8.3.1 Z6 Orbit Mixing Quality Enhancements
 
 These flags tune *how* ℤ₆ orbit mixing combines the six rotation variants. All are eval-time only, opt-in, and default to the previous behaviour when omitted. Requires `--tqf-use-z6-orbit-mixing`.
 
@@ -1423,15 +1354,15 @@ python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing \
 
 ---
 
-### 8.4.2 Z6 Non-Rotation Augmentation (Training-Time)
+### 8.3.2 Non-Rotation Augmentation (Training-Time, All Models)
 
-#### `--tqf-z6-non-rotation-augmentation` (flag)
+#### `--non-rotation-data-augmentation` (flag)
 
-**Purpose**: Apply lightweight spatial and photometric augmentation during training — independent of and composable with the existing `--z6-data-augmentation` rotation augmentation.
+**Purpose**: Apply lightweight spatial and photometric augmentation during training — independent of and composable with the existing `--z6-data-augmentation` rotation augmentation. Applies to **all models** through the shared training dataset.
 
 **Type**: `flag` (store_true)
 
-**Default**: `False` (from `TQF_Z6_NON_ROTATION_AUGMENTATION_DEFAULT` in config.py)
+**Default**: `False` (from `NON_ROTATION_DATA_AUGMENTATION_DEFAULT` in config.py)
 
 **Augmentations applied** (via `NonRotationAugmentation` in `prepare_datasets.py`):
 1. Random pad-and-crop: padding=2, random 28×28 crop (±2 px translation invariance)
@@ -1446,152 +1377,14 @@ python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing \
 
 ```bash
 # Non-rotation augmentation (crop + jitter) + Z6 orbit mixing
-python main.py --models TQF-ANN --tqf-z6-non-rotation-augmentation --tqf-use-z6-orbit-mixing
+python main.py --models TQF-ANN --non-rotation-data-augmentation --tqf-use-z6-orbit-mixing
 ```
 
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled (augmentation pipeline is shared, but flag only activates for TQF-ANN dataloaders)
+**Note**: Applies to all models in the run (FC-MLP, CNN-L5, ResNet-18-Scaled, TQF-ANN) via the shared training DataLoader, ensuring apples-to-apples comparisons.
 
 ---
 
-### 8.5 TQF Loss and Regularization
-
-#### `--tqf-verify-geometry` (flag)
-
-**Purpose**: Enable comprehensive geometry verification.
-
-**Type**: `bool` (action='store_true')
-
-**Default**: `False`
-
-**Behavior**:
-- Verifies geometric properties during training
-- Slightly slower training
-
-**Examples**:
-
-```bash
-# Disable geometry verification (default, faster)
-python main.py --models TQF-ANN
-
-# Enable geometry verification (slower, more regularization)
-python main.py --models TQF-ANN --tqf-verify-geometry
-```
-
-**Why This Matters**:
-- Enforces geometric constraints
-- Useful for debugging geometry issues
-- Adds computational overhead
-
-**Validation**:
-- Boolean flag, no validation needed
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-geometry-reg-weight` (float)
-
-**Purpose**: Overall weight for geometric consistency regularization.
-
-**Type**: `float`
-
-**Default**: `0.0` (from `TQF_GEOMETRY_REG_WEIGHT_DEFAULT` in config.py; opt-in, disabled by default)
-
-**Valid Range**: `[0.0, 10.0]` (from `TQF_GEOMETRY_REG_WEIGHT_MIN` to `TQF_GEOMETRY_REG_WEIGHT_MAX`)
-
-**Examples**:
-
-```bash
-# No geometric regularization
-python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.0
-
-# Recommended when enabled
-python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.01
-
-# Moderate regularization
-python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.05
-
-# Strong regularization
-python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.1
-```
-
-**Why This Matters**:
-- Encourages preservation of lattice geometry
-- Higher weight: stronger constraint, slower convergence
-- Lower weight: weaker constraint, faster convergence
-
-**Validation**:
-- Must be in range `[0.0, 10.0]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-z6-equivariance-weight` (float)
-
-**Purpose**: Enable and set weight for Z6 rotation equivariance loss. Enforces f(rotate(x)) = rotate(f(x)) for 60-degree rotations.
-
-**Type**: `float` (optional)
-
-**Default**: **DISABLED** (None). Provide a value in range [0.001, 2.0] to enable.
-
-**Valid Range**: `[0.001, 2.0]` when enabled
-
-**Examples**:
-
-```bash
-# Enable Z6 rotation equivariance with standard weight
-python main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.01
-
-# Enable with stronger constraint
-python main.py --models TQF-ANN --tqf-z6-equivariance-weight 0.03
-```
-
-**Why This Matters**:
-- Enforces equivariance under 60-degree rotations (Z6 cyclic group)
-- Penalizes violations of f(rotate₆₀(x)) = rotate₆₀(f(x))
-- Explicitly encourages rotational symmetry beyond architectural constraints
-- Opt-in feature disabled by default
-
-**Validation**:
-- When provided, must be in range `[0.001, 2.0]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-d6-equivariance-weight` (float)
-
-**Purpose**: Enable and set weight for D6 reflection equivariance loss. Enforces f(reflect(x)) = reflect(f(x)) for reflections.
-
-**Type**: `float` (optional)
-
-**Default**: **DISABLED** (None). Provide a value in range [0.001, 0.05] to enable.
-
-**Valid Range**: `[0.001, 0.05]` when enabled
-
-**Examples**:
-
-```bash
-# Enable D6 reflection equivariance with standard weight
-python main.py --models TQF-ANN --tqf-d6-equivariance-weight 0.01
-
-# Enable with stronger constraint
-python main.py --models TQF-ANN --tqf-d6-equivariance-weight 0.03
-```
-
-**Why This Matters**:
-- Enforces equivariance under reflections (D6 dihedral group)
-- Penalizes violations of f(reflect(x)) = reflect(f(x))
-- Complementary to Z6 rotation equivariance
-- Opt-in feature disabled by default
-
-**Validation**:
-- When provided, must be in range `[0.001, 0.05]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
+### 8.4 TQF Loss and Regularization
 
 #### `--tqf-t24-orbit-invariance-weight` (float)
 
@@ -1621,51 +1414,6 @@ python main.py --models TQF-ANN --tqf-t24-orbit-invariance-weight 0.01
 
 **Validation**:
 - When provided, must be in range `[0.001, 0.02]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-inversion-loss-weight` (float)
-
-**Purpose**: Weight for circle inversion consistency loss (duality preservation).
-When provided (not omitted), this parameter enables the inversion loss feature.
-
-**Type**: `float` (optional)
-
-**Default**: Feature disabled (weight not set). Provide a value to enable the feature.
-
-**Valid Range**: `[0.0, 10.0]` (from `TQF_INVERSION_LOSS_WEIGHT_MIN` to `TQF_INVERSION_LOSS_WEIGHT_MAX`)
-
-**Feature Enablement**:
-- **Omitted**: Feature is disabled (default behavior)
-- **Provided**: Feature is enabled with the specified weight
-
-**Examples**:
-
-```bash
-# Feature disabled (default - no parameter)
-python main.py --models TQF-ANN
-
-# Enable with light inversion loss
-python main.py --models TQF-ANN --tqf-inversion-loss-weight 0.001
-
-# Enable with moderate inversion loss
-python main.py --models TQF-ANN --tqf-inversion-loss-weight 0.1
-
-# Enable with strong inversion loss
-python main.py --models TQF-ANN --tqf-inversion-loss-weight 0.4
-```
-
-**Why This Matters**:
-- Penalizes inconsistency between primal and dual lattice representations
-- Enforces d(x, y) ≈ d_dual(inv(x), inv(y)) - a fundamental duality property
-- Enforces circle inversion duality (inner <-> outer zones)
-- Core mathematical property of TQF
-- Higher weight: stronger duality preservation
-
-**Validation**:
-- Must be in range `[0.0, 10.0]` when provided
 
 **Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
 
@@ -1721,133 +1469,6 @@ python main.py --models TQF-ANN --tqf-z6-orbit-consistency-weight 0.005 --tqf-z6
 ```bash
 python main.py --models TQF-ANN --tqf-z6-orbit-consistency-weight 0.01 --tqf-z6-orbit-consistency-rotations 3
 ```
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-verify-duality-interval` (int)
-
-**Purpose**: Frequency (in epochs) for self-duality verification logging.
-
-**Type**: `int`
-
-**Default**: `10` (from `TQF_VERIFY_DUALITY_INTERVAL_DEFAULT` in config.py)
-
-**Valid Range**: `[1, num_epochs]` (from `TQF_VERIFY_DUALITY_INTERVAL_MIN` to `--num-epochs`)
-
-**Behavior**:
-- Every N epochs, verifies circle inversion preserves duality
-- Logs duality metrics to console
-- Does not affect training, only logging
-
-**Examples**:
-
-```bash
-# Verify every epoch (verbose)
-python main.py --models TQF-ANN --tqf-verify-duality-interval 1
-
-# Verify every 10 epochs (default)
-python main.py --models TQF-ANN --tqf-verify-duality-interval 10
-
-# Verify every 25 epochs (sparse)
-python main.py --models TQF-ANN --tqf-verify-duality-interval 25
-
-# Never verify (set to num_epochs+1)
-python main.py --models TQF-ANN --tqf-verify-duality-interval 999 --num-epochs 50
-```
-
-**Why This Matters**:
-- Debugging tool for mathematical correctness
-- Ensures circle inversion bijection preserved
-- No computational impact (just logging)
-
-**Validation**:
-- Must be in range `[1, num_epochs]`
-
-**Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
-
----
-
-#### `--tqf-use-gradient-checkpointing` (flag)
-
-**Purpose**: Enable gradient checkpointing to reduce GPU memory usage during training at the cost of additional computation time.
-
-**Type**: `bool` (action='store_true')
-
-**Default**: `False` (standard training)
-
-**Behavior**:
-
-**Standard Training** (default, `--tqf-use-gradient-checkpointing` NOT specified):
-```
-Forward pass: Store all intermediate activations in memory
-Backward pass: Use stored activations for gradient computation
-Memory: High (stores all layer outputs)
-Speed: Baseline
-```
-
-**Gradient Checkpointing** (`--tqf-use-gradient-checkpointing` specified):
-```
-Forward pass: Discard intermediate activations (only keep checkpoints)
-Backward pass: Recompute activations on-the-fly as needed
-Memory: ~60% reduction in activation memory
-Speed: ~30% slower per epoch (due to recomputation)
-```
-
-**Trade-offs**:
-
-| Aspect | Without Checkpointing | With Checkpointing |
-|--------|----------------------|-------------------|
-| Memory usage | High | ~40% of baseline |
-| Training speed | Baseline | ~30% slower |
-| Maximum R value | Limited by GPU RAM | Larger R possible |
-| Gradient accuracy | Exact | Exact (no approximation) |
-
-**When to Use**:
-- **Keep False (default)**: GPU has sufficient memory (12GB+), smaller R values (R < 15)
-- **Set True**: GPU memory constrained (8GB), large R values (R >= 15), OOM errors
-
-**Memory Savings by R Value**:
-
-| R | Vertices | Without Checkpointing | With Checkpointing |
-|---|----------|----------------------|-------------------|
-| 10 | 366 | ~4 GB | ~2 GB |
-| 15 | 798 | ~8 GB | ~3 GB |
-| 20 | 1,390 | ~14 GB | ~5 GB |
-| 25 | 2,166 | ~22 GB | ~8 GB |
-
-**Examples**:
-
-```bash
-# Enable gradient checkpointing for large R
-python main.py --models TQF-ANN \
-  --tqf-R 20 \
-  --tqf-use-gradient-checkpointing
-
-# Combine with other memory optimizations
-python main.py --models TQF-ANN \
-  --tqf-R 25 \
-  --tqf-use-gradient-checkpointing \
-  --batch-size 16
-
-# Maximum R with checkpointing on 8GB GPU
-python main.py --models TQF-ANN \
-  --tqf-R 20 \
-  --tqf-use-gradient-checkpointing \
-  --batch-size 32
-```
-
-**Technical Details**:
-- Applies to radial binner forward passes (inner and outer zones)
-- Only active during `model.train()` mode (no effect during inference)
-- Uses PyTorch's `torch.utils.checkpoint.checkpoint()` internally
-- Gradients are mathematically identical (no approximation)
-
-**Validation**:
-- Boolean flag (no value required)
-- Cannot conflict with other parameters
-- Valid for all `--tqf-R` values
 
 **Ignored For**: FC-MLP, CNN-L5, ResNet-18-Scaled
 
@@ -1919,22 +1540,14 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | **TQF-ONLY** ||||
 | `--tqf-R` | int | 20 | [2, 100] | Truncation radius |
 | `--tqf-hidden-dim` | int/None | None | [8, 512] | Hidden dimension (auto if None) |
-| `--tqf-symmetry-level` | str | none | none, Z6, D6, T24 | Symmetry group (opt-in) |
-| `--tqf-z6-equivariance-weight` | float | None | [0.001, 2.0] | Z6 equivariance loss (enabled when provided) |
-| `--tqf-d6-equivariance-weight` | float | None | [0.001, 0.05] | D6 equivariance loss (enabled when provided) |
 | `--tqf-t24-orbit-invariance-weight` | float | None | [0.001, 0.02] | T24 orbit invariance loss (enabled when provided) |
-| `--tqf-inversion-loss-weight` | float | None | [0.0, 10.0] | Inversion duality loss (enabled when provided) |
-| `--tqf-verify-duality-interval` | int | 10 | [1, num_epochs] | Duality verification interval |
-| `--tqf-verify-geometry` | flag | False | - | Enable geometry verification |
-| `--tqf-geometry-reg-weight` | float | 0.0 | [0.0, 10.0] | Geometry regularization weight (opt-in) |
-| `--tqf-use-gradient-checkpointing` | flag | False | - | Enable gradient checkpointing for memory savings |
 | `--z6-data-augmentation` | flag | False (disabled) | - | Enable Z6 rotation data augmentation during training (all models) |
 | `--tqf-use-z6-orbit-mixing` | flag | False | - | Z6 rotation orbit mixing at evaluation |
 | `--tqf-use-d6-orbit-mixing` | flag | False | - | D6 reflection orbit mixing at evaluation |
 | `--tqf-use-t24-orbit-mixing` | flag | False | - | T24 zone-swap orbit mixing at evaluation |
-| `--tqf-orbit-mixing-temp-rotation` | float | 0.5 | [0.01, 2.0] | Z6 rotation averaging temperature |
-| `--tqf-orbit-mixing-temp-reflection` | float | 0.5 | [0.01, 2.0] | D6 reflection averaging temperature |
-| `--tqf-orbit-mixing-temp-inversion` | float | 0.7 | [0.01, 2.0] | T24 zone-swap averaging temperature |
+| `--tqf-z6-orbit-mixing-temp-rotation` | float | 0.5 | [0.01, 2.0] | Z6 rotation averaging temperature |
+| `--tqf-d6-orbit-mixing-temp-reflection` | float | 0.5 | [0.01, 2.0] | D6 reflection averaging temperature |
+| `--tqf-t24-orbit-mixing-temp-inversion` | float | 0.7 | [0.01, 2.0] | T24 zone-swap averaging temperature |
 | `--tqf-z6-orbit-mixing-confidence-mode` | str | max_logit | max_logit, margin | Z6 variant confidence scoring mode |
 | `--tqf-z6-orbit-mixing-aggregation-mode` | str | logits | logits, probs, log_probs | Z6 ensemble aggregation space |
 | `--tqf-z6-orbit-mixing-top-k` | int | None | [2, 6] | Keep only top-K most confident Z6 variants |
@@ -1943,7 +1556,7 @@ Graph convolution is the core propagation mechanism and requires no CLI paramete
 | `--tqf-z6-orbit-mixing-rotation-mode` | str | bilinear | bilinear, bicubic | Interpolation mode for orbit mixing rotations |
 | `--tqf-z6-orbit-mixing-rotation-padding-mode` | str | zeros | zeros, border | Padding mode for orbit mixing rotations |
 | `--tqf-z6-orbit-mixing-rotation-pad` | int | 0 | [0, 8] | Reflect-pad before rotate then crop (0=off) |
-| `--tqf-z6-non-rotation-augmentation` | flag | False | - | Random crop + jitter augmentation (training) |
+| `--non-rotation-data-augmentation` | flag | False | - | Random crop + jitter augmentation (training) |
 | `--tqf-z6-orbit-consistency-weight` | float | None | [0.0001, 1.0] | Z6 orbit consistency self-distillation loss |
 | `--tqf-z6-orbit-consistency-rotations` | int | 2 | [1, 5] | Extra rotation passes for consistency loss |
 
@@ -1958,17 +1571,11 @@ All parameter validation is performed in `cli.py::_validate_args()`. Validation 
 1. **`--patience` < `--num-epochs`**: Early stopping patience must be less than total epochs
 2. **`--learning-rate-warmup-epochs` < `--num-epochs`**: Warmup must complete before training ends
 3. **`--num-train` % 10 == 0**: Training samples must be divisible by 10 (balanced classes)
-4. **`--tqf-verify-duality-interval` <= `--num-epochs`**: Verification interval cannot exceed total epochs
-
 ### Feature Conflict Warnings
 
 The following feature combinations are known to conflict and will produce a CLI warning when detected:
 
-1. **Orbit mixing + equivariance loss**: Equivariance loss constrains training-time representations that orbit mixing needs to vary at evaluation time. Experimental results (symmetry_orbit_mark2, Feb 2026) show this combination reduces rotation accuracy from 67.42% to 62.83%. **Recommendation**: use orbit mixing OR equivariance loss, not both.
-
-2. **Orbit mixing + Z6 data augmentation** (`--z6-data-augmentation`): Both apply rotational transformations, creating a "double rotation" effect. Orbit mixing alone achieves better rotation accuracy without the augmentation overhead. **Recommendation**: use orbit mixing without Z6 data augmentation.
-
-3. **Orbit mixing + orbit pooling** (`--tqf-symmetry-level` != `none`): Orbit pooling destroys rotation-specific information that orbit mixing needs to distinguish between rotation variants. **Recommendation**: set `--tqf-symmetry-level none` when using orbit mixing.
+1. **Orbit mixing + Z6 data augmentation** (`--z6-data-augmentation`): Both apply rotational transformations, creating a "double rotation" effect. Orbit mixing alone achieves better rotation accuracy without the augmentation overhead. **Recommendation**: use orbit mixing without Z6 data augmentation.
 
 ### Automatic Handling
 
@@ -1992,8 +1599,7 @@ ERROR: Invalid command-line arguments detected:
 ================================================================================
 1. --learning-rate=2.0 outside valid range (0.0, 1.0]
 2. --batch-size=0 must be >= 1
-3. --tqf-symmetry-level=invalid not in ['Z6', 'D6', 'T24', 'none']
-4. --num-train=1005 must be divisible by 10 for balanced class distribution
+3. --num-train=1005 must be divisible by 10 for balanced class distribution
 
 ================================================================================
 Run with --help for valid ranges and usage examples.
@@ -2009,19 +1615,19 @@ Run with --help for valid ranges and usage examples.
 python main.py --num-epochs 10 --num-train 1000 --num-val 200 --num-seeds 1
 ```
 
-### Workflow 2: TQF Symmetry Ablation Study
+### Workflow 2: TQF Orbit Mixing Comparison
 ```bash
-# No symmetry
-python main.py --models TQF-ANN --tqf-symmetry-level none --num-seeds 3
+# No orbit mixing (baseline)
+python main.py --models TQF-ANN --num-seeds 3
 
-# ℤ₆ only
-python main.py --models TQF-ANN --tqf-symmetry-level Z6 --num-seeds 3
+# ℤ₆ orbit mixing
+python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing --num-seeds 3
 
-# D₆ (rotations + reflections)
-python main.py --models TQF-ANN --tqf-symmetry-level D6 --num-seeds 3
+# D₆ orbit mixing (rotation + reflection)
+python main.py --models TQF-ANN --tqf-use-d6-orbit-mixing --num-seeds 3
 
-# T₂₄ (full symmetry)
-python main.py --models TQF-ANN --tqf-symmetry-level T24 --num-seeds 3
+# T₂₄ orbit mixing (full symmetry)
+python main.py --models TQF-ANN --tqf-use-t24-orbit-mixing --num-seeds 3
 ```
 
 ### Workflow 3: Baseline Comparison
@@ -2033,18 +1639,17 @@ python main.py --models FC-MLP CNN-L5 ResNet-18-Scaled --num-seeds 5
 python main.py --models TQF-ANN ResNet-18-Scaled --num-seeds 5
 ```
 
-### Workflow 4: TQF Regularization Tuning
+### Workflow 4: TQF Orbit Consistency Loss Tuning
 ```bash
-# Light regularization
-python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.05 \
-  --tqf-z6-equivariance-weight 0.05 --tqf-inversion-loss-weight 0.1
-
-# Standard regularization (default)
+# No orbit consistency loss (default)
 python main.py --models TQF-ANN
 
-# Strong regularization
-python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.2 \
-  --tqf-z6-equivariance-weight 0.3 --tqf-inversion-loss-weight 0.4
+# Light orbit consistency loss
+python main.py --models TQF-ANN --tqf-z6-orbit-consistency-weight 0.005
+
+# Stronger orbit consistency loss
+python main.py --models TQF-ANN --tqf-z6-orbit-consistency-weight 0.01 \
+  --tqf-z6-orbit-consistency-rotations 3
 ```
 
 ### Workflow 5: Dataset Size Scaling
@@ -2073,8 +1678,8 @@ python main.py --models TQF-ANN --tqf-R 30 --num-seeds 3
 
 ### Workflow 7: Production Run (Publication Quality)
 ```bash
-python main.py --num-epochs 100 --num-seeds 10 --num-train 60000 --num-val 5000 \
-  --patience 15 --learning-rate 0.0003 --tqf-symmetry-level T24
+python main.py --num-epochs 150 --num-seeds 10 --num-train 58000 --num-val 2000 \
+  --patience 25 --learning-rate 0.001 --tqf-use-z6-orbit-mixing
 ```
 
 ### Workflow 8: CPU-Only Testing (No GPU)
@@ -2139,22 +1744,21 @@ python main.py --device cpu --num-epochs 5 --num-train 500 --num-seeds 1
    python main.py --learning-rate 0.0003
    ```
 
-5. **Stronger TQF regularization:**
+5. **Use orbit mixing for rotation robustness:**
    ```bash
-   python main.py --tqf-geometry-reg-weight 0.15 \
-     --tqf-z6-equivariance-weight 0.25 --tqf-inversion-loss-weight 0.3
+   python main.py --tqf-use-z6-orbit-mixing
    ```
 
 ### For Maximum Rotation Invariance
 
-1. **Use T₂₄ symmetry:**
+1. **Use ℤ₆ orbit mixing:**
    ```bash
-   python main.py --tqf-symmetry-level T24
+   python main.py --tqf-use-z6-orbit-mixing
    ```
 
-2. **Strong invariance loss:**
+2. **Full T₂₄ orbit mixing:**
    ```bash
-   python main.py --tqf-z6-equivariance-weight 0.3
+   python main.py --tqf-use-t24-orbit-mixing
    ```
 
 3. **Label smoothing:**
@@ -2258,10 +1862,9 @@ RuntimeError: CUDA out of memory. Tried to allocate X.XX GiB
    python main.py --num-train 60000 --num-val 5000
    ```
 
-5. **Stronger TQF symmetry:**
+5. **Use orbit mixing for rotation robustness:**
    ```bash
-   python main.py --models TQF-ANN --tqf-symmetry-level T24 \
-     --tqf-z6-equivariance-weight 0.3
+   python main.py --models TQF-ANN --tqf-use-z6-orbit-mixing
    ```
 
 ### Early Stopping Too Aggressive
@@ -2312,10 +1915,10 @@ RuntimeError: CUDA out of memory. Tried to allocate X.XX GiB
    python main.py --learning-rate-warmup-epochs 5
    ```
 
-4. **Reduce TQF regularization:**
+4. **Reduce learning rate and add warmup:**
    ```bash
-   python main.py --models TQF-ANN --tqf-geometry-reg-weight 0.05 \
-     --tqf-z6-equivariance-weight 0.05 --tqf-inversion-loss-weight 0.1
+   python main.py --models TQF-ANN --learning-rate 0.0005 \
+     --learning-rate-warmup-epochs 10
    ```
 
 ### Validation Errors on Startup
@@ -2359,19 +1962,16 @@ NUM_TEST_UNROT_DEFAULT = 8000
 # TQF architecture
 TQF_TRUNCATION_R_DEFAULT = 20
 TQF_HIDDEN_DIMENSION_DEFAULT = None  # Auto-tuned to ~650k params
-TQF_SYMMETRY_LEVEL_DEFAULT = 'none'
 Z6_DATA_AUGMENTATION_DEFAULT = False
 
 # TQF regularization (all disabled/opt-in by default)
-TQF_GEOMETRY_REG_WEIGHT_DEFAULT = 0.0    # Disabled; provide value via CLI to enable
-# Note: Equivariance/invariance/duality loss weights default to None (disabled).
+# Note: Equivariance/invariance loss weights default to None (disabled).
 # Users enable them by providing a weight value directly via CLI.
-TQF_VERIFY_DUALITY_INTERVAL_DEFAULT = 10
 
 # TQF orbit mixing temperatures
-TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT = 0.5
-TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT = 0.5
-TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT = 0.7
+TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT = 0.5
+TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT = 0.5
+TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT = 0.7
 
 # Reproducibility
 NUM_SEEDS_DEFAULT = 1
@@ -2391,16 +1991,15 @@ TARGET_PARAMS_TOLERANCE_PERCENT = 1.1
 - `--models`: Which architectures to compare
 - `--num-epochs`: Training duration
 - `--learning-rate`: Optimization speed and stability
-- `--tqf-symmetry-level`: Symmetry exploitation level
-- `--tqf-z6-equivariance-weight`: Rotation invariance strength
+- `--tqf-use-z6-orbit-mixing`: Rotation robustness via orbit mixing
+- `--tqf-t24-orbit-invariance-weight`: T24 orbit invariance loss strength
 
 ### Regularization Parameters
 
 - `--weight-decay`: L2 penalty
 - `--label-smoothing`: Label confidence
 - `--patience`: Early stopping sensitivity
-- `--tqf-geometry-reg-weight`: Geometric consistency
-- `--tqf-inversion-loss-weight`: Duality preservation
+- `--tqf-z6-orbit-consistency-weight`: Orbit consistency self-distillation
 
 ### Architecture Parameters
 
@@ -2522,8 +2121,8 @@ python main.py --models TQF-ANN --results-dir /tmp/my_results
 ---
 **`QED`**
 
-**Last Updated:** February 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** February 27, 2026<br>
+**Version:** 1.1.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

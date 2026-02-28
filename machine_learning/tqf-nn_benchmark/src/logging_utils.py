@@ -70,13 +70,10 @@ from config import (
     TQF_TRUNCATION_R_DEFAULT,
     TQF_RADIUS_R_FIXED,
     TQF_HIDDEN_DIMENSION_DEFAULT,
-    TQF_SYMMETRY_LEVEL_DEFAULT,
-    TQF_GEOMETRY_REG_WEIGHT_DEFAULT,
     TQF_DUALITY_TOLERANCE_DEFAULT,
-    TQF_VERIFY_DUALITY_INTERVAL_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
-    TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
+    TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT,
+    TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT,
+    TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT
 )
 
 ###################################################################################
@@ -299,38 +296,14 @@ def log_experiment_config(
         print(f"    Truncation radius (R)          : {getattr(args, 'tqf_R', TQF_TRUNCATION_R_DEFAULT)}")
         print(f"    Inversion radius (r) [FIXED]   : {TQF_RADIUS_R_FIXED}")
         print(f"    Hidden dimension               : {tqf_hidden_str}")
-        sym_level = getattr(args, 'tqf_symmetry_level', TQF_SYMMETRY_LEVEL_DEFAULT)
-        # Describe orbit pooling operations for each symmetry level
-        sym_ops_map = {
-            'none': '(no orbit pooling)',
-            'Z6': '(6 rotation orbits)',
-            'D6': '(12 D6 orbits: rotations + reflections)',
-            'T24': '(24 T24 orbits: rotations + reflections + inversion)'
-        }
-        sym_ops = sym_ops_map.get(sym_level, '')
-        print(f"    Symmetry level                 : {sym_level} {sym_ops}")
 
         # Dual Metrics & Geometry Parameters
         print("\n  Dual Metrics & Geometry:")
-        print(f"    Geometry regularization weight : {getattr(args, 'tqf_geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)}")
-        # Inversion (duality) loss - enabled by providing weight value via CLI
-        inv_weight = getattr(args, 'tqf_inversion_loss_weight', None)
-        inv_status = f"Enabled (weight={inv_weight})" if inv_weight is not None else "Disabled"
-        print(f"    Inversion (duality) loss       : {inv_status}")
         print(f"    Duality tolerance              : {TQF_DUALITY_TOLERANCE_DEFAULT}")
-        print(f"    Duality verify interval        : {getattr(args, 'tqf_verify_duality_interval', TQF_VERIFY_DUALITY_INTERVAL_DEFAULT)} epochs")
-        verify_geom = getattr(args, 'tqf_verify_geometry', False)
-        print(f"    Verify geometry flag           : {'Enabled' if verify_geom else 'Disabled'}")
 
-        # Symmetry/Invariance/Equivariance Losses
+        # Symmetry/Invariance Losses
         # These losses are enabled by providing a weight value via CLI (None = disabled)
-        print("\n  Symmetry/Invariance/Equivariance Losses:")
-        z6_weight = getattr(args, 'tqf_z6_equivariance_weight', None)
-        z6_status = f"Enabled (weight={z6_weight})" if z6_weight is not None else "Disabled"
-        print(f"    Z6 equivariance loss           : {z6_status}")
-        d6_weight = getattr(args, 'tqf_d6_equivariance_weight', None)
-        d6_status = f"Enabled (weight={d6_weight})" if d6_weight is not None else "Disabled"
-        print(f"    D6 equivariance loss           : {d6_status}")
+        print("\n  Symmetry/Invariance Losses:")
         t24_weight = getattr(args, 'tqf_t24_orbit_invariance_weight', None)
         t24_status = f"Enabled (weight={t24_weight})" if t24_weight is not None else "Disabled"
         print(f"    T24 orbit invariance loss      : {t24_status}")
@@ -345,14 +318,9 @@ def log_experiment_config(
         print(f"    D6 orbit mixing                : {'Enabled' if use_d6_om else 'Disabled'}")
         print(f"    T24 orbit mixing               : {'Enabled' if use_t24_om else 'Disabled'}")
         if any_om:
-            print(f"    Temp (rotation)                : {getattr(args, 'tqf_orbit_mixing_temp_rotation', TQF_ORBIT_MIXING_TEMP_ROTATION_DEFAULT)}")
-            print(f"    Temp (reflection)              : {getattr(args, 'tqf_orbit_mixing_temp_reflection', TQF_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT)}")
-            print(f"    Temp (inversion)               : {getattr(args, 'tqf_orbit_mixing_temp_inversion', TQF_ORBIT_MIXING_TEMP_INVERSION_DEFAULT)}")
-
-        # Memory Optimization
-        print("\n  Memory Optimization:")
-        use_grad_ckpt = getattr(args, 'tqf_use_gradient_checkpointing', False)
-        print(f"    Gradient checkpointing         : {'Enabled' if use_grad_ckpt else 'Disabled'}")
+            print(f"    Temp (rotation)                : {getattr(args, 'tqf_z6_orbit_mixing_temp_rotation', TQF_Z6_ORBIT_MIXING_TEMP_ROTATION_DEFAULT)}")
+            print(f"    Temp (reflection)              : {getattr(args, 'tqf_d6_orbit_mixing_temp_reflection', TQF_D6_ORBIT_MIXING_TEMP_REFLECTION_DEFAULT)}")
+            print(f"    Temp (inversion)               : {getattr(args, 'tqf_t24_orbit_mixing_temp_inversion', TQF_T24_ORBIT_MIXING_TEMP_INVERSION_DEFAULT)}")
 
     # -------------------------------------------------------------------------
     # SNN-SPECIFIC CONFIGURATION SECTION (reserved for TQF-SNN extension)

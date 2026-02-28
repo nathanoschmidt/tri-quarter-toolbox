@@ -7,7 +7,7 @@ compliance. Includes regression tests for Fibonacci mode fixes (January 2026).
 
 Key Test Coverage:
 - Regression Tests: Constant dimensions, parameter counting
-- Model Initialization: Various configurations (R, hidden_dim, symmetry_level)
+- Model Initialization: Various configurations (R, hidden_dim)
 - Forward Pass: Logits shape, dual output structure, NaN/inf validation
 - Priority Corrections: Explicit vertices, sector-based computation, circle inversion, graph convolution
 - Geometric Properties: Lattice structure, phase pairs, zone partitioning, inversion maps
@@ -183,7 +183,6 @@ class TestTQFANNInstantiation(unittest.TestCase):
             num_classes=10,
             R=5.0,
             r=1.0,
-            symmetry_level='Z6'
         )
 
         self.assertIsInstance(model, nn.Module)
@@ -199,7 +198,7 @@ class TestTQFANNInstantiation(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
         model.eval()
 
         batch_size = 4
@@ -217,7 +216,7 @@ class TestTQFANNInstantiation(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
         params = model.count_parameters()
 
         # Should have a reasonable number of parameters
@@ -240,7 +239,7 @@ class TestExplicitLatticeCorrections(unittest.TestCase):
         from models_tqf import TQFANN
         from dual_metrics import ExplicitLatticeVertex
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Should have explicit vertices
         self.assertTrue(hasattr(model, 'vertices'))
@@ -266,7 +265,7 @@ class TestExplicitLatticeCorrections(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Should have exactly 6 boundary vertices
         self.assertTrue(hasattr(model, 'boundary_vertices'))
@@ -286,7 +285,7 @@ class TestExplicitLatticeCorrections(unittest.TestCase):
         from models_tqf import TQFANN
         from dual_metrics import eisenstein_to_cartesian
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Check a sample of vertices
         for vertex in model.vertices[:20]:
@@ -319,7 +318,7 @@ class TestSectorPartitions(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Should have 6 sector partitions
         self.assertTrue(hasattr(model, 'sector_partitions'))
@@ -333,7 +332,7 @@ class TestSectorPartitions(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Collect all vertex IDs from partitions
         all_partition_vids = []
@@ -364,7 +363,7 @@ class TestExactCircleInversion(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Dual output should NOT have learnable inversion transform
         if hasattr(model.dual_output, 'inversion_transform'):
@@ -381,7 +380,7 @@ class TestExactCircleInversion(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         if model.inversion_map is None:
             self.skipTest("Inversion map not available")
@@ -411,7 +410,7 @@ class TestExactLatticeAdjacency(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Should have adjacency from lattice construction
         self.assertTrue(hasattr(model, 'adjacency_full'))
@@ -426,7 +425,7 @@ class TestExactLatticeAdjacency(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         # Sample a few vertices
         for vertex_id, neighbors in list(model.adjacency_full.items())[:10]:
@@ -452,7 +451,7 @@ class TestVerificationMethods(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         self.assertTrue(hasattr(model, 'verify_corrections'))
         self.assertTrue(callable(model.verify_corrections))
@@ -464,7 +463,7 @@ class TestVerificationMethods(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=5.0, r=1.0, hidden_dim=64, symmetry_level='Z6')
+        model = TQFANN(R=5.0, r=1.0, hidden_dim=64)
 
         results = model.verify_corrections(verbose=False)
 
@@ -491,7 +490,7 @@ class TestVerificationMethods(unittest.TestCase):
 
         from models_tqf import TQFANN
 
-        model = TQFANN(R=10.0, r=1.0, hidden_dim=120, symmetry_level='Z6')
+        model = TQFANN(R=10.0, r=1.0, hidden_dim=120)
 
         results = model.verify_corrections(verbose=True)
 
@@ -652,130 +651,6 @@ class TestPhase2Corrections(unittest.TestCase):
         self.assertFalse(torch.isnan(logits).any())
         self.assertFalse(torch.isinf(logits).any())
 
-    def test_different_symmetry_levels(self):
-        """Test that all symmetry levels work with corrections."""
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-        import torch
-
-        x = torch.randn(2, 784)
-
-        for sym_level in ['none', 'Z6', 'D6', 'T24']:
-            model = TQFANN(
-                R=5.0,
-                hidden_dim=64,
-                symmetry_level=sym_level,
-                use_dual_metric=True
-            )
-            model.eval()
-
-            with torch.no_grad():
-                logits = model(x)
-
-            self.assertEqual(logits.shape, (2, 10),
-                           f"Failed for symmetry level: {sym_level}")
-
-    def test_symmetry_levels_produce_different_outputs(self):
-        """
-        Test that different symmetry levels produce different outputs.
-
-        WHY: Verifies --tqf-symmetry-level actually changes model behavior.
-             Different symmetry levels apply different orbit pooling operations.
-
-        HOW: Test orbit pooling method directly with asymmetric sector features
-             to verify different symmetry levels produce different results.
-
-        WHAT: Expect orbit pooling to transform features differently for each level.
-
-        REGRESSION: Before Jan 2026, symmetry_level was stored but not used,
-                    causing all levels to produce identical outputs (bug).
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-        import torch
-
-        # Create a model with D6 symmetry (can test orbit pooling directly)
-        torch.manual_seed(42)
-        model_d6 = TQFANN(R=5.0, hidden_dim=64, symmetry_level='D6')
-        model_d6.eval()
-
-        # Create ASYMMETRIC sector features to test orbit pooling
-        # Each sector has distinct features to ensure pooling makes a difference
-        batch_size, num_sectors, hidden_dim = 2, 6, 64
-        sector_feats = torch.zeros(batch_size, num_sectors, hidden_dim)
-        for s in range(num_sectors):
-            # Each sector has unique features based on sector index
-            sector_feats[:, s, :] = torch.randn(batch_size, hidden_dim) + s * 10.0
-
-        # Test 1: Verify orbit pooling method exists and runs
-        pooled = model_d6.apply_symmetry_orbit_pooling(sector_feats)
-        self.assertEqual(pooled.shape, sector_feats.shape)
-
-        # Test 2: Create models with different symmetry levels and test pooling
-        outputs = {}
-        for sym_level in ['none', 'Z6', 'D6', 'T24']:
-            torch.manual_seed(123)
-            model = TQFANN(R=5.0, hidden_dim=64, symmetry_level=sym_level)
-            model.eval()
-
-            with torch.no_grad():
-                pooled = model.apply_symmetry_orbit_pooling(sector_feats)
-                outputs[sym_level] = pooled.clone()
-
-        # Test 3: Verify 'none' returns input unchanged
-        none_diff = torch.abs(outputs['none'] - sector_feats).mean().item()
-        self.assertLess(none_diff, 1e-6,
-                       "'none' should return features unchanged")
-
-        # Test 4: Verify Z6 pooling changes asymmetric features
-        # Z6 averages over rotations, so asymmetric input should change
-        z6_change = torch.abs(outputs['Z6'] - sector_feats).mean().item()
-        self.assertGreater(z6_change, 0.1,
-                          "Z6 orbit pooling should change asymmetric features")
-
-        # Test 5: Verify 'none' differs from 'Z6' (no pooling vs pooling)
-        none_z6_diff = torch.abs(outputs['none'] - outputs['Z6']).mean().item()
-        self.assertGreater(none_z6_diff, 0.1,
-                          "Expected 'none' and 'Z6' to produce different outputs")
-
-        # Test 6: Verify Z6 orbit pooling makes features more symmetric
-        # After Z6 pooling, all sectors should have same features (Z6 invariant)
-        z6_sector_variance = outputs['Z6'].var(dim=1).mean().item()
-        self.assertLess(z6_sector_variance, 0.1,
-                       "Z6 pooling should make sector features more uniform")
-
-    def test_symmetry_orbit_pooling_method_exists(self):
-        """
-        Test that apply_symmetry_orbit_pooling method exists and is callable.
-
-        WHY: Core method for symmetry_level functionality.
-        HOW: Check model has the method and it can be called.
-        WHAT: Expect method exists and accepts sector features tensor.
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-        import torch
-
-        model = TQFANN(R=5.0, hidden_dim=64, symmetry_level='D6')
-
-        # Verify method exists
-        self.assertTrue(hasattr(model, 'apply_symmetry_orbit_pooling'),
-                       "Model should have apply_symmetry_orbit_pooling method")
-        self.assertTrue(callable(model.apply_symmetry_orbit_pooling),
-                       "apply_symmetry_orbit_pooling should be callable")
-
-        # Verify method works
-        sector_feats = torch.randn(2, 6, 64)
-        pooled = model.apply_symmetry_orbit_pooling(sector_feats)
-        self.assertEqual(pooled.shape, sector_feats.shape,
-                        "Orbit pooling should preserve shape")
-
     def test_bijection_property(self):
         """Test that inversion map is bijective."""
         if not TORCH_AVAILABLE:
@@ -829,7 +704,6 @@ class TestFibonacciModeDimensions(unittest.TestCase):
         model = TQFANN(
             R=20,
             hidden_dim=hidden_dim,
-            symmetry_level='Z6'
         )
 
         radial_binner = model.radial_binner
@@ -972,245 +846,8 @@ class TestFibonacciModeDimensions(unittest.TestCase):
 
 
 # ==============================================================================
-# TEST SUITE: GEOMETRY VERIFICATION AND REGULARIZATION
+# TEST SUITE: INNER SECTOR FEATURE CACHING
 # ==============================================================================
-
-class TestGeometryVerificationFeatures(unittest.TestCase):
-    """
-    Test suite for TQF geometry regularization weight features.
-
-    These tests verify that --tqf-geometry-reg-weight correctly weights
-    geometry regularization and integrates end-to-end from CLI to model training.
-    """
-
-    def test_geometry_reg_weight_default_value(self):
-        """
-        WHY: geometry_reg_weight should have correct default value
-        HOW: Check config constant
-        WHAT: Default should be 0.0 (opt-in feature, disabled by default)
-        """
-        from config import TQF_GEOMETRY_REG_WEIGHT_DEFAULT
-
-        self.assertEqual(TQF_GEOMETRY_REG_WEIGHT_DEFAULT, 0.0,
-                        "Geometry reg weight default should be 0.0 (opt-in)")
-
-    def test_geometry_reg_weight_applied_in_training_engine(self):
-        """
-        WHY: geometry_reg_weight should control geometry regularization in training
-        HOW: Verify TrainingEngine uses the weight when computing loss
-        WHAT: use_geometry_reg should be True when weight > 0
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from config import TQF_GEOMETRY_REG_WEIGHT_DEFAULT
-
-        # Test the logic from engine.py for determining use_geometry_reg
-        model_name = 'TQF-ANN'
-        model_config = {'geometry_reg_weight': 0.05}
-
-        geometry_weight: float = model_config.get('geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)
-        use_geometry_reg: bool = 'TQF' in model_name and geometry_weight > 0.0
-
-        self.assertTrue(use_geometry_reg,
-                       "use_geometry_reg should be True for TQF model with positive weight")
-        self.assertEqual(geometry_weight, 0.05)
-
-    def test_geometry_reg_weight_disabled_when_zero(self):
-        """
-        WHY: geometry_reg_weight=0 should disable geometry regularization
-        HOW: Verify use_geometry_reg is False when weight is 0
-        WHAT: No geometry loss should be computed
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from config import TQF_GEOMETRY_REG_WEIGHT_DEFAULT
-
-        model_name = 'TQF-ANN'
-        model_config = {'geometry_reg_weight': 0.0}
-
-        geometry_weight: float = model_config.get('geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)
-        use_geometry_reg: bool = 'TQF' in model_name and geometry_weight > 0.0
-
-        self.assertFalse(use_geometry_reg,
-                        "use_geometry_reg should be False when weight is 0")
-
-    def test_geometry_reg_ignored_for_baseline_models(self):
-        """
-        WHY: Geometry regularization should be ignored for non-TQF models
-        HOW: Verify use_geometry_reg is False for baseline models
-        WHAT: No geometry loss for FC-MLP, CNN-L5, etc.
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from config import TQF_GEOMETRY_REG_WEIGHT_DEFAULT
-
-        for model_name in ['FC-MLP', 'CNN-L5', 'ResNet-18-Scaled']:
-            model_config = {'geometry_reg_weight': 0.05}
-
-            geometry_weight: float = model_config.get('geometry_reg_weight', TQF_GEOMETRY_REG_WEIGHT_DEFAULT)
-            use_geometry_reg: bool = 'TQF' in model_name and geometry_weight > 0.0
-
-            self.assertFalse(use_geometry_reg,
-                            f"use_geometry_reg should be False for {model_name}")
-
-    def test_model_stores_verify_geometry_flag(self):
-        """
-        WHY: TQFANN model should store verify_geometry flag
-        HOW: Create model with verify_geometry=True and check attribute
-        WHAT: Model should have verify_geometry attribute set correctly
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        model = TQFANN(R=10, hidden_dim=64, verify_geometry=True)
-        self.assertTrue(hasattr(model, 'verify_geometry'),
-                       "Model should have verify_geometry attribute")
-        self.assertTrue(model.verify_geometry,
-                       "verify_geometry should be True")
-
-        model_false = TQFANN(R=10, hidden_dim=64, verify_geometry=False)
-        self.assertFalse(model_false.verify_geometry,
-                        "verify_geometry should be False when not enabled")
-
-
-# ==============================================================================
-# TEST SUITE: MULTI-HOP LOCAL ATTENTION (v1.2.0)
-# ==============================================================================
-# TEST SUITE: GRADIENT CHECKPOINTING (v1.2.0)
-# ==============================================================================
-
-class TestGradientCheckpointing(unittest.TestCase):
-    """
-    Test suite for gradient checkpointing feature (v1.2.0).
-
-    These tests verify that:
-    1. use_gradient_checkpointing parameter is accepted
-    2. Checkpointing only applies during training mode
-    3. Gradients are correctly computed with checkpointing
-    4. Model output is identical with/without checkpointing
-    """
-
-    def test_gradient_checkpointing_parameter_accepted(self):
-        """
-        WHY: Model should accept use_gradient_checkpointing parameter
-        HOW: Instantiate model with parameter set to True/False
-        WHAT: Model should instantiate without error
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        # Should accept True
-        model_true = TQFANN(R=7, hidden_dim=64, use_gradient_checkpointing=True)
-        self.assertTrue(model_true.use_gradient_checkpointing)
-
-        # Should accept False (default)
-        model_false = TQFANN(R=7, hidden_dim=64, use_gradient_checkpointing=False)
-        self.assertFalse(model_false.use_gradient_checkpointing)
-
-    def test_gradient_checkpointing_default_is_false(self):
-        """
-        WHY: Checkpointing should be opt-in (default False)
-        HOW: Instantiate model without specifying parameter
-        WHAT: use_gradient_checkpointing should default to False
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        model = TQFANN(R=7, hidden_dim=64)
-        self.assertFalse(model.use_gradient_checkpointing,
-                        "Gradient checkpointing should default to False")
-
-    def test_gradient_checkpointing_produces_gradients(self):
-        """
-        WHY: Checkpointing should still produce valid gradients
-        HOW: Run forward/backward with checkpointing enabled
-        WHAT: Parameters should have gradients after backward pass
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        model = TQFANN(R=7, hidden_dim=64, use_gradient_checkpointing=True)
-        model.train()
-
-        x = torch.randn(2, 784, requires_grad=True)
-        output = model(x)
-        loss = output.sum()
-        loss.backward()
-
-        # Check that some parameters have gradients
-        grad_count = sum(1 for p in model.parameters() if p.grad is not None)
-        self.assertGreater(grad_count, 0,
-                          "Parameters should have gradients with checkpointing")
-
-        # Check that input has gradient
-        self.assertIsNotNone(x.grad, "Input should have gradient with checkpointing")
-
-    def test_gradient_checkpointing_eval_mode_output(self):
-        """
-        WHY: Checkpointing should not affect eval mode behavior
-        HOW: Compare outputs in eval mode with/without checkpointing flag
-        WHAT: Eval mode outputs should be identical
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        torch.manual_seed(42)
-        model_ckpt = TQFANN(R=7, hidden_dim=64, use_gradient_checkpointing=True)
-
-        torch.manual_seed(42)
-        model_normal = TQFANN(R=7, hidden_dim=64, use_gradient_checkpointing=False)
-
-        # Copy weights to ensure identical models
-        model_ckpt.load_state_dict(model_normal.state_dict())
-
-        model_ckpt.eval()
-        model_normal.eval()
-
-        x = torch.randn(2, 784)
-
-        with torch.no_grad():
-            out_ckpt = model_ckpt(x)
-            out_normal = model_normal(x)
-
-        # Outputs should be identical in eval mode
-        self.assertTrue(torch.allclose(out_ckpt, out_normal, atol=1e-5),
-                       "Eval mode outputs should be identical with/without checkpointing")
-
-    def test_gradient_checkpointing_with_various_R_values(self):
-        """
-        WHY: Checkpointing should work for all R values
-        HOW: Test with small, medium, and larger R values
-        WHAT: All should instantiate and run forward pass
-        """
-        if not TORCH_AVAILABLE:
-            self.skipTest("PyTorch not available")
-
-        from models_tqf import TQFANN
-
-        for R in [5, 10, 15]:
-            model = TQFANN(R=R, hidden_dim=64, use_gradient_checkpointing=True)
-            model.eval()
-
-            with torch.no_grad():
-                x = torch.randn(1, 784)
-                output = model(x)
-
-            self.assertEqual(output.shape, (1, 10),
-                            f"Output shape incorrect for R={R}")
-
 
 class TestInnerSectorFeatureCaching(unittest.TestCase):
     """
