@@ -41,6 +41,8 @@
 
 This **Command-Line Interface (CLI) Parameter Guide** provides comprehensive documentation for all CLI parameters in the **TQF Neural Network (TQF-NN) Benchmark Suite**. The system implements Nathan O. Schmidt's Tri-Quarter Framework for radial dual triangular lattice graph-based neural networks with ℤ₆, D₆, and T₂₄ symmetry group exploitation.
 
+> **New to TQF?** Before diving into CLI flags, see [`TQF-ANN_QA.md`](TQF-ANN_QA.md) for an intuitive Q&A walkthrough of all concepts — what orbit mixing is, why data augmentation conflicts with it, how the rotated test set works, and more.
+
 ### Available Models
 
 1. **TQF-ANN** - Tri-Quarter Framework ANN (symmetry-exploiting architecture)

@@ -1928,6 +1928,20 @@ A: Run ablation study comparing all three. D₆ typically offers best trade-off 
 **Q: What if I don't have CUDA?**
 A: All code works on CPU. Add `--device cpu` to CLI or remove CUDA checks in code.
 
+**Q: Where can I find intuitive, plain-English explanations of TQF-ANN concepts?**
+A: See [`TQF-ANN_QA.md`](TQF-ANN_QA.md) — a full Q&A guide covering the architecture, dataset, training, orbit mixing, results, and more, written for anyone familiar with basic neural network concepts.
+
+---
+
+## 13. Related Documentation
+
+- **[README.md](../README.md)** - Project overview and quickstart
+- **[TQF-ANN_QA.md](TQF-ANN_QA.md)** - Conceptual Q&A guide (intuitive explanations of all TQF-ANN concepts, orbit mixing, and results)
+- **[API_REFERENCE.md](API_REFERENCE.md)** - Full API reference for all modules and functions
+- **[CLI_PARAMETER_GUIDE.md](CLI_PARAMETER_GUIDE.md)** - Complete CLI reference
+- **[QUICK_START.md](../QUICK_START.md)** - Fast-track tutorial
+- **[TESTS_README.md](../tests/TESTS_README.md)** - Testing guide
+
 ---
 
 **`QED`**

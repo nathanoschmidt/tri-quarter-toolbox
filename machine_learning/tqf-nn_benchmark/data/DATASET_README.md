@@ -319,6 +319,16 @@ python src/prepare_datasets.py
 
 ---
 
+## Related Documentation
+
+- **[TQF-ANN_QA.md](../doc/TQF-ANN_QA.md)** - Conceptual Q&A guide (intuitive explanations of why Z₆ rotations, how the dataset drives symmetry evaluation, and what the results mean)
+- **[README.md](../README.md)** - Project overview and quick start
+- **[QUICK_START.md](../QUICK_START.md)** - Step-by-step usage guide
+- **[doc/CLI_PARAMETER_GUIDE.md](../doc/CLI_PARAMETER_GUIDE.md)** - Full CLI reference
+- **[doc/ARCHITECTURE.md](../doc/ARCHITECTURE.md)** - TQF-ANN architecture details
+
+---
+
 **`QED`**
 
 **Last Updated:** February 27, 2026<br>

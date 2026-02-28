@@ -120,7 +120,7 @@ python src/main.py --num-epochs 10 --num-train 1000
 
 Note: Particularly for TQF-ANN training, we expect the first epoch training time to be noticeably longer than the subsequent epoch training times due to runtime optimizations like cuDNN auto-tuning and CUDA initialization overhead.
 
-See more examples in [`QUICK_START.md`](QUICK_START.md) and full CLI reference in [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md).
+See more examples in [`QUICK_START.md`](QUICK_START.md) and full CLI reference in [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md). For an intuitive conceptual Q&A guide covering all TQF-ANN concepts from start to finish, see [`doc/TQF-ANN_QA.md`](doc/TQF-ANN_QA.md).
 
 ---
 

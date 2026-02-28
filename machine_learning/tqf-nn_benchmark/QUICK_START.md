@@ -464,6 +464,7 @@ You're ready—get your gameface on and get to training!
    ```
 
 5. **Explore advanced/comprehensive/L33T documentation**
+   - Conceptual Q&A guide (start here if new to TQF) → [`doc/TQF-ANN_QA.md`](doc/TQF-ANN_QA.md)
    - Full CLI reference → [`doc/CLI_PARAMETER_GUIDE.md`](doc/CLI_PARAMETER_GUIDE.md)
    - Architecture overview → [`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md)
    - API documentation → [`doc/API_REFERENCE.md`](doc/API_REFERENCE.md)

@@ -2294,6 +2294,7 @@ See the project MEMORY.md for the latest benchmark results with optimal configur
 ## Related Documentation
 
 - **[README.md](README.md)** - Project overview and quickstart
+- **[TQF-ANN_QA.md](TQF-ANN_QA.md)** - Conceptual Q&A guide (intuitive explanations of all TQF-ANN concepts, orbit mixing, and results)
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design patterns
 - **[CLI_PARAMETER_GUIDE.md](CLI_PARAMETER_GUIDE.md)** - Complete CLI reference
 - **[INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md)** - Installation instructions
