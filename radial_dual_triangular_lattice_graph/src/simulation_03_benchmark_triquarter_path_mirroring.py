@@ -3,33 +3,51 @@
 # Bijective Dualities and Equivariant Encodings via the Inversive Hexagonal
 # Dihedral Symmetry Group T_24
 #
-# Simulation 03: Benchmarking the Tri-Quarter Approach for Inversion-Based
+# Simulation 03: Benchmarking the Tri-Quarter Inversion-Based Approach for
 # Path Mirroring
 #
 # Author: Nathan O. Schmidt
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
 # Date: September 28, 2025
+# Last Updated: June 10, 2026
+# Version: 1.1.0
 #
 # Description:
-# This Python script benchmarks the Tri-Quarter duality approach to path
-# mirroring on a truncated radial dual triangular lattice graph Lambda_r^R
-# (with admissible inversion radius r = 1 and configurable truncation radius R).
-# It computes single-source shortest paths in the outer zone subgraph
-# Lambda_{+,r}^R using the discrete dual metric (hop counts), then mirrors
-# them to the inner zone subgraph Lambda_{-,r}^R via the circle inversion
-# bijection iota_r (as per bijective self-duality). This demonstrates approximately
-# 2x speedups over recompute baselines, leveraging the Escher reflective
-# duality for reversible zone swapping without recomputation.
+# This script benchmarks the Tri-Quarter inversion-based approach to the
+# dual-zone shortest-path problem on the truncated radial dual triangular
+# lattice graph Lambda_r^R (admissible inversion radius r = 1, configurable
+# truncation radius R). The dual-zone problem is identical to the one solved
+# by the standard recompute baseline of Simulation 02: obtain single-source
+# shortest-path hop distances (the discrete dual metric) in BOTH the outer
+# zone subgraph Lambda_{+,r}^R and the inner zone subgraph Lambda_{-,r}^R.
+#
+# The Tri-Quarter approach solves it by running the shortest-path computation
+# once, in the outer zone, and then mapping the result into the inner zone
+# through the circle inversion bijection iota_r. The Escher reflective duality
+# guarantees that iota_r induces a graph isomorphism between the zones that
+# preserves hop distances under the discrete dual metric, so the second
+# computation is provably redundant.
+#
+# This script also verifies the mirrored inner-zone distances against an
+# independent recomputation: the verify_mirror_exactness function confirms
+# that every mirrored hop distance is exactly equal to the value the standard
+# baseline computes. The exactness check establishes that the measured speedup
+# comes from eliminating redundant work while preserving the discrete dual
+# metric, not from solving a different problem than the baseline.
+#
+# Times are averaged over multiple runs with inner timing repeats and reported
+# in milliseconds.
 #
 # Requirements:
 # - Python 3.x
 # - NetworkX library (install via: pip install networkx)
 #
 # Usage:
-# Run the script with: python simulation_03_benchmark_triquarter_path_mirroring.py R
-# where R is the truncation radius (default: 10).
-# Example: python simulation_03_benchmark_triquarter_path_mirroring.py 15 --runs 20 --timing_repeats 100
+#   python simulation_03_benchmark_triquarter_path_mirroring.py R [--runs N]
+#                                                                 [--timing_repeats M]
+# Example:
+#   python simulation_03_benchmark_triquarter_path_mirroring.py 15 --runs 20 --timing_repeats 100
 #
 # Source code is freely available at:
 # https://github.com/nathanoschmidt/tri-quarter-toolbox/
@@ -37,114 +55,138 @@
 #
 # =============================================================================
 
-import networkx as nx
 import time
 import random
 import argparse
 import statistics
 
+import networkx as nx
+
 from radial_dual_triangular_lattice_graph import build_zone_subgraphs
 
-# Mirror a path dictionary via the circle inversion bijection iota_r
-# (O(|path|) time complexity for the mapping operation).
-# This preserves phases and norms under the Escher reflective duality,
-# enabling reversible information preservation across zones without recomputation.
-def mirror_paths(outer_paths, inversion_map):
-    mirrored = {}  # Dictionary to store mirrored path lengths in the inner zone
-    for target, length in outer_paths.items():
-        # Retrieve the inverted target vertex via the bijection (phase-preserving)
-        inv_target = inversion_map.get(target)
-        if inv_target:
-            # Copy the hop length (preserved by the induced graph isomorphism,
-            # Corollary 4.4, under the discrete dual metric)
-            mirrored[inv_target] = length
+
+def mirror_paths(outer_dist, inversion_map):
+    """Map outer-zone hop distances into the inner zone via iota_r.
+
+    For each outer vertex with a known hop distance, the inversion bijection
+    iota_r yields the inner-zone twin. The Escher reflective duality makes
+    iota_r a distance-preserving graph isomorphism between the zones, so the
+    outer hop distance transfers unchanged to the twin. Runs in O(|outer_dist|)
+    time and requires no shortest-path computation in the inner zone.
+
+    Args:
+        outer_dist: {outer_vertex: hop_distance} from the outer-zone solve.
+        inversion_map: Bijection mapping outer vertices to inner twins.
+
+    Returns:
+        {inner_vertex: hop_distance} for the inner zone.
+    """
+    mirrored = {}
+    for vertex, distance in outer_dist.items():
+        twin = inversion_map.get(vertex)
+        if twin is not None:
+            mirrored[twin] = distance
     return mirrored
 
-# Benchmark the Tri-Quarter path mirroring approach in the dual zones
-# (compute paths in the outer zone, then mirror to the inner zone via bijection).
-# This leverages bijective self-duality for O(1) per-vertex
-# mirroring, demonstrating efficiency gains from symmetry exploitation.
+
+def triquarter_dual_zone_paths(G_outer, start_outer, inversion_map):
+    """Solve the dual-zone shortest-path problem by inversion-based mirroring.
+
+    Computes single-source shortest-path hop distances in the outer zone once,
+    then obtains the inner-zone distances by mirroring through iota_r instead
+    of recomputing. Returns both distance dictionaries.
+    """
+    outer_dist = nx.single_source_shortest_path_length(G_outer, start_outer)
+    inner_dist = mirror_paths(outer_dist, inversion_map)
+    return outer_dist, inner_dist
+
+
+def verify_mirror_exactness(G_inner, start_outer, inversion_map, mirrored):
+    """Confirm that mirrored inner-zone distances match an independent solve.
+
+    Independently recomputes single-source shortest-path hop distances in the
+    inner zone and checks that every mirrored value is exactly equal. Returns
+    True only if the mirrored result is bitwise-identical to the recomputed
+    result, demonstrating that the inversion-based shortcut preserves the
+    discrete dual metric exactly.
+    """
+    start_inner = inversion_map.get(start_outer)
+    if start_inner is None:
+        return len(mirrored) == 0
+    recomputed = nx.single_source_shortest_path_length(G_inner, start_inner)
+    if set(recomputed.keys()) != set(mirrored.keys()):
+        return False
+    return all(recomputed[v] == mirrored[v] for v in recomputed)
+
+
 def benchmark_triquarter_path_mirroring(G_outer, start_outer, inversion_map,
                                         runs, timing_repeats):
-    times = []  # List to store execution times across benchmark runs
+    """Time the Tri-Quarter inversion-based approach over multiple runs.
+
+    Each run times timing_repeats solutions of the dual-zone problem and
+    records the mean per-solution wall-clock time in milliseconds. Returns the
+    mean and standard deviation across runs.
+    """
+    times = []
     for _ in range(runs):
-        t0 = time.perf_counter()  # Start high-resolution timer
-        for _ in range(timing_repeats):  # Repeat inner loop for statistical noise reduction
-            # Compute outer paths: single-source shortest path lengths
-            # in the outer zone subgraph Lambda_{+,r}^R via the discrete
-            # dual metric (hop counts)
-            outer_paths = nx.single_source_shortest_path_length(G_outer, start_outer)
-            # Mirror to inner zone via the circle inversion bijection iota_r
-            # (no recomputation required, per reversible zone swapping)
-            mirror_paths(outer_paths, inversion_map)
-        # Compute average time per dual-zone computation in milliseconds
+        t0 = time.perf_counter()
+        for _ in range(timing_repeats):
+            triquarter_dual_zone_paths(G_outer, start_outer, inversion_map)
         times.append((time.perf_counter() - t0) * 1000 / timing_repeats)
-    # Return the mean and standard deviation of the times
-    return statistics.mean(times), statistics.stdev(times)
+    std = statistics.stdev(times) if len(times) > 1 else 0.0
+    return statistics.mean(times), std
+
 
 if __name__ == "__main__":
-    # Parse command-line arguments for configurable benchmark parameters
     parser = argparse.ArgumentParser(
         description=(
-            "Benchmark path mirroring on a truncated Tri-Quarter radial dual "
-            "triangular lattice graph Lambda_r^R with the Tri-Quarter duality "
-            "approach (mirror outer paths to inner via bijection). "
-            "Demonstrates speedups from exact inversion under the Escher "
-            "reflective duality (Theorem 4.2). Times are in milliseconds (ms)."
+            "Benchmark the Tri-Quarter inversion-based approach to the "
+            "dual-zone shortest-path problem on a truncated radial dual "
+            "triangular lattice graph Lambda_r^R. Solves the outer zone once "
+            "and mirrors into the inner zone via the circle inversion "
+            "bijection iota_r, with an exactness check against independent "
+            "recomputation. Times are in milliseconds (ms)."
         )
     )
-    parser.add_argument(
-        "R", type=int, nargs="?", default=10,
-        help="Truncation radius R (default: 10)"
-    )
-    parser.add_argument(
-        "--runs", type=int, default=20,
-        help="Number of benchmark runs (default: 20)"
-    )
-    parser.add_argument(
-        "--timing_repeats", type=int, default=100,
-        help="Repeats per run for accuracy (default: 100)"
-    )
-
+    parser.add_argument("R", type=int, nargs="?", default=10,
+                        help="Truncation radius R (default: 10)")
+    parser.add_argument("--runs", type=int, default=20,
+                        help="Number of benchmark runs (default: 20)")
+    parser.add_argument("--timing_repeats", type=int, default=100,
+                        help="Repeats per run for accuracy (default: 100)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for source selection (default: 42)")
     args = parser.parse_args()
 
-    # Build the truncated radial dual triangular lattice graph Lambda_r^R
-    # (with admissible inversion radius r = 1 and truncation radius R)
-    print(
-        f"Building radial dual triangular lattice graph "
-        f"with truncation radius R={args.R}..."
-    )
-    G_outer, G_inner, inversion_map = (
-        build_zone_subgraphs(args.R)
-    )  # Build outer/inner subgraphs and bijection map
+    print(f"Building radial dual triangular lattice graph with "
+          f"truncation radius R={args.R}...")
+    G_outer, G_inner, inversion_map = build_zone_subgraphs(args.R)
     num_outer = len(G_outer.nodes())
     num_inner = len(G_inner.nodes())
-    print(
-        f"Graphs built: Outer {num_outer} vertices, "
-        f"Inner {num_inner} vertices."
-    )
+    print(f"Graphs built: Outer {num_outer} vertices, "
+          f"Inner {num_inner} vertices.")
 
-    # Select a random starting vertex in the outer zone subgraph
+    # Fixed seed so this benchmark and the standard baseline (Simulation 02)
+    # select the same source vertex, making the comparison and the exactness
+    # verification directly meaningful.
+    random.seed(args.seed)
     start_outer = (
-        random.choice(list(G_outer.nodes())) if num_outer > 0 else None
-    )  # Random outer start vertex
-
-    # Report benchmark configuration
-    print(
-        f"Running {args.runs} benchmarks, each with "
-        f"{args.timing_repeats} repeats for reliable timing."
-    )
-    print(
-        "Note: Includes bijection preprocessing "
-        "(amortized over multiple queries)."
+        random.choice(sorted(G_outer.nodes())) if num_outer > 0 else None
     )
 
-    # Execute the benchmark and display results
+    # Verify exactness once before timing: confirm the inversion-based shortcut
+    # reproduces the independently recomputed inner-zone result exactly.
+    _, mirrored = triquarter_dual_zone_paths(
+        G_outer, start_outer, inversion_map
+    )
+    exact = verify_mirror_exactness(
+        G_inner, start_outer, inversion_map, mirrored
+    )
+    print(f"Exactness check (mirrored == recomputed): {'PASS' if exact else 'FAIL'}")
+
+    print(f"Running {args.runs} benchmarks, each with {args.timing_repeats} "
+          f"timing repeats.")
     avg, std = benchmark_triquarter_path_mirroring(
-        G_outer, start_outer, inversion_map,
-        args.runs, args.timing_repeats
+        G_outer, start_outer, inversion_map, args.runs, args.timing_repeats
     )
-    print(
-        f"Tri-Quarter Path Mirroring (Duality): "
-        f"{avg:.2f} ms (+/-{std:.2f})"
-    )
+    print(f"Tri-Quarter Path Mirroring (Inversion): {avg:.3f} ms (+/-{std:.3f})")

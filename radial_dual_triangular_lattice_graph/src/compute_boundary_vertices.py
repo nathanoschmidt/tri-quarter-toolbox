@@ -9,6 +9,8 @@
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
 # Date: September 28, 2025
+# Last Updated: June 9, 2026
+# Version: 1.1.0
 #
 # Description:
 # This Python script computes the explicit boundary vertices in the boundary
@@ -39,17 +41,47 @@
 import math
 import argparse
 
+# Primary lattice ray directions d_t (t in Z_6) as Eisenstein coordinate
+# pairs: d_t is the image of (1, 0) under t steps of the order-6 lattice
+# rotation, i.e. the six nearest-neighbor directions at angles t * 60 degrees.
+SECTOR_RAYS = ((1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1))
+
+
+def angular_sector_index(m, n):
+    """
+    Determine the angular sector index t in Z_6 (0 to 5) of an Eisenstein
+    lattice vertex (m, n), the origin excluded, using exact integer arithmetic.
+
+    The six sectors are the 60-degree wedges between consecutive primary
+    lattice rays SECTOR_RAYS. Wedge membership is decided from the integer
+    coordinate pair (m, n) via the sign of the lattice cross product
+    cross((a, b), (c, d)) = a * d - b * c, which is the orientation of the two
+    directions up to the positive constant sqrt(3) / 2 and is therefore an
+    exact integer (no floating-point phase is used). A vertex on a primary ray
+    is assigned to the sector counterclockwise of that ray, so the six sectors
+    tile Z_6 without overlap and the rule is exactly equivariant under the
+    order-6 rotational symmetry of D_6.
+    """
+    for t in range(6):
+        dm, dn = SECTOR_RAYS[t]
+        em, en = SECTOR_RAYS[(t + 1) % 6]
+        if dm * n - dn * m >= 0 and m * en - n * em > 0:
+            return t
+    raise ValueError(
+        f"angular_sector_index: undefined for origin/invalid vertex ({m}, {n})"
+    )
+
+
 def find_representations(N):
     """
     Find integer solutions (m, n) to m^2 + m*n + n^2 = N in the base triangular
-    lattice L, compute their Cartesian positions (x, y), phases in radians,
-    and angular sector indices t in Z_6 for t = floor(6 * phase / (2 pi)) mod 6.
-    This supports verification of boundary zone vertices V_{T,r} for admissible
-    inversion radii r where r^2 = N has positive representations, ensuring
-    symmetric distribution across angular sectors S_t under D_6 rotational
-    symmetry.
+    lattice L and assign each to its angular sector index t in Z_6 using exact
+    integer arithmetic (no floating-point phase). This supports verification of
+    boundary zone vertices V_{T,r} for admissible inversion radii r where
+    r^2 = N has positive representations, ensuring symmetric distribution across
+    angular sectors S_t under D_6 rotational symmetry.
     """
-    reps = []  # List to store representations with details: ((m, n), x, y, phase_rad, sector)
+    reps = []  # List of (sector, (m, n))
     # Safe range for m, n to cover all possible solutions without overflow for small N
     max_m = int(math.ceil(math.sqrt(N))) + 10
     for m in range(-max_m, max_m + 1):
@@ -59,19 +91,13 @@ def find_representations(N):
             # Compute squared Euclidean norm (integer, exact for Eisenstein integers)
             norm_sq = m*m + m*n + n*n
             if norm_sq == N:  # Check if on the boundary circle of radius r
-                x = m + n * 0.5  # Cartesian x-coordinate in the unified coordinate system
-                y = n * (math.sqrt(3) / 2)    # Cartesian y-coordinate
-                phase_rad = math.atan2(y, x)  # Phase angle in radians for directional classification
-                # Normalize phase to [0, 2 pi) interval
-                if phase_rad < 0: phase_rad += 2 * math.pi
-                # Compute angular sector index t in Z_6 for mod 6 partitioning
-                # and order-6 rotational invariance
-                sector = math.floor(6 * phase_rad / (2 * math.pi)) % 6
-                # Append tuple  with all details
-                reps.append(((m, n), x, y, phase_rad, sector))
-    # Sort by sector index then phase for ordered output that highlights
+                # Exact integer angular sector index t in Z_6 for mod 6
+                # partitioning and order-6 rotational invariance
+                sector = angular_sector_index(m, n)
+                reps.append((sector, (m, n)))
+    # Sort by sector index then coordinates for ordered output that highlights
     # equidistribution across angular sectors S_t
-    reps.sort(key=lambda item: (item[4], item[3]))
+    reps.sort(key=lambda item: (item[0], item[1]))
     return reps
 
 def main():
@@ -95,8 +121,8 @@ def main():
     # (e.g., exactly k vertices per sector for |V_{T,r}| = 6k)
     print(f"Boundary vertices for N={args.N} (r=sqrt({args.N})):")
     for rep in representations:
-        (m,n), x, y, phase, sector = rep
-        print(f"Sector {sector}: ({m},{n}) at {phase:.3f} rad")
+        sector, (m, n) = rep
+        print(f"Sector {sector}: (m,n)=({m},{n})")
 
 if __name__ == "__main__":
     main()

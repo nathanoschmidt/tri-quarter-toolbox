@@ -9,6 +9,8 @@
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
 # Date: September 28, 2025
+# Last Updated: June 10, 2026
+# Version: 1.1.0
 #
 # Description:
 # This Python script computes truncation error percentages for various

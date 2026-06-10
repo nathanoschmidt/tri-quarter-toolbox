@@ -3,12 +3,14 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.0.0<br>
-**Date:** September 29, 2025<br>
+**Version:** 1.1.0<br>
+**Last Updated:** June 10, 2026<br>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![NetworkX](https://img.shields.io/badge/NetworkX-3.0+-blue.svg)](https://networkx.org/)
 [![Pygame](https://img.shields.io/badge/Pygame-2.5+-green.svg)](https://www.pygame.org/)
+[![NumPy](https://img.shields.io/badge/NumPy-1.24+-blue.svg)](https://numpy.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -35,10 +37,12 @@ This project implements the **Radial Dual Triangular Lattice Graph (RDTLG)**, th
 
 Developed as part of the Tri-Quarter Toolbox research initiative, this implementation focuses on:
 
-- **Graph Generation**: Truncated RDTLGs with configurable parameters
+- **Graph Generation**: Truncated RDTLGs (zone subgraphs and the complete lattice) with configurable truncation radius R and admissible inversion radius r
 - **Symmetry Groups**: Native support for ℤ₆ (rotational), D₆ (dihedral), and 𝕋₂₄ (inversive hexagonal dihedral) symmetries
-- **Circle Inversion Duality**: Exact bijective mappings between inner and outer graph zones via circle inversion
-- **Path Mirroring**: Efficient dual-zone path traversal using TQF bijections
+- **Circle Inversion Duality**: Exact bijective mappings between inner and outer graph zones via circle inversion ιᵣ
+- **Path Mirroring**: Efficient dual-zone shortest-path traversal using TQF inversion bijections
+- **Symmetry-Reduced Clustering**: Exact-rational average local clustering via ℤ₆-orbit reduction
+- **Conflict-Free Parallelism**: Equivariant trihexagonal six-coloring enabling data-parallel relaxation sweeps on CPU and GPU
 - **Visualization**: Real-time animated graph exploration with Pygame
 - **Benchmarking**: Performance comparison of standard vs. TQF-optimized algorithms
 
@@ -55,13 +59,15 @@ This is an experimental after-hours hobby science project exploring the intersec
 
 ## 2. Key Features
 
-- 🧬 **First-Principles Graph Construction**: RDTLG with Eisenstein integer coordinates and exact hexagonal adjacency
+- 🧬 **First-Principles Graph Construction**: RDTLG with Eisenstein integer coordinates and exact degree-6 triangular-lattice adjacency
 - 🔄 **Exact Bijective Duality**: Circle inversion mappings between inner and outer zones with verified one-to-one correspondence
 - 📐 **Three Symmetry Groups**: Native ℤ₆ (6 rotations), D₆ (12 symmetries), and 𝕋₂₄ (24 inversive symmetries) support
 - 🎨 **Real-Time Visualization**: Pygame-based animated exploration of graph structure and dual paths (updates every 5 seconds)
-- ⚡ **Performance Benchmarking**: Comparative analysis of standard recomputation vs. TQF duality-based path mirroring
-- 📊 **Graph Analytics**: Vertex counting, zone distribution, boundary analysis, and truncation error computation
-- 💻 **Cross-Platform Python**: Pure Python 3.8+ implementation compatible with Windows, Linux, and macOS
+- ⚡ **Performance Benchmarking**: Comparative analysis of standard recomputation vs. TQF duality-based path mirroring and symmetry-reduced clustering
+- 🎯 **Exact-Rational Arithmetic**: Clustering coefficients computed as exact `fractions.Fraction` values, bitwise-reproducible and verified by `==` (not float tolerance)
+- 🌈 **Equivariant Six-Coloring**: Proper trihexagonal six-coloring scheduling conflict-free, lock-free parallel relaxation sweeps (CPU NumPy vs. GPU PyTorch)
+- 📊 **Graph Analytics**: Vertex counting, zone/angular-sector distribution, boundary analysis, and truncation error computation
+- 💻 **Cross-Platform Python**: Python 3.8+ implementation compatible with Windows, Linux, and macOS
 - 🧪 **Modular & Extensible**: Self-contained scripts with command-line interfaces for flexible experimentation
 - 📜 **MIT Licensed Open Science**: Transparent methodology and reproducible results
 
@@ -72,9 +78,11 @@ This is an experimental after-hours hobby science project exploring the intersec
 ### Prerequisites
 
 - **Python 3.8+**
-- **NetworkX 3.0+** for graph data structures and algorithms
+- **NetworkX 3.0+** for graph data structures and algorithms (core module + Simulations 02–06 + `get_vertex_counts.py`)
+- **NumPy 1.24+** required for `simulation_06`; optional vectorized acceleration for `simulation_05`
 - **Pygame 2.5+** for visualization (optional, only needed for `simulation_01`)
-- **Standard Libraries**: math, random, time, argparse, statistics
+- **PyTorch 2.0+** optional, only for the GPU backend of `simulation_06` (CPU NumPy baseline runs without it)
+- **Standard Libraries**: math, cmath, random, time, argparse, statistics, fractions
 
 ### Quick Install
 
@@ -114,50 +122,65 @@ pip install -r requirements-dev.txt
 ```bash
 python -m venv venv
 venv\Scripts\activate
-pip install pygame networkx
+pip install networkx numpy pygame
 ```
 
 **Linux/macOS:**
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install pygame networkx
+pip install networkx numpy pygame
+```
+
+### Optional GPU Backend (Simulation 06):
+```bash
+# Install a PyTorch build matched to your platform / CUDA driver.
+# See https://pytorch.org/get-started/locally/ for the correct command.
+pip install torch
 ```
 
 ### Minimal Install (Benchmarking Only, No Visualization):
 ```bash
-pip install networkx
+# Covers the core module, path-mirroring (02/03) and clustering (04/05) benchmarks
+pip install networkx numpy
 ```
 
 ### Verify Installation:
 ```bash
-python -c "import networkx as nx; import pygame; print(f'NetworkX: {nx.__version__} | Pygame: {pygame.__version__}')"
+python -c "import networkx as nx; import numpy as np; print(f'NetworkX: {nx.__version__} | NumPy: {np.__version__}')"
 ```
 
-For environments without display (servers, headless systems), you can skip Pygame and use benchmarking/analysis scripts only.
+For environments without a display (servers, headless systems), you can skip Pygame and use the benchmarking/analysis scripts only. The GPU backend of Simulation 06 falls back to the CPU PyTorch device when no CUDA device is present, and the CPU/NumPy baseline runs even when PyTorch is not installed.
 
 ---
 
 ## 4. Quick Start
 
-Navigate to the `radial_dual_triangular_lattice_graph` directory and run any of the provided scripts:
+Navigate to the `radial_dual_triangular_lattice_graph` directory and run any of the provided scripts (each script adds its own `src/` directory to the import path, so the `src/` prefix shown below works from this base directory):
 
 **Windows:**
 ```bash
 # Activate virtual environment
 venv\Scripts\activate
 
-# Visualize random path connections (requires Pygame)
-python simulation_01_visualize_random_connections.py
+# Visualize random connections with circle-inversion mirroring (requires Pygame)
+python src/simulation_01_visualize_random_connections.py
 
-# Benchmark standard path mirroring (5 radii)
-python simulation_02_benchmark_standard_path_mirroring.py 5
+# Benchmark standard (recompute) dual-zone path mirroring at truncation radius R=15
+python src/simulation_02_benchmark_standard_path_mirroring.py 15
 
-# Benchmark TQF duality path mirroring (5 radii)
-python simulation_03_benchmark_triquarter_path_mirroring.py 5
+# Benchmark TQF inversion-based path mirroring at truncation radius R=15
+python src/simulation_03_benchmark_triquarter_path_mirroring.py 15
 
-# Compute vertex counts for radii 1 through 10
-python get_vertex_counts.py 1 10
+# Benchmark standard vs. TQF symmetry-reduced clustering at R=100
+python src/simulation_04_benchmark_standard_clustering.py 100
+python src/simulation_05_benchmark_triquarter_clustering.py 100
+
+# Benchmark trihexagonal six-coloring parallel relaxation (CPU vs. GPU) at R=200
+python src/simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py 200
+
+# Count vertices for inversion radius r=1, truncation radius R=4
+python src/get_vertex_counts.py 1 4
 ```
 
 **Linux/macOS:**
@@ -166,13 +189,16 @@ python get_vertex_counts.py 1 10
 source venv/bin/activate
 
 # Same commands as Windows (use python or python3)
-python simulation_01_visualize_random_connections.py
-python simulation_02_benchmark_standard_path_mirroring.py 5
-python simulation_03_benchmark_triquarter_path_mirroring.py 5
-python get_vertex_counts.py 1 10
+python src/simulation_01_visualize_random_connections.py
+python src/simulation_02_benchmark_standard_path_mirroring.py 15
+python src/simulation_03_benchmark_triquarter_path_mirroring.py 15
+python src/simulation_04_benchmark_standard_clustering.py 100
+python src/simulation_05_benchmark_triquarter_clustering.py 100
+python src/simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py 200
+python src/get_vertex_counts.py 1 4
 ```
 
-All scripts are self-contained and independently runnable with sensible defaults.
+All scripts are self-contained and independently runnable with sensible defaults (each accepts `-h`/`--help` for its full argument list).
 
 ---
 
@@ -183,23 +209,21 @@ All scripts are self-contained and independently runnable with sensible defaults
 
 **File:** `src/radial_dual_triangular_lattice_graph.py`
 
-Core module implementing the truncated radial dual triangular lattice graph (RDTLG) with:
-- Eisenstein integer coordinate system for exact hexagonal tiling
-- Inner zone (|z| ≤ r) and outer zone (r < |z| ≤ R) construction
-- Strict 6-neighbor hexagonal adjacency (Eisenstein unit distance, no diagonals)
-- Circle inversion bijection φ: inner ↔ outer with radius r
-- Phase-pair directional encoding for 60° angular sectors
+Core module implementing the truncated radial dual triangular lattice graph (RDTLG) Λᵣ and its truncation Λᵣᴿ, with:
+- Eisenstein integer coordinate system `(m, n)` for exact triangular tiling; nodes are 3-tuples `(m, n, type)` where `type ∈ {'outer', 'inner', 'boundary'}`
+- Outer zone (r < |z| ≤ R) and inner zone (0 < |z| < r) subgraph construction, plus boundary zone V_{T,r} at |z| = r
+- Strict degree-6 triangular-lattice adjacency via the neighbor deltas `(1,0), (0,1), (-1,0), (0,-1), (1,-1), (-1,1)` (Euclidean unit spacing)
+- Circle inversion bijection ιᵣ: outer ↔ inner, encoded as an `inversion_map` dict
+- Node attributes `pos` (Cartesian position) and `norm_sq` (squared Eisenstein norm) for angular-sector partitioning and inversion
 
 **Key Functions:**
-- `create_radial_dual_triangular_lattice(r, R, symmetry='D6')` — Generate truncated RDTLG with specified radii and symmetry level
-- `apply_circle_inversion(vertex, radius)` — Map vertex between zones via circle inversion
-- `get_zone_vertices(graph, zone)` — Extract vertices from the specified zone ('inner' or 'outer')
-- `compute_hexagonal_adjacency(vertex)` — Return the six neighboring vertices
+- `build_zone_subgraphs(R, r_sq=1)` — Build the separate outer (`Λ₊,ᵣᴿ`) and inner (`Λ₋,ᵣᴿ`) zone subgraphs plus the outer→inner `inversion_map`, for isolated zone operations like path mirroring (Simulations 02–03). Returns `(G_outer, G_inner, inversion_map)`.
+- `build_complete_lattice_graph(R, r_sq=1)` — Compose the zone subgraphs into the full graph, adding boundary vertices and twin edges across the boundary separator, for global computations like clustering (Simulations 04–05). Returns `(G, inversion_map)`.
+- `lattice_rotate(m, n, k)` — Apply the order-6 (ℤ₆) lattice rotation to Eisenstein coordinates by `k` steps of 60°, for orbit computation in symmetry-reduced algorithms. Returns `(m', n')`.
 
 **Parameters (primary):**
-- `r` (int): Inner zone radius (number of hexagonal rings)
-- `R` (int): Outer zone truncation radius
-- `symmetry` (str): Symmetry level to enforce ('Z6', 'D6', or 'T24')
+- `R` (float): Truncation radius (`R ≫ r` for a balanced finite approximation)
+- `r_sq` (int): Squared inversion radius `r² = N`, admissible when representable as `m² + mn + n²` for integers `m, n` not both zero (default `1` → unit-hexagon boundary)
 
 ---
 
@@ -235,169 +259,305 @@ python simulation_01_visualize_random_connections.py
 ### Simulation 02: Benchmark Standard Path Mirroring
 **File:** `src/simulation_02_benchmark_standard_path_mirroring.py`
 
-Baseline performance benchmark using standard recomputation approach for path mirroring between inner and outer zones.
+Baseline performance benchmark establishing the standard (full recompute) approach to the dual-zone shortest-path problem: given a source in the outer zone subgraph and its inversion twin in the inner zone, obtain single-source shortest-path hop distances (the discrete dual metric) in **both** zones.
 
 **Approach:**
-- Generate random paths in inner zone
-- Recompute corresponding outer zone paths from scratch (no duality exploitation)
-- Measure execution time and statistical distribution
+- Run a full single-source shortest-path computation independently in each zone (no symmetry exploitation)
+- Use a fixed random seed so the source vertex matches Simulation 03 for a directly comparable, verifiable benchmark
+- Time the solution over multiple runs with inner timing repeats; report mean and standard deviation in milliseconds
 
 **Usage:**
 ```bash
-python simulation_02_benchmark_standard_path_mirroring.py <max_radius>
+python simulation_02_benchmark_standard_path_mirroring.py R [--runs N] [--timing_repeats M] [--seed S]
 
-# Example: Benchmark radii 1 through 5
-python simulation_02_benchmark_standard_path_mirroring.py 5
+# Example: Benchmark at truncation radius R=15
+python simulation_02_benchmark_standard_path_mirroring.py 15 --runs 20 --timing_repeats 100
 ```
+
+**Arguments:**
+- `R` (int, default 10): Truncation radius
+- `--runs` (default 20): Number of benchmark runs
+- `--timing_repeats` (default 100): Repeats per run for timing accuracy
+- `--seed` (default 42): Random seed for source-vertex selection
 
 **Output:**
-- Console report with mean execution time per radius
-- Standard deviation statistics
-- Baseline for comparison with TQF approach
+```
+Building radial dual triangular lattice graph with truncation radius R=15...
+Graphs built: Outer <N> vertices, Inner <M> vertices.
+Running 20 benchmarks, each with 100 timing repeats.
+Standard Path Mirroring (Recompute): <avg> ms (+/-<std>)
+```
 
-**Example Output:**
-```
-=== Standard Path Mirroring Benchmark ===
-Radius 1: 0.0012 s (±0.0003 s)
-Radius 2: 0.0045 s (±0.0008 s)
-Radius 3: 0.0098 s (±0.0015 s)
-Radius 4: 0.0167 s (±0.0021 s)
-Radius 5: 0.0253 s (±0.0034 s)
-```
+This is the baseline against which the TQF inversion-based approach (Simulation 03) is measured.
 
 ---
 
 ### Simulation 03: Benchmark Tri-Quarter Path Mirroring
 **File:** `src/simulation_03_benchmark_triquarter_path_mirroring.py`
 
-TQF-optimized benchmark using circle inversion bijections for efficient path mirroring.
+TQF-optimized benchmark that solves the **same** dual-zone shortest-path problem as Simulation 02, but exploits the circle inversion bijection ιᵣ to avoid the second computation.
 
 **Approach:**
-- Generate random paths in inner zone
-- Apply circle inversion φ to mirror paths to outer zone (O(1) lookup via bijection)
-- Measure execution time and compare against standard approach
+- Compute single-source shortest-path hop distances once, in the outer zone
+- Map the result into the inner zone through the inversion bijection ιᵣ (a distance-preserving graph isomorphism under the Escher reflective duality), making the inner-zone recomputation provably redundant
+- Verify the mirrored inner-zone distances are bitwise-equal to an independent recomputation (`verify_mirror_exactness`) before timing
+- Time over multiple runs; report mean and standard deviation in milliseconds
 
 **Usage:**
 ```bash
-python simulation_03_benchmark_triquarter_path_mirroring.py <max_radius>
+python simulation_03_benchmark_triquarter_path_mirroring.py R [--runs N] [--timing_repeats M] [--seed S]
 
-# Example: Benchmark radii 1 through 5
-python simulation_03_benchmark_triquarter_path_mirroring.py 5
+# Example: Benchmark at truncation radius R=15
+python simulation_03_benchmark_triquarter_path_mirroring.py 15 --runs 20 --timing_repeats 100
 ```
 
-**Output:**
-- Console report with mean execution time per radius
-- Standard deviation statistics
-- Direct comparison with Simulation 02 shows speedup from duality exploitation
+**Arguments:** Same as Simulation 02 (`R`, `--runs`, `--timing_repeats`, `--seed`); the default seed (42) matches Simulation 02 so the two benchmarks select the same source vertex.
 
-**Expected Performance:**
-- Significant speedup for larger radii due to O(1) bijection vs. O(n) recomputation
-- Constant-time overhead independent of path length
+**Output:**
+```
+Building radial dual triangular lattice graph with truncation radius R=15...
+Graphs built: Outer <N> vertices, Inner <M> vertices.
+Exactness check (mirrored == recomputed): PASS
+Running 20 benchmarks, each with 100 timing repeats.
+Tri-Quarter Path Mirroring (Inversion): <avg> ms (+/-<std>)
+```
+
+Run alongside Simulation 02 (same `R` and seed) to compare timings; the speedup comes from eliminating the redundant inner-zone solve while preserving the discrete dual metric exactly.
+
+---
+
+### Simulation 04: Benchmark Standard Clustering
+**File:** `src/simulation_04_benchmark_standard_clustering.py`
+
+Standard (full recompute) baseline for the **average local clustering coefficient** on the complete truncated lattice graph Λᵣᴿ, computed in **exact rational arithmetic** (`fractions.Fraction`).
+
+**Approach:**
+- Build the complete lattice graph and a `{vertex: frozenset(neighbors)}` adjacency view
+- Compute each local coefficient as the exact rational `2·common / (deg·(deg−1))` and average over all vertices — no floating-point round-off, bitwise-reproducible
+- Time the full-graph computation over multiple runs; report mean and standard deviation in milliseconds
+
+**Usage:**
+```bash
+python simulation_04_benchmark_standard_clustering.py R [--runs N] [--timing_repeats M]
+
+# Example: Benchmark at truncation radius R=100
+python simulation_04_benchmark_standard_clustering.py 100 --runs 20 --timing_repeats 20
+```
+
+**Arguments:**
+- `R` (int, default 10): Truncation radius
+- `--runs` (default 20): Number of benchmark runs
+- `--timing_repeats` (default 20): Repeats per run for timing accuracy
+
+**Output:**
+```
+Graph: |V|=<num_vertices>
+Average clustering coefficient (exact): <p>/<q> = <float value>
+Standard (exact): <avg> ms +/- <std>
+```
+
+This is the reference against which the Tri-Quarter symmetry-reduced approach (Simulation 05) is verified by exact (`==`) comparison.
+
+---
+
+### Simulation 05: Benchmark Tri-Quarter Clustering
+**File:** `src/simulation_05_benchmark_triquarter_clustering.py`
+
+TQF symmetry-reduced benchmark for the **same** exact-rational average local clustering coefficient as Simulation 04, exploiting the order-6 rotational symmetry of the lattice.
+
+**Approach:**
+- Partition the vertex set into ℤ₆ orbits under the order-6 rotation (a graph automorphism), via either a pure-Python visited-set traversal or a NumPy-vectorized construction (both yield bitwise-identical orbits)
+- Compute the local coefficient on one representative per orbit and replicate it across the orbit, weighted by orbit size
+- Verify orbit member-equality and confirm the orbit-reduced rational equals the full-graph rational **exactly** (`==`) before timing
+- The orbit transversal is a one-time precomputation, performed outside the timing loop
+
+**Usage:**
+```bash
+python simulation_05_benchmark_triquarter_clustering.py R [--runs N] [--timing_repeats M] [--orbit-method METHOD] [--debug]
+
+# Example: Benchmark at truncation radius R=100
+python simulation_05_benchmark_triquarter_clustering.py 100 --runs 20 --timing_repeats 20
+```
+
+**Arguments:**
+- `R` (int, default 10): Truncation radius
+- `--runs` (default 20), `--timing_repeats` (default 20): Timing parameters
+- `--orbit-method` (`auto` | `python` | `numpy`, default `auto`): Orbit-transversal construction (`auto` uses NumPy when available)
+- `--debug`: Print orbit-transversal statistics
+
+**Output:**
+```
+Graph: |V|=<num_vertices>
+NumPy available: True
+Orbit transversal: <K> orbits built in <t> ms (method=auto)
+Orbit member-equality check: PASS
+Exact match (orbit == standard, as Fraction): PASS
+Float images identical: True
+Average clustering coefficient (exact): <p>/<q> = <float value>
+Tri-Quarter (exact): <avg> ms +/- <std>
+```
+
+> **Note:** NumPy is optional here — with `--orbit-method python` (or if NumPy is absent) the pure-Python orbit construction is used and produces identical orbits.
+
+---
+
+### Simulation 06: Benchmark Trihexagonal Six-Coloring (CPU vs. GPU)
+**File:** `src/simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py`
+
+Benchmarks a symmetry-aware parallel workload showing that the framework's equivariant **trihexagonal six-coloring** directly enables conflict-free, lock-free data-parallel execution on a GPU.
+
+**Approach:**
+- Color the lattice with the proper six-coloring `e₆ = 2·c + (s₆ mod 2)`, where `c = (m − n) mod 3` is the triangular-lattice three-coloring and `s₆` is the angular sector index; each of the six color classes is an independent set
+- Run one color-ordered (Gauss-Seidel) relaxation sweep — every vertex updates to `α·(own) + (1−α)·(neighbor mean)` — issuing each color class as a single batched, vectorized operation with no read-write conflicts or locks
+- Benchmark two backends on the identical workload: a CPU baseline (NumPy) and a GPU backend (PyTorch on CUDA, with transparent CPU fallback)
+- Verify the two backends produce numerically identical results before reporting timing
+- Neighbor structure is encoded once as a padded adjacency-index tensor (gather-and-reduce, no per-vertex Python loop); the coloring is precomputed outside the timed region
+
+**Usage:**
+```bash
+python simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py R [--runs N] [--timing_repeats M] [--sweeps S]
+
+# Example: Benchmark at truncation radius R=200
+python simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py 200 --runs 10 --timing_repeats 20
+```
+
+**Arguments:**
+- `R` (int, default 100): Truncation radius
+- `--runs` (default 10), `--timing_repeats` (default 20): Timing parameters
+- `--sweeps` (default 10): Relaxation sweeps per timed iteration
+
+**Requirements:** NumPy (required); PyTorch (optional — enables the GPU backend; without it the GPU backend is skipped and only the CPU/NumPy baseline runs). Times are reported in milliseconds **per sweep**.
+
+**Output:**
+```
+Graph: |V|=<num_vertices> |E|=<num_edges>
+Trihexagonal six-coloring proper: PASS
+Six-coloring class sizes: [<six counts>]
+CPU (NumPy, color-ordered): <avg> ms/sweep +/- <std>
+GPU backend device: <cuda|cpu>
+CPU/GPU agreement: PASS (max abs diff <value>)
+GPU (PyTorch, color-ordered): <avg> ms/sweep +/- <std>
+Speedup (CPU / GPU): <ratio>x
+```
 
 ---
 
 ### Tool: Get Vertex Counts
 **File:** `src/get_vertex_counts.py`
 
-Utility for computing vertex distributions across graph zones and angular sectors.
+Utility for computing vertex counts across graph zones (outer, inner, boundary) and the six angular sectors S_t (t ∈ ℤ₆).
 
 **Features:**
-- Total vertex count for given radius range
-- Inner vs. outer zone breakdown
-- Angular sector distribution (60° increments aligned with ℤ₆)
-- Verification of hexagonal lattice symmetry
+- Outer / inner / boundary zone vertex counts and total
+- Per-sector distribution and average vertices per sector (60° increments aligned with ℤ₆)
+- Validation of the proposed inversion radius via Eisenstein representations (`r² = m² + mn + n²`), suggesting the next admissible radius if invalid
+- Count of vertices lying on the angular-sector borders (primary rays)
 
 **Usage:**
 ```bash
-python get_vertex_counts.py <min_radius> <max_radius>
+python get_vertex_counts.py r R
 
-# Example: Analyze radii 1 through 10
-python get_vertex_counts.py 1 10
+# Example: inversion radius r=1, truncation radius R=4
+python get_vertex_counts.py 1 4
+
+# Example: r ≈ sqrt(7), truncation radius R=10
+python get_vertex_counts.py 2.64575 10
 ```
+
+**Arguments:**
+- `r` (float): Inversion radius — must yield an integer `r² = N` with lattice points (the script validates this and proposes nearby admissible radii otherwise)
+- `R` (float): Truncation radius
 
 **Output:**
 ```
-=== Vertex Count Analysis ===
-Radius | Total  | Inner | Outer | Symmetry Check
--------|--------|-------|-------|---------------
-   1   |    7   |   7   |   0   | ✓ Z6 symmetric
-   2   |   19   |  19   |   0   | ✓ Z6 symmetric
-   3   |   37   |  37   |   0   | ✓ Z6 symmetric
-  ...  |  ...   |  ...  |  ...  | ...
-  10   |  331   | 127   |  204  | ✓ Z6 symmetric
+Valid r_sq = 1, effective r = 1.000000
+Outer zone vertices: <count>
+Inner zone vertices: <count>
+Boundary zone vertices: <count>
+Total vertices: <count>
+Vertices per angular sector (outer + boundary + inner = total):
+S_0: <o> + <b> + <i> = <total>
+...
+Average vertex count per angular sector:
+...
+Vertices on angular sector borders (primary rays):
+...
 ```
 
 **Applications:**
 - Graph size estimation for memory planning
-- Symmetry verification
-- Theoretical predictions validation
+- Symmetry / equidistribution verification under D₆
+- Validation of admissible inversion radii
 
 ---
 
 ### Tool: Compute Boundary Vertices
 **File:** `src/compute_boundary_vertices.py`
 
-Identifies and analyzes boundary vertices at the truncation radius R.
+Computes the explicit boundary-zone vertices V_{T,r} for an admissible inversion radius, where `r² = N` is representable as `m² + mn + n²`. Finds all integer solutions `(m, n)`, assigns each to its angular sector via exact integer arithmetic, and groups them by sector to illustrate uniform equidistribution under D₆.
 
 **Features:**
-- Boundary vertex extraction (vertices at |z| = R)
-- Hexagonal boundary regularity checking
-- Angular sector boundary distribution
+- Exact integer solutions `(m, n)` to `m² + mn + n² = N`
+- Angular sector assignment (exact, no floating-point phase)
+- Output sorted by sector to highlight symmetric orbits (e.g. N=7 yields two vertices per sector)
+- Requires only the standard library (`math`, `argparse`) — no NetworkX needed
 
 **Usage:**
 ```bash
-python compute_boundary_vertices.py <radius>
+python compute_boundary_vertices.py [N]
 
-# Example: Analyze boundary at radius 5
-python compute_boundary_vertices.py 5
+# Example: N=7 → r=sqrt(7), 12 boundary vertices (default N=7)
+python compute_boundary_vertices.py 7
 ```
 
+**Arguments:**
+- `N` (int, optional, default 7): The integer `N = r²`
+
 **Output:**
-- List of boundary vertex coordinates
-- Count per angular sector
-- Regularity verification
+```
+Boundary vertices for N=7 (r=sqrt(7)):
+Sector 0: (m,n)=(...,...)
+Sector 0: (m,n)=(...,...)
+Sector 1: (m,n)=(...,...)
+...
+```
 
 **Applications:**
-- Truncation effect analysis
-- Boundary condition implementation for PDEs on graphs
-- Edge case handling in graph algorithms
+- Verifying boundary-vertex equidistribution under D₆
+- Constructing the boundary separator for the complete lattice graph
+- Selecting admissible inversion radii
 
 ---
 
 ### Tool: Compute Truncation Errors
 **File:** `src/compute_truncation_errors.py`
 
-Analyzes approximation errors introduced by finite graph truncation at radius R.
+Quantifies the truncation error for a fixed inversion radius `r = 1`: the unresolved area near the punctured origin in the inner zone Λ₋,₁ as a fraction of the total viewed area. The unresolved area is `π(r²/R)² = π/R²` and the total viewed area is approximated as `πR²`, so the error percentage scales as O(1/R⁴) and vanishes as R → ∞.
 
 **Features:**
-- Theoretical vs. truncated vertex count comparison
-- Duality preservation errors near boundary
-- Recommendations for minimum radius R given desired accuracy
+- Error percentages for a fixed set of truncation radii `R ∈ {4, 10, 20, 50}` (hardcoded; `r = 1`)
+- Pure standard-library script (`math` only) — no command-line arguments and no external dependencies
 
 **Usage:**
 ```bash
-python compute_truncation_errors.py <min_radius> <max_radius>
-
-# Example: Analyze truncation errors for radii 1-10
-python compute_truncation_errors.py 1 10
+python compute_truncation_errors.py
 ```
+
+> **Note:** This script takes no arguments; the truncation radii and `r = 1` are fixed in the source. Edit the `Rs` list near the top of the file to evaluate other radii.
 
 **Output:**
 ```
-=== Truncation Error Analysis ===
-Radius | Theoretical | Truncated | Error (%) | Duality Preserved?
--------|-------------|-----------|-----------|-------------------
-   1   |      7      |     7     |   0.00%   | ✓ Yes
-   2   |     19      |    19     |   0.00%   | ✓ Yes
-   3   |     37      |    37     |   0.00%   | ✓ Yes
-  ...  |    ...      |   ...     |   ...     | ...
-  10   |    331      |   331     |   0.00%   | ✓ Yes
+Truncation Error Percentages for Various R (with r=1):
+R | Unresolved Area (pi r^4 / R^2) | Total Viewed Area (~ pi R^2) | Percentage (%)
+4 | <...> | <...> | <...>%
+10 | <...> | <...> | <...>%
+20 | <...> | <...> | <...>%
+50 | <...> | <...> | <...>%
 ```
 
 **Applications:**
-- Selecting appropriate truncation radius for simulations
-- Error bounds for infinite lattice approximations
-- Duality verification near boundary
+- Selecting an appropriate truncation radius R for simulations
+- Error bounds for finite approximations of the infinite lattice Λᵣ
 
 ---
 
@@ -405,41 +565,55 @@ Radius | Theoretical | Truncated | Error (%) | Duality Preserved?
 
 ### Path Mirroring Comparison
 
-Run both benchmark scripts sequentially to compare execution times and observe the performance advantage of the TQF duality approach over standard recomputation.
+Run both benchmark scripts at the **same** truncation radius and seed to compare execution times and observe the advantage of the TQF inversion-based approach over standard recomputation.
 
 ```bash
 # Redirect output to a single results file for easy comparison
 echo "=== Standard Approach (Simulation 02) ===" > results.txt
-python simulation_02_benchmark_standard_path_mirroring.py 5 >> results.txt
+python src/simulation_02_benchmark_standard_path_mirroring.py 15 >> results.txt
 
-echo -e "\n=== TQF Duality Approach (Simulation 03) ===" >> results.txt
-python simulation_03_benchmark_triquarter_path_mirroring.py 5 >> results.txt
+echo "=== TQF Inversion Approach (Simulation 03) ===" >> results.txt
+python src/simulation_03_benchmark_triquarter_path_mirroring.py 15 >> results.txt
 
 # View the combined results
 cat results.txt
 ```
 
-This produces a consolidated console report showing mean execution times and standard deviations for each radius, allowing direct evaluation of speedup achieved through circle inversion bijections.
+Both scripts use the same default seed (42), so they select the same source vertex and solve the identical dual-zone problem — allowing a direct evaluation of the speedup achieved by mirroring through the circle inversion bijection ιᵣ instead of recomputing the inner zone.
+
+### Clustering Comparison
+
+Compare the standard and symmetry-reduced clustering benchmarks; both compute the **identical exact rational** coefficient (verified by `==`), so the difference is purely runtime.
+
+```bash
+echo "=== Standard Clustering (Simulation 04) ===" > clustering.txt
+python src/simulation_04_benchmark_standard_clustering.py 100 >> clustering.txt
+
+echo "=== Tri-Quarter Clustering (Simulation 05) ===" >> clustering.txt
+python src/simulation_05_benchmark_triquarter_clustering.py 100 >> clustering.txt
+
+cat clustering.txt
+```
 
 ### Vertex and Boundary Analysis Pipeline
 
-Execute the analysis tools in sequence to generate comprehensive reports on vertex distributions, boundary properties, and truncation effects for a chosen radius range.
+Execute the analysis tools to generate reports on vertex distributions, boundary properties, and truncation effects.
 
 ```bash
-# Generate vertex count breakdown for radii 1 to 10
-python get_vertex_counts.py 1 10 > vertex_counts.txt
+# Vertex count breakdown for inversion radius r=1, truncation radius R=10
+python src/get_vertex_counts.py 1 10 > vertex_counts.txt
 
-# Analyze boundary vertices at radius 10
-python compute_boundary_vertices.py 10 > boundary_analysis.txt
+# Boundary vertices for N = r^2 = 7 (r = sqrt(7))
+python src/compute_boundary_vertices.py 7 > boundary_analysis.txt
 
-# Evaluate truncation errors across radii 1 to 10
-python compute_truncation_errors.py 1 10 > truncation_errors.txt
+# Truncation error percentages (fixed R set, r=1; takes no arguments)
+python src/compute_truncation_errors.py > truncation_errors.txt
 
 # Review all generated reports
 cat vertex_counts.txt boundary_analysis.txt truncation_errors.txt
 ```
 
-These commands produce structured text output files that can be inspected individually or concatenated for a complete overview. The pipeline verifies symmetry preservation, quantifies zone distributions, checks boundary regularity, and assesses approximation accuracy introduced by finite truncation.
+These commands produce structured text output that can be inspected individually or concatenated for a complete overview. The pipeline quantifies zone/sector distributions, demonstrates boundary equidistribution under D₆, and assesses the approximation error introduced by finite truncation.
 
 ---
 
@@ -522,20 +696,21 @@ This duality enables:
 
 ### Performance Characteristics
 
-**Standard Path Mirroring:**
-- Time complexity: O(n) per path vertex (n = path length)
-- Space complexity: O(n) for path storage
-- No exploitation of geometric structure
+**Dual-Zone Path Mirroring (Simulations 02 vs. 03):**
+- *Standard:* runs a full single-source shortest-path (BFS) computation independently in **both** zones.
+- *TQF inversion:* runs the BFS **once** in the outer zone, then transfers the result to the inner zone in O(|outer_dist|) time via the precomputed inversion map, eliminating the redundant second BFS.
+- The mirrored inner-zone distances are verified bitwise-equal to an independent recomputation before timing, so the speedup reflects eliminated redundant work — not a different (approximate) result.
 
-**TQF Duality Path Mirroring:**
-- Time complexity: O(1) per path vertex (bijection lookup)
-- Space complexity: O(|V|) for precomputed bijection map (one-time cost)
-- Expected speedup: ~n× for paths of length n
+**Symmetry-Reduced Clustering (Simulations 04 vs. 05):**
+- *Standard:* computes the exact-rational local coefficient for every vertex.
+- *TQF orbit reduction:* computes one representative per ℤ₆ orbit (orbit size up to 6) and replicates by orbit weight, reducing per-query work toward a ~1/6 fraction for the dominant interior orbits, after a one-time orbit-transversal precomputation.
+- Because the order-6 rotation is a graph automorphism, the orbit-reduced average equals the full-graph average **exactly** as a rational number (verified by `==`, not float tolerance).
 
-**Practical Speedup (Empirical):**
-- Small graphs (r ≤ 3): 2-3× faster
-- Medium graphs (r ≈ 5-7): 5-10× faster
-- Large graphs (r ≥ 10): 10-50× faster
+**Trihexagonal Six-Coloring Parallelism (Simulation 06):**
+- The proper six-coloring partitions the vertices into six independent sets, so each color class updates with no read-write conflicts and no locks — the property that licenses batched, vectorized CPU (NumPy) and GPU (PyTorch) execution.
+- Both backends are verified to produce numerically identical results before the speedup is reported.
+
+> Actual timings depend on R, hardware, and (for Simulation 06) CUDA availability. Run the benchmarks locally to obtain numbers for your environment.
 
 ---
 
@@ -543,8 +718,8 @@ This duality enables:
 ## 9. Development
 
 - **Language**: Python 3.8+ (tested on 3.12.3)
-- **Core Libraries**: NetworkX 3.0+ for graph operations; Pygame 2.5+ (optional, for visualization in Simulation 01)
-- **Standard Libraries**: math, random, time, argparse, statistics
+- **Core Libraries**: NetworkX 3.0+ for graph operations; NumPy 1.24+ (required for Simulation 06, optional acceleration for Simulation 05); Pygame 2.5+ (optional, for visualization in Simulation 01); PyTorch 2.0+ (optional, for the GPU backend of Simulation 06)
+- **Standard Libraries**: math, cmath, random, time, argparse, statistics, fractions
 - **Testing and Code Quality Tools**: pytest, black, mypy, flake8 (install via `requirements-dev.txt`)
 - **Platform**: Cross-platform (Windows/Linux/macOS)
 - **Code Style**: PEP 8 compliant
@@ -553,18 +728,21 @@ This duality enables:
 
 ```
 radial_dual_triangular_lattice_graph/
-├── src/                                                      # Source code directory
-│   ├── radial_dual_triangular_lattice_graph.py               # Core graph utility
-│   ├── simulation_01_visualize_random_connections.py         # Pygame visualization
-│   ├── simulation_02_benchmark_standard_path_mirroring.py    # Standard benchmark
-│   ├── simulation_03_benchmark_triquarter_path_mirroring.py  # TQF benchmark
-│   ├── get_vertex_counts.py                                  # Vertex analysis tool
-│   ├── compute_boundary_vertices.py                          # Boundary analysis tool
-│   └── compute_truncation_errors.py                          # Error analysis tool
-├── ACKNOWLEDGEMENT.md                                        # Acknowledgements and gratitude
-├── README.md                                                 # This file
-├── requirements.txt                                          # Core dependencies (NetworkX, Pygame)
-└── requirements-dev.txt                                      # Development dependencies (pytest, black, mypy, flake8)
+├── src/                                                          # Source code directory
+│   ├── radial_dual_triangular_lattice_graph.py                   # Core graph utility (zone subgraphs, complete lattice, rotation)
+│   ├── simulation_01_visualize_random_connections.py             # Pygame visualization
+│   ├── simulation_02_benchmark_standard_path_mirroring.py        # Standard path-mirroring benchmark
+│   ├── simulation_03_benchmark_triquarter_path_mirroring.py      # TQF inversion path-mirroring benchmark
+│   ├── simulation_04_benchmark_standard_clustering.py            # Standard clustering benchmark (exact rational)
+│   ├── simulation_05_benchmark_triquarter_clustering.py          # TQF Z6-orbit clustering benchmark (exact rational)
+│   ├── simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py   # Six-coloring parallel relaxation (CPU vs. GPU)
+│   ├── get_vertex_counts.py                                      # Vertex/zone/sector count tool
+│   ├── compute_boundary_vertices.py                              # Boundary-vertex tool
+│   └── compute_truncation_errors.py                              # Truncation-error tool
+├── ACKNOWLEDGEMENT.md                                            # Acknowledgements and gratitude
+├── README.md                                                     # This file
+├── requirements.txt                                              # Core dependencies (NetworkX, NumPy, Pygame; optional Torch)
+└── requirements-dev.txt                                          # Development dependencies (pytest, black, mypy, flake8)
 ```
 
 ### Design Principles
@@ -591,12 +769,22 @@ flake8 .
 ### Running All Benchmarks
 
 ```bash
-# Full benchmark suite for radii 1–10 (requires NetworkX)
-for radius in {1..10}; do
-    echo "=== Radius $radius ==="
-    python src/simulation_02_benchmark_standard_path_mirroring.py $radius
-    python src/simulation_03_benchmark_triquarter_path_mirroring.py $radius
+# Path-mirroring suite across several truncation radii (requires NetworkX)
+for R in 5 10 15 20; do
+    echo "=== Truncation radius R=$R ==="
+    python src/simulation_02_benchmark_standard_path_mirroring.py $R
+    python src/simulation_03_benchmark_triquarter_path_mirroring.py $R
 done
+
+# Clustering suite (requires NetworkX; NumPy optional for Simulation 05)
+for R in 25 50 100; do
+    echo "=== Truncation radius R=$R ==="
+    python src/simulation_04_benchmark_standard_clustering.py $R
+    python src/simulation_05_benchmark_triquarter_clustering.py $R
+done
+
+# Trihexagonal six-coloring parallel relaxation (requires NumPy; PyTorch for GPU)
+python src/simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py 200
 ```
 
 ---
@@ -653,8 +841,8 @@ See [`LICENSE`](LICENSE) file for complete license text.
 
 **`QED`**
 
-**Last Updated:** September 29, 2025<br>
-**Version:** 1.0.0<br>
+**Last Updated:** June 4, 2026<br>
+**Version:** 1.1.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

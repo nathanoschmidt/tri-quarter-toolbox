@@ -9,6 +9,8 @@
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
 # Date: September 28, 2025
+# Last Updated: June 10, 2026
+# Version: 1.1.0
 #
 # Description:
 # This Python module provides functions to construct the radial dual triangular
@@ -85,7 +87,7 @@ def build_zone_subgraphs(R, r_sq=1):
             x, y = m + n*0.5, n*(math.sqrt(3)/2)
             node = (m, n, 'outer')  # 3-tuple for consistency across zones
             G_outer.add_node(
-                node, pos=(x,y), phase=math.atan2(y, x), norm_sq=norm_sq
+                node, pos=(x,y), norm_sq=norm_sq
             )
             outer_nodes.append(node)
 
@@ -99,7 +101,7 @@ def build_zone_subgraphs(R, r_sq=1):
                 G_outer.add_edge(u, v)
 
     # Invert outer to inner via circle inversion iota_r
-    # (preserves phases for directional consistency)
+    # (preserves directional consistency via the exact lattice rotation)
     for node in outer_nodes:
         m, n, _ = node
         pos = G_outer.nodes[node]['pos']
@@ -109,7 +111,6 @@ def build_zone_subgraphs(R, r_sq=1):
         inv_node = (m, n, 'inner')  # Twin node in inner zone
         G_inner.add_node(
             inv_node, pos=(x_inv, y_inv),
-            phase=math.atan2(y_inv, x_inv),
             norm_sq=r_sq**2 / norm_sq
         )
         inversion_map[node] = inv_node
@@ -157,10 +158,9 @@ def build_complete_lattice_graph(R, r_sq=1):
             if norm_sq == r_sq:  # Exact boundary zone V_{T,r}
                 x = m + n*0.5
                 y = n*(math.sqrt(3)/2)
-                phase = math.atan2(y, x)
                 node = (m, n, 'boundary')
                 G.add_node(
-                    node, pos=(x,y), phase=phase, norm_sq=norm_sq
+                    node, pos=(x,y), norm_sq=norm_sq
                 )
                 boundary_nodes.append(node)
 

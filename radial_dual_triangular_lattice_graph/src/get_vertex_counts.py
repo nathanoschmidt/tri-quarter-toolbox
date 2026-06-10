@@ -9,6 +9,8 @@
 # Affiliation: Cold Hammer Research & Development LLC, Eagle, Idaho, USA
 # Email: nate.o.schmidt@coldhammer.net
 # Date: September 28, 2025
+# Last Updated: June 10, 2026
+# Version: 1.1.0
 #
 # Description:
 # This Python script computes vertex counts in the radial dual triangular
@@ -67,26 +69,59 @@ def compute_eisenstein_representations(max_nsq):
     return representations
 
 
-def compute_angular_sector(phase):
+# Primary lattice ray directions d_t (t in Z_6) as Eisenstein coordinate
+# pairs: d_t is the image of (1, 0) under t steps of the order-6 lattice
+# rotation, i.e. the six nearest-neighbor directions at angles t * 60 degrees.
+SECTOR_RAYS = ((1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1))
+
+
+def angular_sector_index(m, n):
     """
-    Determine the angular sector index t in Z_6 (0 to 5) for a given phase
-    angle, using floor-modular indexing.
-    This ensures consistent directional labeling under order-6 rotational
-    symmetry of D_6.
+    Determine the angular sector index t in Z_6 (0 to 5) of an Eisenstein
+    lattice vertex (m, n), the origin excluded, using exact integer arithmetic.
+
+    The six sectors are the 60-degree wedges between consecutive primary
+    lattice rays SECTOR_RAYS. Wedge membership is decided from the integer
+    coordinate pair (m, n) via the sign of the lattice cross product
+    cross((a, b), (c, d)) = a * d - b * c, which is the orientation of the two
+    directions up to the positive constant sqrt(3) / 2 and is therefore an
+    exact integer (no floating-point phase is used). A vertex on a primary ray
+    is assigned to the sector counterclockwise of that ray, so the six sectors
+    tile Z_6 without overlap and the rule is exactly equivariant under the
+    order-6 rotational symmetry of D_6.
     """
-    if phase < 0:
-        phase += 2 * math.pi  # Normalize phase to [0, 2*pi)
-    return math.floor(6 * phase / (2 * math.pi)) % 6  # Compute sector index
+    for t in range(6):
+        dm, dn = SECTOR_RAYS[t]
+        em, en = SECTOR_RAYS[(t + 1) % 6]
+        if dm * n - dn * m >= 0 and m * en - n * em > 0:
+            return t
+    raise ValueError(
+        f"angular_sector_index: undefined for origin/invalid vertex ({m}, {n})"
+    )
+
+
+def on_primary_ray(m, n):
+    """
+    Return the index t in Z_6 of the primary lattice ray that vertex (m, n)
+    lies on, or None if (m, n) is strictly interior to a sector. A vertex lies
+    on ray d_t iff it is a positive integer multiple of d_t, tested exactly via
+    a zero lattice cross product with d_t together with a positive dot product.
+    """
+    for t in range(6):
+        dm, dn = SECTOR_RAYS[t]
+        if dm * n - dn * m == 0 and (m * dm + n * dn) > 0:
+            return t
+    return None
 
 
 def generate_boundary_zone_vertices(truncation_radius, r_sq):
     """
     Generate vertices in the boundary zone V_{T,r} at exact norm sqrt(r_sq)
     within the truncation radius R, using the base triangular lattice L.
-    Stores (m, n, phase) tuples for phase pair assignments and angular sector
-    partitioning.
+    Stores (m, n) coordinate pairs for phase pair assignments and exact
+    integer angular sector partitioning.
     """
-    boundary_zone_vertices = []  # List to store boundary vertices (m, n, phase)
+    boundary_zone_vertices = []  # List to store boundary vertices (m, n)
     max_m = int(math.ceil(truncation_radius)) + 10  # Safe range for m, n
     for m in range(-max_m, max_m + 1):  # Loop over possible m values
         for n in range(-max_m, max_m + 1):  # Loop over possible n values
@@ -98,10 +133,7 @@ def generate_boundary_zone_vertices(truncation_radius, r_sq):
             if norm > truncation_radius:
                 continue  # Skip if outside truncation radius
             if nsq == r_sq:  # Check if on the boundary zone V_{T,r}
-                x = m + n * 0.5  # Compute Cartesian x-coordinate
-                y = n * (math.sqrt(3) / 2)  # Compute Cartesian y-coordinate
-                phase = math.atan2(y, x)  # Compute phase angle for sector assignment
-                boundary_zone_vertices.append((m, n, phase))  # Add to list
+                boundary_zone_vertices.append((m, n))  # Add coordinate pair
     return boundary_zone_vertices
 
 
@@ -174,18 +206,18 @@ def main():
 
     # Initialize sector counts for outer, inner, and boundary zones
     sector_counts_outer = [0] * 6
-    for _, data in G_outer.nodes(data=True):
-        sector = compute_angular_sector(data['phase'])
+    for node, _ in G_outer.nodes(data=True):
+        sector = angular_sector_index(node[0], node[1])
         sector_counts_outer[sector] += 1
 
     sector_counts_inner = [0] * 6
-    for _, data in G_inner.nodes(data=True):
-        sector = compute_angular_sector(data['phase'])
+    for node, _ in G_inner.nodes(data=True):
+        sector = angular_sector_index(node[0], node[1])
         sector_counts_inner[sector] += 1
 
     sector_counts_boundary = [0] * 6
-    for _, _, phase in boundary_zone_vertices:
-        sector = compute_angular_sector(phase)
+    for m_v, n_v in boundary_zone_vertices:
+        sector = angular_sector_index(m_v, n_v)
         sector_counts_boundary[sector] += 1
 
     # Print zone counts
@@ -215,42 +247,28 @@ def main():
     print(f"Boundary: {count_boundary / 6:.2f}")
     print(f"Total: {total / 6:.2f}")
 
-    # Count vertices on angular sector borders (primary rays at phases t pi / 3)
-    ray_phases = [k * math.pi / 3 for k in range(6)]
+    # Count vertices on angular sector borders (primary rays at t * 60 degrees),
+    # detected exactly from the integer coordinate pair (m, n) via on_primary_ray.
     ray_labels = [
         "East (0 deg)", "North-East (60 deg)", "North-West (120 deg)",
         "West (180 deg)", "South-West (240 deg)", "South-East (300 deg)"
     ]
     ray_counts_outer = [0] * 6
-    for _, data in G_outer.nodes(data=True):
-        phase = data['phase']
-        diffs = [
-            abs((phase - pk + math.pi) % (2 * math.pi) - math.pi)
-            for pk in ray_phases
-        ]
-        if min(diffs) < 1e-10:
-            k = diffs.index(min(diffs))
+    for node, _ in G_outer.nodes(data=True):
+        k = on_primary_ray(node[0], node[1])
+        if k is not None:
             ray_counts_outer[k] += 1
 
     ray_counts_inner = [0] * 6
-    for _, data in G_inner.nodes(data=True):
-        phase = data['phase']
-        diffs = [
-            abs((phase - pk + math.pi) % (2 * math.pi) - math.pi)
-            for pk in ray_phases
-        ]
-        if min(diffs) < 1e-10:
-            k = diffs.index(min(diffs))
+    for node, _ in G_inner.nodes(data=True):
+        k = on_primary_ray(node[0], node[1])
+        if k is not None:
             ray_counts_inner[k] += 1
 
     ray_counts_boundary = [0] * 6
-    for _, _, phase in boundary_zone_vertices:
-        diffs = [
-            abs((phase - pk + math.pi) % (2 * math.pi) - math.pi)
-            for pk in ray_phases
-        ]
-        if min(diffs) < 1e-10:
-            k = diffs.index(min(diffs))
+    for m_v, n_v in boundary_zone_vertices:
+        k = on_primary_ray(m_v, n_v)
+        if k is not None:
             ray_counts_boundary[k] += 1
 
     print("\nVertices on angular sector borders (primary rays):")

@@ -3,7 +3,7 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Last Dated:** February 27, 2026<br>
+**Last Dated:** June 10, 2026<br>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -140,9 +140,11 @@ python tri_quarter.py
 Reference implementation of the truncated RDTLG — the foundational geometric structure of TQF. Uses Eisenstein integers, exact circle-inversion bijection, and full ℤ₆/D₆/𝕋₂₄ symmetry support.
 
 **Key Features:**
-- Graph construction and analytics
+- Graph construction and analytics (zone subgraphs and the complete lattice graph)
 - Circle inversion duality for inner ↔ outer zone mapping
-- Path mirroring benchmarks (standard vs. TQF-optimized)
+- Path mirroring benchmarks (standard recompute vs. TQF inversion-based)
+- Symmetry-reduced clustering benchmarks (standard vs. ℤ₆-orbit reduction, in exact rational arithmetic)
+- Conflict-free parallel relaxation via the equivariant trihexagonal six-coloring (CPU NumPy vs. GPU PyTorch)
 - Real-time Pygame visualization
 - Vertex count, boundary, and truncation error tools
 
@@ -150,8 +152,10 @@ Reference implementation of the truncated RDTLG — the foundational geometric s
 ```bash
 cd radial_dual_triangular_lattice_graph
 # ... activate venv ...
-python simulation_01_visualize_random_connections.py
-python simulation_03_benchmark_triquarter_path_mirroring.py 5
+python src/simulation_01_visualize_random_connections.py
+python src/simulation_03_benchmark_triquarter_path_mirroring.py 15
+python src/simulation_05_benchmark_triquarter_clustering.py 100
+python src/simulation_06_benchmark_trihexagonal_sixcoloring_gpu.py 200
 ```
 
 ### BPSK Signal Processing Case Study
@@ -287,7 +291,7 @@ All contributions must adhere to the MIT License and maintain the reproducibilit
 
 For tool-specific questions, please consult the relevant tool's documentation first.
 
-**Last Updated:** February 24, 2026<br>
+**Last Updated:** June 9, 2026<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

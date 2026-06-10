@@ -1,15 +1,16 @@
 # Tri-Quarter Framework: Radial Dual Triangular Lattice Graph
-# Simulation/Experiment Source Code RuntimeRequirements
+# Simulation/Experiment Source Code Runtime Requirements
 # ===========================================================
 # Author: Nathan O. Schmidt
 # Organization: Cold Hammer Research & Development LLC
-# Date: February 2026
+# Date: June 2026
 # ===========================================================
 #
 # CROSS-PLATFORM COMPATIBLE: Windows | Linux | macOS
 # Python Version: 3.8+
 #
-# This file contains only the core runtime dependencies needed to run TQF-NN.
+# This file contains the core runtime dependencies needed to run the
+# Radial Dual Triangular Lattice Graph (RDTLG) simulations and tools.
 # For development (testing, linting, etc.), use requirements-dev.txt instead.
 #
 # Installation:
@@ -20,7 +21,26 @@
 # =============================================================================
 
 # Graph Data Structures & Algorithms
+# (required by the core module and Simulations 02-06, get_vertex_counts.py)
 networkx>=3.0
 
-# Visualization (required for simulation_01, optional for others)
+# Visualization
+# (required for Simulation 01 only; safe to skip on headless systems)
 pygame>=2.5.0
+
+# Numerical Arrays
+# (required for Simulation 06; optional vectorized acceleration for the
+#  Tri-Quarter orbit transversal in Simulation 05)
+numpy>=1.24.0
+
+# =============================================================================
+# OPTIONAL RUNTIME DEPENDENCIES
+# =============================================================================
+
+# GPU Backend for Simulation 06 (trihexagonal six-coloring relaxation).
+# Without PyTorch, Simulation 06 still runs its CPU/NumPy baseline and simply
+# skips the GPU backend. For CUDA-enabled execution, install a build matched to
+# your NVIDIA driver per https://pytorch.org/get-started/locally/ ; otherwise
+# the GPU backend transparently falls back to the CPU PyTorch device.
+# Uncomment to enable:
+# torch>=2.0.0
