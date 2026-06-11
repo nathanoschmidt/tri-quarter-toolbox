@@ -825,8 +825,8 @@ See [`LICENSE`](LICENSE) file for complete license text.
 - **Schmidt, Nathan O.** (2025). *The Tri-Quarter Framework: Unifying Complex Coordinates with Topological and Reflective Duality across Circles of Any Radius*. TechRxiv.
 [https://www.techrxiv.org/users/906377/articles/1281679](https://www.techrxiv.org/users/906377/articles/1281679)
 
-- **Schmidt, Nathan O.** (2025). *The Tri-Quarter Framework: Radial Dual Triangular Lattice Graphs with Exact Bijective Dualities and Equivariant Encodings via the Inversive Hexagonal Dihedral Symmetry Group 𝕋₂₄*. TechRxiv.
-[https://www.techrxiv.org/users/906377/articles/1339304](https://www.techrxiv.org/users/906377/articles/1339304)
+- **Schmidt, Nathan O.** (2026). *The Tri-Quarter Framework: Radial Dual Triangular Lattice Graphs with Exact Bijective Dualities and Equivariant Encodings via the Inversive Hexagonal Dihedral Symmetry Group 𝕋₂₄*. Zenodo.
+[https://zenodo.org/records/20636058](https://zenodo.org/records/20636058)
 
 ### Related Topics
 - **Conway, J. H., & Sloane, N. J. A.** (1999). *Sphere Packings, Lattices and Groups* (3rd ed.). Springer.

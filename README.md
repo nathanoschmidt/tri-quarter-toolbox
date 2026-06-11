@@ -135,7 +135,7 @@ python tri_quarter.py
 
 ### Radial Dual Triangular Lattice Graph (RDTLG)
 **Location:** [`radial_dual_triangular_lattice_graph/`](./radial_dual_triangular_lattice_graph/)  
-**Associated Preprint:** [TechRxiv 1339304](https://www.techrxiv.org/users/906377/articles/1339304)
+**Associated Preprint:** [Zenodo 20636058](https://zenodo.org/records/20636058)
 
 Reference implementation of the truncated RDTLG — the foundational geometric structure of TQF. Uses Eisenstein integers, exact circle-inversion bijection, and full ℤ₆/D₆/𝕋₂₄ symmetry support.
 
@@ -237,8 +237,8 @@ These properties originate from the topological and reflective dualities proven 
 - **Schmidt, Nathan O.** (2025). *Tri-Quarter Framework Case Study: BPSK Signal Processing*. TechRxiv.
 [https://www.techrxiv.org/users/906377/articles/1311875](https://www.techrxiv.org/users/906377/articles/1311875)
 
-- **Schmidt, Nathan O.** (2025). *The Tri-Quarter Framework: Radial Dual Triangular Lattice Graphs with Exact Bijective Dualities and Equivariant Encodings via the Inversive Hexagonal Dihedral Symmetry Group 𝕋₂₄*. TechRxiv.
-[https://www.techrxiv.org/users/906377/articles/1339304](https://www.techrxiv.org/users/906377/articles/1339304)
+- **Schmidt, Nathan O.** (2026). *The Tri-Quarter Framework: Radial Dual Triangular Lattice Graphs with Exact Bijective Dualities and Equivariant Encodings via the Inversive Hexagonal Dihedral Symmetry Group 𝕋₂₄*. Zenodo.
+[https://zenodo.org/records/20636058](https://zenodo.org/records/20636058)
 
 ### Project-Specific Documentation
 See individual project READMEs and documentation for additional info. 
