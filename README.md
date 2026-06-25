@@ -3,7 +3,7 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Last Dated:** June 10, 2026<br>
+**Last Dated:** June 24, 2026<br>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -53,6 +53,7 @@ tri-quarter-toolbox/
 ├── case_study_bpsk/                       # BPSK signal processing case study
 ├── machine_learning/                      # Machine learning tools/projects
 │   └── tqf-nn_benchmark/                  # TQF neural network benchmark tools
+├── radial_dual_signal_processing/         # Exact/parallel hex-lattice signal processing
 ├── radial_dual_triangular_lattice_graph/  # Core RDTLG implementation & tools
 └── theorem_animation/                     # Foundational theorem visualization
 ```
@@ -108,7 +109,8 @@ See each project’s own README for exact installation steps, optional dependenc
 
 - **Educational Visualization** → [`theorem_animation/`](./theorem_animation/)
 - **Core Lattice & Graph Algorithms** → [`radial_dual_triangular_lattice_graph/`](./radial_dual_triangular_lattice_graph/)
-- **Signal Processing / Communications** → [`case_study_bpsk/`](./case_study_bpsk/)
+- **Signal Processing / Communications (1D BPSK)** → [`case_study_bpsk/`](./case_study_bpsk/)
+- **Signal Processing / Communications (2D Hex Constellations)** → [`radial_dual_signal_processing/`](./radial_dual_signal_processing/)
 - **Geometric Deep Learning / Neural Networks** → [`machine_learning/tqf-nn_benchmark/`](./machine_learning/tqf-nn_benchmark/)
 
 ---
@@ -180,6 +182,29 @@ cd case_study_bpsk
 python simulation_01_tri-quarter_framework_ber.py
 ```
 
+### Radial Dual Signal Processing (Hexagonal Lattice)
+**Location:** [`radial_dual_signal_processing/`](./radial_dual_signal_processing/)  
+**Associated Paper:** *Tri-Quarter Framework Method: Exact, Symmetry-Reduced, and Parallel Signal Processing on the Radial Dual Triangular Lattice* (in preparation)
+
+Carries the TQF from the 1D BPSK case study into 2D hexagonal signal constellations, where the framework's order-6 symmetry does real work. Every claim is backed by a script that prints a copy-pasteable results table and an automated test that pins the underlying invariant. Validates six falsifiable claims (C1–C6) kept strictly separate so no claim borrows credit from another.
+
+**Key Features:**
+- Closed-form Eisenstein/A₂ O(1) fast-path decoder that is bitwise-identical to exhaustive ML decoding, with constant-time decode and throughput speedup vs M (C1, C2)
+- Hexagonal vs. square-QAM packing gain at matched M and energy, with paired McNemar + Holm significance and exact Clopper–Pearson intervals across AWGN, impulsive, and Rayleigh channels (C3)
+- Symmetry-reduced exact constellation metrics via ℤ₆-orbit reduction (exact 6× evaluation reduction, verified by `==`) (C4)
+- Conflict-free parallel lattice-signal denoiser via the trihexagonal six-coloring (CPU NumPy vs. GPU PyTorch, self-certifying CUDA provenance) (C5)
+- Decoder equivariance under order-6 rotation plus a differential hexagonal (DPSK-analogue) scheme (C6)
+- One-command reproduction (`run_all.ps1` / `run_all.sh`), CSV-driven figure generator, and a 98-test automated suite
+
+**Quick Start:**
+```bash
+cd radial_dual_signal_processing
+# ... activate venv ...
+python src/simulation_01_hex_demod_correctness_and_latency.py
+python src/simulation_02_hex_vs_square_ber_packing_gain.py
+python src/simulation_04_sixcoloring_denoise_gpu.py
+```
+
 ### TQF Neural Network (TQF-NN) Benchmark Tools
 **Location:** [`machine_learning/tqf-nn_benchmark/`](./machine_learning/tqf-nn_benchmark/)  
 **Focus:** Rotated MNIST symmetry-aware benchmarking
@@ -240,6 +265,8 @@ These properties originate from the topological and reflective dualities proven 
 - **Schmidt, Nathan O.** (2026). *The Tri-Quarter Framework: Radial Dual Triangular Lattice Graphs with Exact Bijective Dualities and Equivariant Encodings via the Inversive Hexagonal Dihedral Symmetry Group 𝕋₂₄*. Zenodo.
 [https://zenodo.org/records/20636058](https://zenodo.org/records/20636058)
 
+- **Schmidt, Nathan O.** (2026). *Tri-Quarter Framework Method: Exact, Symmetry-Reduced, and Parallel Signal Processing on the Radial Dual Triangular Lattice* (in preparation).
+
 ### Project-Specific Documentation
 See individual project READMEs and documentation for additional info. 
 
@@ -291,7 +318,7 @@ All contributions must adhere to the MIT License and maintain the reproducibilit
 
 For tool-specific questions, please consult the relevant tool's documentation first.
 
-**Last Updated:** June 9, 2026<br>
+**Last Updated:** June 24, 2026<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

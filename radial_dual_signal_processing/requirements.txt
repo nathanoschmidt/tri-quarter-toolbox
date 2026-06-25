@@ -1,0 +1,48 @@
+# Tri-Quarter Framework Method: Radial Dual Signal Processing
+# Simulation/Experiment Source Code Runtime Requirements
+# ===========================================================
+# Author: Nathan O. Schmidt
+# Organization: Cold Hammer Research & Development LLC
+# Date: June 2026
+# ===========================================================
+#
+# CROSS-PLATFORM COMPATIBLE: Windows | Linux | macOS
+# Python Version: 3.10+
+#
+# This file contains the core runtime dependencies needed to run the
+# radial_dual_signal_processing simulations (Studies 01-05) and the figure
+# generator (make_figures.py). For development (testing, linting, etc.), use
+# requirements-dev.txt instead.
+#
+# Installation:
+#   pip install -r requirements.txt
+# On PEP 668 ("externally-managed-environment") systems (recent Debian/Ubuntu):
+#   pip install --break-system-packages -r requirements.txt
+
+# =============================================================================
+# CORE RUNTIME DEPENDENCIES
+# =============================================================================
+
+# Numerical Arrays
+# (required by the core library and every simulation)
+numpy>=1.24.0
+
+# Exact Clopper-Pearson Confidence Intervals
+# (scipy.stats.beta; required by Simulations 01, 02, 05)
+scipy>=1.10.0
+
+# Visualization / Figure Generation
+# (required by make_figures.py only; safe to skip if you only need the tables)
+matplotlib>=3.7.0
+
+# =============================================================================
+# OPTIONAL RUNTIME DEPENDENCIES
+# =============================================================================
+
+# GPU Backend for Simulation 04 (trihexagonal six-coloring parallel denoiser).
+# Without PyTorch, Simulation 04 still runs its CPU/NumPy baseline and labels the
+# GPU column as n/a. For CUDA-enabled execution, install a build matched to your
+# NVIDIA driver per https://pytorch.org/get-started/locally/ . The headline ~8x
+# speedup requires a real CUDA GPU; a CPU-only torch is only a reference backend.
+# Uncomment to enable:
+# torch>=2.0.0
