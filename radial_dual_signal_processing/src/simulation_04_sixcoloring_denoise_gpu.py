@@ -28,13 +28,13 @@ Notes
 * Both backends use float64 and the identical colour classes / neighbour arrays,
   so the comparison isolates CPU-vs-GPU execution of one fixed workload.
 
-What to paste back: the header (hardware/versions) and the results table.
+Output: the header (hardware/versions) and the results table.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 
 from __future__ import annotations
@@ -199,6 +199,59 @@ def run_radius(radius: float, alpha: float, sweeps: int, repeats: int,
     }
 
 
+def verify_coloring_equivariance(radius: float) -> dict:
+    """Check, exactly, which lattice colouring is rotation-equivariant.
+
+    Corrects a subtle point: the conflict-free SCHEDULE uses the trihexagonal
+    six-colouring (proper, fine-grained), but only the underlying triangular-
+    lattice 3-colouring c3 = (a - b) mod 3 is equivariant under the order-6
+    rotation R (R sends c3 to (-c3) mod 3, a permutation of the three classes).
+    The six-colouring refines c3 by the parity c2 = (a + b) mod 2, which does NOT
+    transform as a function of the colour pair under R, so the six-colouring is
+    proper but NOT rotation-equivariant. This block verifies both facts on the
+    actual graph so the distinction is a checked artifact, not a claim.
+
+    Returns a dict of the verified flags.
+    """
+    graph = g.build_lattice_graph(radius)
+    coords = graph["coords"]
+    index_of = {(int(a), int(b)): i for i, (a, b) in enumerate(coords)}
+    a = coords[:, 0].astype(np.int64)
+    b = coords[:, 1].astype(np.int64)
+
+    _c3_classes, proper3 = g.three_coloring(coords, index_of)
+    _c6_classes, proper6 = g.six_coloring(coords, index_of)
+
+    c3 = np.mod(a - b, 3)
+    c6 = (2 * np.mod(a - b, 3) + np.mod(a + b, 2)).astype(np.int64)
+    # Rotate every vertex by +60 deg and read the colours of the rotated points.
+    ra = np.empty_like(a)
+    rb = np.empty_like(b)
+    for i in range(a.shape[0]):
+        ra[i], rb[i] = t.rotate60(int(a[i]), int(b[i]))
+    c3_rot = np.mod(ra - rb, 3)
+    c6_rot = (2 * np.mod(ra - rb, 3) + np.mod(ra + rb, 2)).astype(np.int64)
+
+    def is_equivariant(orig: np.ndarray, rot: np.ndarray, k: int) -> bool:
+        # Equivariant iff each original colour maps to a SINGLE rotated colour
+        # (a fixed permutation of the classes).
+        for c in range(k):
+            vals = set(int(v) for v in rot[orig == c])
+            if len(vals) != 1:
+                return False
+        return True
+
+    eq3 = is_equivariant(c3, c3_rot, 3)
+    eq6 = is_equivariant(c6, c6_rot, 6)
+    return {
+        "radius": radius,
+        "three_coloring_proper": bool(proper3),
+        "six_coloring_proper": bool(proper6),
+        "three_coloring_rotation_equivariant": bool(eq3),
+        "six_coloring_rotation_equivariant": bool(eq6),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -281,6 +334,32 @@ def main() -> None:
         w.writerows(rows)
     print(f"\nWrote {csv_path}  (device + ran_on_cuda stamped on every row)")
     print(f"Wrote {os.path.join(args.results_dir, 'sim04_provenance.json')}")
+
+    # ---- Additive, CPU-only colouring-equivariance check --------------------
+    # Independent of the timed GPU benchmark above (sim04_sixcoloring.csv is
+    # unaffected). Records the checked fact that the 3-colouring is rotation-
+    # equivariant while the conflict-free six-colouring is proper but NOT.
+    eq_radius = max(args.radii) if args.radii else 20.0
+    eq = verify_coloring_equivariance(eq_radius)
+    print(f"\n[C5 colouring equivariance] verified on radius {eq['radius']:.0f}:")
+    print(f"   3-colouring  proper={eq['three_coloring_proper']}  "
+          f"rotation-equivariant={eq['three_coloring_rotation_equivariant']}")
+    print(f"   6-colouring  proper={eq['six_coloring_proper']}  "
+          f"rotation-equivariant={eq['six_coloring_rotation_equivariant']}")
+    print("   The conflict-free schedule uses the (proper) six-colouring; only the")
+    print("   underlying 3-colouring is rotation-equivariant. Any equivariance")
+    print("   claim must reference the 3-colouring, not the six-colouring.")
+    eq_path = os.path.join(args.results_dir, "sim04_coloring_equivariance.csv")
+    with open(eq_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["radius", "three_coloring_proper", "six_coloring_proper",
+                    "three_coloring_rotation_equivariant",
+                    "six_coloring_rotation_equivariant"])
+        w.writerow([eq["radius"], int(eq["three_coloring_proper"]),
+                    int(eq["six_coloring_proper"]),
+                    int(eq["three_coloring_rotation_equivariant"]),
+                    int(eq["six_coloring_rotation_equivariant"])])
+    print(f"Wrote {eq_path}")
     print("=" * 86)
 
 

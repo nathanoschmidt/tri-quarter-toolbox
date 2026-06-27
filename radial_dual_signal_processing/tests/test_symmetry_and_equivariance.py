@@ -10,8 +10,8 @@ produces the paper's numbers -- not a re-implementation.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 import numpy as np
 import pytest
@@ -73,7 +73,7 @@ def test_disk_min_distance_squared_is_one():
 
 
 # --------------------------------------------------------------------------- #
-# C6 -- decoder equivariance on a real 2-D hex constellation + differential
+# C6 -- decoder equivariance on a real 2D hex constellation + differential
 # --------------------------------------------------------------------------- #
 def test_decoder_equivariance_on_real_hex_constellation():
     # Rotating every constellation point by +60 deg must permute the decoded

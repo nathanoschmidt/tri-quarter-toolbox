@@ -12,7 +12,7 @@ C3 (Packing gain): at matched constellation order M and matched average symbol
     energy, the hexagonal constellation attains a lower symbol-error rate (SER)
     than square QAM under AWGN, approaching the ~0.6 dB asymptotic packing gain
     (the gain grows with M). Under flat Rayleigh fading (perfect CSI) the gain
-    persists but is smaller; under heavy 2-D impulsive noise the impulse error
+    persists but is smaller; under heavy 2D impulsive noise the impulse error
     floor masks the geometric gain, so that channel demonstrates hex/square
     robustness PARITY rather than a packing gain. SER (labeling-independent) is
     the headline metric; BER is secondary because the hex labeling is only
@@ -41,13 +41,13 @@ Methodology
   where the dB-at-target gain is ill-conditioned (the flat 1/SNR roll-off
   inflates the SNR-at-target variance) while hex is still point-wise better.
 
-What to paste back: the per-channel tables and the packing-gain summary.
+Output: the per-channel tables and the packing-gain summary.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 
 from __future__ import annotations

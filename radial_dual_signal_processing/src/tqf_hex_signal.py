@@ -24,7 +24,7 @@ This module provides the exact, reusable building blocks for the experiments:
   * Exact integer/rational primitives: the sector index (integer cross-product
     sign test), the shell index (integer Eisenstein norm a^2 + a*b + b^2), the
     color residue, and the circle inversion iota_r (exact rational, involutive).
-  * Channels generalizing the BPSK case study to 2-D: complex AWGN, 2-D
+  * Channels generalizing the BPSK case study to 2D: complex AWGN, 2D
     impulsive noise, and flat Rayleigh fading (with per-symbol gains for
     perfect-CSI / zero-forcing reception).
   * Differential hexagonal (senary) sector coding for the rotation-robustness
@@ -46,8 +46,8 @@ Design notes / conventions
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 
 from __future__ import annotations
@@ -141,13 +141,24 @@ def _det(ua: int, ub: int, va: int, vb: int) -> int:
     return ua * vb - va * ub
 
 
-def sector_index(a: int, b: int) -> int:
-    """Return the angular sector index in {0, ..., 5} of a non-origin point (a, b).
+def phase_pair_sector(a: int, b: int) -> int:
+    """Return the exact phase-pair sector index in {0, ..., 5} of a point (a, b).
 
-    Sector S_k is the half-open 60 degree wedge [d_k, d_{k+1}); a point lying
-    exactly on primary ray d_k is assigned to sector k. The test uses only
-    integer determinants (no floating-point phase), so it is exact. The origin
-    has no defined sector and returns -1.
+    *The phase-pair primitive.* This is the framework's central exact, floating-
+    point-free angular coordinate: it locates a non-origin lattice point in one
+    of the six 60 degree wedges spanned by the primary ray pairs
+    (d_k, d_{k+1}) by testing the sign of two integer cross products (the
+    "phase pair") -- ``det(d_k, p) >= 0`` AND ``det(p, d_{k+1}) > 0``. Sector S_k
+    is the half-open wedge [d_k, d_{k+1}); a point lying exactly on the primary
+    ray d_k is assigned to sector k. Because every test is an integer
+    determinant, the sector is exact (no floating-point phase ever enters), which
+    is what makes labelling, orbit partitioning, equivariance, and the
+    differential codec lossless and integer-only. The origin has no defined
+    sector and returns -1.
+
+    This primitive is used *everywhere* a sector is needed (constellation build,
+    folded decoder, metric orbit reduction, differential coding); ``sector_index``
+    is retained as a backward-compatible alias.
     """
     if a == 0 and b == 0:
         return -1
@@ -161,8 +172,12 @@ def sector_index(a: int, b: int) -> int:
     return -1
 
 
-def sector_index_array(ab: np.ndarray) -> np.ndarray:
-    """Vectorized exact sector index for an (N, 2) integer array; origin -> -1."""
+def phase_pair_sector_array(ab: np.ndarray) -> np.ndarray:
+    """Vectorized exact phase-pair sector for an (N, 2) integer array; origin -> -1.
+
+    The batched form of :func:`phase_pair_sector`; identical integer-only
+    cross-product logic applied to every row at once.
+    """
     a = ab[:, 0].astype(np.int64)
     b = ab[:, 1].astype(np.int64)
     out = np.full(a.shape, -1, dtype=np.int64)
@@ -177,6 +192,34 @@ def sector_index_array(ab: np.ndarray) -> np.ndarray:
         assigned |= hit
     out[(a == 0) & (b == 0)] = -1
     return out
+
+
+# Backward-compatible aliases: the sector index *is* the phase-pair sector. The
+# ``phase_pair_sector`` name is the documented first-class primitive (Mark 2);
+# ``sector_index`` / ``sector_index_array`` are kept so existing callers and the
+# earlier studies/tests continue to work unchanged.
+sector_index = phase_pair_sector
+sector_index_array = phase_pair_sector_array
+
+
+def _phase_pair_sector_rational(a: Fraction, b: Fraction) -> int:
+    """Exact phase-pair sector for *rational* oblique coordinates (a, b).
+
+    Identical sign-of-cross-product logic as :func:`phase_pair_sector`, but with
+    Fraction inputs, so the sector of an exact (non-lattice) point such as a
+    circle-inversion image can be tested without any floating-point phase. Used
+    to verify the commutativity lemma sector(iota_r(v)) == sector(v) exactly.
+    """
+    if a == 0 and b == 0:
+        return -1
+    for k in range(6):
+        da, db = PRIMARY_DIRECTIONS[k]
+        ea, eb = PRIMARY_DIRECTIONS[(k + 1) % 6]
+        det_k = Fraction(da) * b - a * Fraction(db)       # det(d_k, p)
+        det_kp1 = a * Fraction(eb) - Fraction(ea) * b     # det(p, d_{k+1})
+        if det_k >= 0 and det_kp1 > 0:
+            return k
+    return -1
 
 
 def color_residue(a: int, b: int) -> int:
@@ -221,6 +264,98 @@ def inversion_exact(a: int, b: int, r_sq: int) -> Tuple[Fraction, Fraction]:
         raise ValueError("inversion is undefined at the origin (punctured)")
     scale = Fraction(r_sq, n_sq)
     return (scale * Fraction(a), scale * Fraction(b))
+
+
+# ---------------------------------------------------------------------------
+# Exact inversion duality on LABELS (the Z2 involution used for storage folding)
+# ---------------------------------------------------------------------------
+#
+# Circle inversion iota_r is conformal, NOT isometric, so it never enters a
+# Euclidean distance or an ML decision (the "inversion firewall"). What it does
+# give -- exactly, in integer/rational arithmetic -- is an involutive duality on
+# the *labels* (phase-pair sector, shell). It preserves the sector (the phase-
+# pair test commutes with iota_r; this is the commutativity lemma, established as
+# Proposition 4.15 of the lattice-graph paper [1] -- cited here, not re-derived,
+# and verified empirically by verify_inversion_commutativity below) and maps the
+# squared-norm shell N to the dual shell r^4 / N. When r^4 is divisible by N and
+# the quotient is itself an Eisenstein norm, the dual shell is an exact integer
+# shell, so inner and outer complete shells pair up with identical sector
+# occupancy. This is what lets storage, precomputation, and label tables fold to
+# the fundamental (inner) domain while every Euclidean decision stays exact.
+
+def invert_sector_shell(s6: int, n_sq: int, r_sq: int) -> Tuple[int, Fraction]:
+    """Exact label-space inversion: (sector, shell N) -> (sector, dual shell r^4/N).
+
+    The sector ``s6`` is returned unchanged (iota_r preserves the phase-pair
+    sector exactly), and the shell ``n_sq`` maps to the exact rational
+    ``Fraction(r_sq**2, n_sq)``. When that Fraction is an integer it is a genuine
+    dual shell norm; when it equals ``n_sq`` the shell lies on the inversion
+    circle (self-dual boundary). Raises on the punctured origin (no shell).
+    """
+    if n_sq <= 0:
+        raise ValueError("shell inversion is undefined at the origin (N <= 0)")
+    return s6, Fraction(r_sq * r_sq, n_sq)
+
+
+def dual_shell_norm(n_sq: int, r_sq: int) -> int | None:
+    """Return the integer dual shell r^4 / N if it is an exact integer, else None.
+
+    Convenience wrapper over :func:`invert_sector_shell` for the common case of
+    folding a complete-shell membership table: an outer shell ``n_sq`` is a
+    member of an inversion-paired constellation iff its integer dual lies in the
+    stored inner-shell set.
+    """
+    r4 = r_sq * r_sq
+    if n_sq > 0 and r4 % n_sq == 0:
+        return r4 // n_sq
+    return None
+
+
+def invert_label(a: int, b: int, r_sq: int) -> Tuple[Fraction, Fraction, int, Fraction]:
+    """Full exact inversion of a lattice label about radius r (r^2 = r_sq).
+
+    Returns ``(a', b', sector, dual_shell)`` where ``(a', b')`` are the exact
+    rational oblique coordinates of iota_r(v) (generally not a lattice point),
+    ``sector`` is the phase-pair sector (identical for v and iota_r(v) by the
+    commutativity lemma), and ``dual_shell`` is the exact rational dual shell
+    ``r^4 / ||v||^2``. This is the label-space Z2 involution: applying it twice
+    returns the original (sector, shell) and the original rational coordinates.
+    """
+    af, bf = inversion_exact(a, b, r_sq)
+    s6 = phase_pair_sector(a, b)
+    _, dual = invert_sector_shell(s6, shell_norm_sq(a, b), r_sq)
+    return af, bf, s6, dual
+
+
+def verify_inversion_commutativity(r_sq: int, coord_radius: int = 8
+                                   ) -> Tuple[int, int, int]:
+    """Empirically certify the two exact facts that make inversion folding valid.
+
+    Over every non-origin lattice point with |a|, |b| <= ``coord_radius``:
+      * the involution iota_r(iota_r(v)) == v holds exactly (rational ==), and
+      * the commutativity lemma sector(iota_r(v)) == sector(v) holds exactly,
+        using the rational phase-pair test (no floating point).
+
+    Returns ``(num_checked, involution_violations, commutativity_violations)``;
+    both violation counts are expected to be zero. (The lemma itself is
+    Proposition 4.15 of the lattice-graph paper [1]; this routine verifies it
+    rather than re-deriving it.)
+    """
+    checked = inv_viol = comm_viol = 0
+    for a in range(-coord_radius, coord_radius + 1):
+        for b in range(-coord_radius, coord_radius + 1):
+            if a == 0 and b == 0:
+                continue
+            af, bf = inversion_exact(a, b, r_sq)
+            # involution: invert the rational image again, must return (a, b).
+            n_img = af * af + af * bf + bf * bf
+            scale2 = Fraction(r_sq) / n_img
+            if (scale2 * af, scale2 * bf) != (Fraction(a), Fraction(b)):
+                inv_viol += 1
+            if _phase_pair_sector_rational(af, bf) != phase_pair_sector(a, b):
+                comm_viol += 1
+            checked += 1
+    return checked, inv_viol, comm_viol
 
 
 def orbit_under_rotation(a: int, b: int) -> List[Tuple[int, int]]:
@@ -272,6 +407,14 @@ class Constellation:
     name: str
     ab: np.ndarray = field(default_factory=lambda: np.zeros((0, 2), dtype=np.int64))
     scale_sq_exact: Fraction | None = None
+    # Optional radial-dual (Mark 2) metadata, set only by
+    # build_radial_dual_constellation; None/empty for the other constellations.
+    shell_norms: Tuple[int, ...] | None = None        # the complete shells present
+    inversion_r_sq: int | None = None                 # inversion radius^2 (e.g. 12)
+    phase_pair_uniform: bool | None = None            # equal sector occupancy verified
+    inversion_paired: bool | None = None              # closed under iota_r duality
+    fundamental_domain_size: int | None = None        # |sector 0 inner+boundary|
+    inversion_dual_index: np.ndarray | None = None    # (M,) point->inversion-dual point
 
     @property
     def size(self) -> int:
@@ -377,6 +520,145 @@ def build_disk_constellation(max_norm_sq: int) -> Constellation:
                          bits_per_symbol=0, scale=scale,
                          name=f"disk-Nle{max_norm_sq}", ab=ab,
                          scale_sq_exact=scale_sq)
+
+
+def loeschian_shells_up_to(max_norm_sq: int) -> List[int]:
+    """Return the sorted list of positive Eisenstein norms (Loeschian numbers)
+    that are realized by lattice points with squared norm <= ``max_norm_sq``.
+
+    A Loeschian number is an integer of the form a^2 + a*b + b^2; these are
+    exactly the squared lengths (shell radii^2) of triangular-lattice points.
+    """
+    radius = int(math.ceil(math.sqrt(max_norm_sq))) + 2
+    norms = set()
+    for a in range(-radius, radius + 1):
+        for b in range(-radius, radius + 1):
+            n = shell_norm_sq(a, b)
+            if 0 < n <= max_norm_sq:
+                norms.add(n)
+    return sorted(norms)
+
+
+def radial_dual_shell_pairs(r_sq: int, max_norm_sq: int
+                            ) -> List[Tuple[int, int]]:
+    """Return the inversion-dual complete-shell pairs about radius r (r^2 = r_sq).
+
+    A shell ``N`` pairs with ``r^4 / N`` under circle inversion. This returns the
+    list of ``(N, N_dual)`` with ``N <= N_dual``, both Eisenstein norms and both
+    ``<= max_norm_sq``, that the inversion maps onto each other exactly in integer
+    arithmetic. The self-dual shell ``N == r_sq`` (the points lying on the
+    inversion circle) appears as ``(r_sq, r_sq)``. With ``r_sq = 12`` and
+    ``max_norm_sq = 60`` these are (3, 48), (4, 36), (9, 16), and the self-dual
+    (12, 12) -- four equal-occupancy integer-dual shell pairs.
+    """
+    shells = set(loeschian_shells_up_to(max_norm_sq))
+    r4 = r_sq * r_sq
+    out: List[Tuple[int, int]] = []
+    for n in sorted(shells):
+        if r4 % n != 0:
+            continue
+        nd = r4 // n
+        if nd in shells and n <= nd:
+            out.append((n, nd))
+    return out
+
+
+def build_radial_dual_constellation(r_sq: int = 12, max_norm_sq: int = 60
+                                    ) -> Constellation:
+    """Build the phase-pair-uniform, inversion-paired radial-dual constellation (C7).
+
+    This is the "Option B" (shell-complete, full rotation x inversion symmetry)
+    constellation: the union of *complete* lattice shells that close under both
+    the order-6 rotation R (phase-pair / C6 symmetry) and circle inversion
+    iota_r about radius r (radial Z2 duality). Concretely it takes every shell
+    that participates in a :func:`radial_dual_shell_pairs` pair about ``r_sq``
+    (inner shell, its exact integer dual outer shell, and the self-dual boundary
+    shell on the inversion circle), giving genuinely uniform sector occupancy and
+    exact inner/outer inversion pairing on a single object. Because ``6`` does not
+    divide ``2^m``, a shell-complete constellation cannot also be a power-of-two
+    "filled" region, so this object is a symmetry/duality demonstrator (like the
+    disk constellation), not a binary-M comparison constellation.
+
+    The returned :class:`Constellation` carries the Mark 2 metadata:
+    ``shell_norms``, ``inversion_r_sq``, ``phase_pair_uniform`` (every complete
+    shell has exactly ``k`` points per sector, here k=1), ``inversion_paired``
+    (closed under the exact iota_r point permutation), ``fundamental_domain_size``
+    (one sector restricted to the inner + boundary shells), and
+    ``inversion_dual_index`` (each point's exact inversion-dual point index).
+    Energy-normalized to unit average energy; no bit labeling is attached.
+    """
+    pairs = radial_dual_shell_pairs(r_sq, max_norm_sq)
+    if not pairs:
+        raise ValueError(f"no inversion-dual shell pairs for r_sq={r_sq} "
+                         f"within max_norm_sq={max_norm_sq}")
+    shell_norms = sorted({n for pair in pairs for n in pair})
+
+    radius = int(math.ceil(math.sqrt(max_norm_sq))) + 2
+    pts: List[Tuple[int, int]] = []
+    for a in range(-radius, radius + 1):
+        for b in range(-radius, radius + 1):
+            if shell_norm_sq(a, b) in shell_norms:
+                pts.append((a, b))
+    # Deterministic order: by shell, then by phase-pair sector, then coordinate.
+    pts.sort(key=lambda p: (shell_norm_sq(*p), phase_pair_sector(*p), p))
+    ab = np.array(pts, dtype=np.int64)
+    m = ab.shape[0]
+    raw = lattice_array_to_complex(ab)
+    sum_norm_sq = int(sum(shell_norm_sq(int(a), int(b)) for a, b in ab))
+    scale_sq = Fraction(m, sum_norm_sq)
+    scale = math.sqrt(float(scale_sq))
+    points_unit = raw * scale
+
+    # ---- verify phase-pair uniformity: every shell has equal per-sector count ----
+    index_of = {(int(a), int(b)): i for i, (a, b) in enumerate(ab)}
+    phase_pair_uniform = True
+    for n in shell_norms:
+        per_sector: Dict[int, int] = {k: 0 for k in range(6)}
+        for (a, b), _i in index_of.items():
+            if shell_norm_sq(a, b) == n:
+                per_sector[phase_pair_sector(a, b)] += 1
+        if len(set(per_sector.values())) != 1:
+            phase_pair_uniform = False
+            break
+
+    # ---- build the exact inversion-dual point permutation + verify it pairs ----
+    # iota_r maps a point of shell N, sector s to the unique same-sector point of
+    # shell r^4/N (k=1 shells -> unique). This is an exact lattice-point
+    # permutation (the firewall: a *label* map, not a distance).
+    dual_index = np.full(m, -1, dtype=np.int64)
+    inversion_paired = True
+    for (a, b), i in index_of.items():
+        n = shell_norm_sq(a, b)
+        s = phase_pair_sector(a, b)
+        nd = dual_shell_norm(n, r_sq)
+        if nd is None:
+            inversion_paired = False
+            break
+        match = [index_of[(c, d)] for (c, d) in index_of
+                 if shell_norm_sq(c, d) == nd and phase_pair_sector(c, d) == s]
+        if len(match) != 1:
+            inversion_paired = False
+            break
+        dual_index[i] = match[0]
+    if inversion_paired:
+        # confirm involution: applying the dual twice is the identity.
+        inversion_paired = bool(np.array_equal(dual_index[dual_index],
+                                               np.arange(m, dtype=np.int64)))
+
+    fundamental = [i for i, (a, b) in enumerate(ab)
+                   if phase_pair_sector(int(a), int(b)) == 0
+                   and shell_norm_sq(int(a), int(b)) <= r_sq]
+
+    labels = np.arange(m, dtype=np.int64)  # placeholder; unused for BER
+    return Constellation(
+        points_unit=points_unit, labels=labels, bits_per_symbol=0, scale=scale,
+        name=f"radial-dual-r{r_sq}-Nle{max_norm_sq}", ab=ab,
+        scale_sq_exact=scale_sq, shell_norms=tuple(shell_norms),
+        inversion_r_sq=r_sq, phase_pair_uniform=phase_pair_uniform,
+        inversion_paired=inversion_paired,
+        fundamental_domain_size=len(fundamental),
+        inversion_dual_index=dual_index,
+    )
 
 
 def _gray(n: int) -> int:
@@ -537,6 +819,131 @@ def decode_hex_fast(received_unit: np.ndarray,
 
 
 # ---------------------------------------------------------------------------
+# Phase-pair + inversion FOLDED decoder (shell-complete radial-dual constellation)
+# ---------------------------------------------------------------------------
+#
+# For a shell-complete, phase-pair-uniform, inversion-paired constellation (the
+# C7 radial-dual object), the membership/label structure folds to the
+# fundamental domain while the decision stays exact ML. The fold is purely a
+# storage/label operation -- the inversion firewall: the Euclidean nearest-point
+# test below uses true distances only; inversion never touches a metric.
+#
+# Indexing convention (set by build_radial_dual_constellation): points are
+# ordered by (shell norm, phase-pair sector), and each complete shell holds
+# exactly one point per sector, so the full index of a point equals
+#     6 * rank(shell) + sector.
+# That lets the decoder reconstruct any full index from a tiny stored table:
+#   * phase-pair fold: store one representative per shell  (len = #shells);
+#   * phase-pair + inversion fold: store only inner/boundary shells
+#     (len = #inner shells) and recover an outer shell from its integer dual.
+
+def _reconstruct_full_shells(stored_inner: Sequence[int], r_sq: int) -> Tuple[int, ...]:
+    """Rebuild the full shell set from the stored inner shells + r_sq alone.
+
+    Each stored inner/boundary shell ``n`` implies its outer dual ``r^4/n``; the
+    union is the complete shell set. This is what makes the inversion fold a
+    genuine storage reduction: the outer half of the membership table need not be
+    stored, only regenerated from the inner half.
+    """
+    full = set(int(n) for n in stored_inner)
+    r4 = r_sq * r_sq
+    for n in list(full):
+        if n != 0 and r4 % n == 0:
+            full.add(r4 // n)
+    return tuple(sorted(full))
+
+
+@dataclass
+class _FoldedDecodeContext:
+    """Folded membership/label table for the radial-dual constellation decoder."""
+    constellation: Constellation
+    r_sq: int
+    fold_inversion: bool
+    stored_shells: Tuple[int, ...]   # shell norms physically stored (the fold)
+    full_shells: Tuple[int, ...]     # full shell set (reconstructed when folded)
+    stored_table_size: int           # = len(stored_shells); the storage metric
+
+
+def make_folded_decode_context(constellation: Constellation,
+                               fold_inversion: bool = True) -> _FoldedDecodeContext:
+    """Precompute the folded decode table for a radial-dual constellation.
+
+    With ``fold_inversion=False`` the table keeps one representative per complete
+    shell (the phase-pair / rotation fold). With ``fold_inversion=True`` it keeps
+    only the inner + boundary shells (the combined phase-pair + inversion fold)
+    and regenerates the outer shells from their exact integer duals. The reported
+    ``stored_table_size`` is the count of stored shells -- the quantity that
+    shrinks (e.g. 7 -> 4 for the r^2 = 12 constellation), since the six per-shell
+    sector points are regenerated by rotation rather than stored.
+    """
+    if constellation.shell_norms is None or constellation.inversion_r_sq is None:
+        raise ValueError("folded decode requires a radial-dual constellation "
+                         "(build_radial_dual_constellation)")
+    r_sq = int(constellation.inversion_r_sq)
+    full_shells = tuple(int(n) for n in constellation.shell_norms)
+    if fold_inversion:
+        stored = tuple(n for n in full_shells if n <= r_sq)        # inner + boundary
+        rebuilt = _reconstruct_full_shells(stored, r_sq)
+        # Internal consistency: the inner half must regenerate the full shell set.
+        if rebuilt != full_shells:
+            raise ValueError("inner shells do not regenerate the full shell set; "
+                             "constellation is not inversion-complete")
+    else:
+        stored = full_shells                                        # all shells
+    return _FoldedDecodeContext(constellation, r_sq, fold_inversion,
+                                stored, full_shells, len(stored))
+
+
+def decode_hex_folded(received_unit: np.ndarray,
+                      ctx: _FoldedDecodeContext) -> Tuple[np.ndarray, np.ndarray]:
+    """Exact ML decode for a radial-dual constellation using only the folded table.
+
+    Bitwise-identical to exhaustive ML. The fast path fires when the true nearest
+    lattice point is itself a constellation point (then it is the ML point); its
+    full index is reconstructed from the folded table via the phase-pair sector
+    (rotation) and, for outer shells, the exact integer shell dual (inversion).
+    Symbols whose nearest lattice point falls in a radial gap take the exhaustive
+    ML fallback over the full point set (true distances). Returns
+    ``(indices, fast_path_mask)``.
+
+    The decision is purely Euclidean (the nearest-lattice-point step); inversion
+    enters only to regenerate stored labels (the firewall), so exactness is
+    preserved regardless of the fold.
+    """
+    con = ctx.constellation
+    r_sq = ctx.r_sq
+    r4 = r_sq * r_sq
+    ab = nearest_lattice_point(received_unit, con.scale)
+    a = ab[:, 0].astype(np.int64)
+    b = ab[:, 1].astype(np.int64)
+    n = a * a + a * b + b * b                       # shell norm of each q*
+    sec = phase_pair_sector_array(ab)
+
+    stored = set(ctx.stored_shells)
+    # Fold each shell to its fundamental (stored) representative shell.
+    if ctx.fold_inversion:
+        is_inner = n <= r_sq
+        divisible = (n > 0) & (r4 % np.where(n > 0, n, 1) == 0)
+        fold_n = np.where(is_inner, n, np.where(divisible, r4 // np.where(n > 0, n, 1), -1))
+    else:
+        fold_n = n
+    member = np.array([(int(fn) in stored) for fn in fold_n], dtype=bool) & (sec >= 0)
+
+    # Reconstruct full index = 6 * rank(shell) + sector, ranks from the full set.
+    full_sorted = np.array(ctx.full_shells, dtype=np.int64)
+    indices = np.full(n.shape, -1, dtype=np.int64)
+    if np.any(member):
+        nm = n[member]
+        rank = np.searchsorted(full_sorted, nm)
+        indices[member] = 6 * rank + sec[member]
+    fast_path = member
+    if not np.all(fast_path):
+        miss = ~fast_path
+        indices[miss] = decode_ml(np.asarray(received_unit)[miss], con.points_unit)
+    return indices, fast_path
+
+
+# ---------------------------------------------------------------------------
 # Differential hexagonal (senary) sector coding -- rotation-robustness study
 # ---------------------------------------------------------------------------
 
@@ -560,6 +967,65 @@ def differential_decode(received_sectors: np.ndarray) -> np.ndarray:
     prev[0] = 0
     prev[1:] = received_sectors[:-1]
     return (received_sectors - prev) % 6
+
+
+# ---------------------------------------------------------------------------
+# Combined rotation + inversion (C6 x Z2) differential coding -- the T24 codec
+# ---------------------------------------------------------------------------
+#
+# The plain differential codec above absorbs a static carrier-phase ambiguity
+# (a multiple of pi/3, i.e. an element of the order-6 rotation group C6). The
+# T24 codec additionally absorbs a static amplitude-inversion ambiguity (an
+# element of the order-2 radial inversion group Z2), so it is invariant under
+# the full order-12 rotation x inversion group C6 x Z2 -- the operationally
+# relevant rotation-and-inversion subgroup of the centrosymmetric hexagonal
+# point group D_6h. The carried state is a (sector in Z6, inversion bit in Z2)
+# pair; data is transmitted as consecutive differences of each component, so a
+# constant offset applied to the whole stream (any of the 12 static actions)
+# cancels in the receiver's differences. This is a label-domain construction:
+# the inversion bit is a discrete state, never a Euclidean operation.
+
+def differential_encode_t24(d_sector: np.ndarray,
+                            d_inversion: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Differentially encode paired senary/binary data (d_sec in {0..5},
+    d_inv in {0,1}) into transmitted (sector, inversion-state) streams.
+
+    Transmitted state s_n = (s_{n-1} + d_sector_n) mod 6 and
+    u_n = (u_{n-1} + d_inversion_n) mod 2, with s_{-1} = u_{-1} = 0. A static
+    rotation by k*pi/3 shifts every s_n by k; a static amplitude inversion flips
+    every u_n by 1. Both are constant offsets that cancel in the receiver's
+    consecutive differences, so the codec is invariant under all 12 elements of
+    the combined rotation x inversion group C6 x Z2.
+
+    Returns the (sector_stream, inversion_stream) pair to transmit.
+    """
+    d_sector = np.asarray(d_sector, dtype=np.int64) % 6
+    d_inversion = np.asarray(d_inversion, dtype=np.int64) % 2
+    s = np.cumsum(d_sector) % 6
+    u = np.cumsum(d_inversion) % 2
+    return s, u
+
+
+def differential_decode_t24(sector_stream: np.ndarray,
+                            inversion_stream: np.ndarray
+                            ) -> Tuple[np.ndarray, np.ndarray]:
+    """Recover paired (d_sector, d_inversion) data from received (sector,
+    inversion-state) streams via component-wise consecutive differences
+    (mod 6 and mod 2), assuming an initial reference state (0, 0).
+
+    Any static C6 x Z2 action applied uniformly to both streams (a constant
+    sector offset and/or a global inversion flip) cancels in the differences,
+    leaving the data unchanged from the second symbol onward.
+    """
+    s = np.asarray(sector_stream, dtype=np.int64) % 6
+    u = np.asarray(inversion_stream, dtype=np.int64) % 2
+    ps = np.empty_like(s)
+    ps[0] = 0
+    ps[1:] = s[:-1]
+    pu = np.empty_like(u)
+    pu[0] = 0
+    pu[1:] = u[:-1]
+    return (s - ps) % 6, (u - pu) % 2
 
 
 # ---------------------------------------------------------------------------
@@ -593,7 +1059,7 @@ def awgn(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: int,
 def impulsive(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: int,
               rng: np.random.Generator, p: float = 0.1,
               amplitude: float = 5.0) -> np.ndarray:
-    """Add 2-D impulsive noise: background AWGN, plus with probability p a symbol
+    """Add 2D impulsive noise: background AWGN, plus with probability p a symbol
     is struck by an impulse of magnitude ``amplitude`` at a uniformly random
     phase (generalizing the BPSK case study's +/-A outliers to the plane)."""
     symbols = np.asarray(symbols, dtype=np.complex128)

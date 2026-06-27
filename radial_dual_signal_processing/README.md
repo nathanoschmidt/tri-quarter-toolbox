@@ -28,9 +28,9 @@ automated test that pins the underlying invariant.
 
 ## 1. Overview
 
-This subproject carries the TQF from the 1-D BPSK case study into 2-D hexagonal
+This subproject carries the TQF from the 1D BPSK case study into 2D hexagonal
 signal constellations, where the framework's order-6 symmetry does real work. It
-validates six precise, falsifiable claims (C1–C6), kept strictly separate so no
+validates eight precise, falsifiable claims (C1–C8), kept strictly separate so no
 claim borrows credit from another:
 
 - **C1 — Exact demodulation.** A closed-form Eisenstein/A₂ nearest-point decoder
@@ -55,20 +55,44 @@ claim borrows credit from another:
 - **C4 — Symmetry-reduced exact evaluation.** Order-6 orbit reduction computes an
   exact constellation metric on one sector and replicates it, reproducing the full
   value as the *identical* integer/rational quantity (verified by `==`), with an
-  exact **6× reduction in distance evaluations**.
+  exact **6× reduction in distance evaluations**. On the C7 radial-dual object a
+  separate, label-domain combinatorial enumerator additionally folds by the full
+  C₆×Z₂ group (a storage/label reduction, **not** multiplied with the exact 6×
+  Euclidean reduction — inversion is conformal, not isometric).
 - **C5 — Conflict-free parallel recovery.** The trihexagonal six-colouring
   schedules a lock-free parallel lattice-signal denoiser; on a CUDA GPU (RTX 4060)
   the speedup over a single-threaded CPU baseline widens with lattice size —
   median **~13.8× at ~290k vertices**, crossing unity at ~73k and sub-unity below
   it — a systems result that bundles the colouring's parallelism with GPU hardware.
+  (The six-colouring is **proper** but **not** rotation-equivariant; only the
+  underlying triangular-lattice 3-colouring is order-6-equivariant. The schedule
+  needs only properness, so this distinction does not affect C5.)
 - **C6 — Equivariant / rotation-robust decode.** The decoder commutes with the
   order-6 rotation (verified exactly on a real hex constellation); a differential
   hexagonal scheme is invariant to any static phase ambiguity that is a multiple
   of π/3 (the hexagonal analogue of DPSK).
+- **C7 — Radial-dual constellation.** There is a filled hexagonal constellation
+  (shells {3,4,9,12,16,36,48}, M=42) that is simultaneously shell-complete
+  (exact C₆), phase-pair-uniform (identical sector occupancy per shell), and
+  inversion-paired (closed under the exact circle inversion ι_r about r²=12, which
+  maps shell N to its **integer-dual** shell 144/N: 3↔48, 4↔36, 9↔16, 12 self-dual).
+  It is invariant under the full **order-12 C₆×Z₂** group — the rotation×inversion
+  subgroup of the centrosymmetric hexagonal point group D₆ₕ (stated as such, not
+  over-claimed as the full 24). The phase-pair + inversion **folded decoder** is
+  bitwise-identical to exhaustive ML while storing only the fundamental domain:
+  the label table folds **6×** by rotation and **10.5×** by rotation+inversion
+  (reported separately; the self-dual boundary shell limits the latter below 12×).
+- **C8 — Combined rotation+inversion differential codec.** A differential codec
+  carrying a (sector∈ℤ₆, inversion-bit∈ℤ₂) pair as component-wise differences is
+  invariant under all **12** static C₆×Z₂ actions — extending the C6 DPSK analogue
+  to absorb a static amplitude-inversion ambiguity. The inversion bit is a discrete
+  label state, never a Euclidean operation.
 
 **Honesty discipline.** Because the closed-form decoder *is* ML-equivalent, it
-does not change BER/SER versus ML — the wins are in **cost** (C1/C2/C4/C5) and in
-**constellation geometry** (C3/C6), never in beating ML.
+does not change BER/SER versus ML — the wins are in **cost** (C1/C2/C4/C5/C7) and in
+**constellation geometry** (C3/C6/C7/C8), never in beating ML. The exact 6× rotation
+(Euclidean) reduction and the inversion (label-only) fold are kept distinct and are
+never multiplied into a combined figure.
 
 ---
 
@@ -81,14 +105,21 @@ does not change BER/SER versus ML — the wins are in **cost** (C1/C2/C4/C5) and
   a true-Gray square-QAM baseline, and exact Clopper–Pearson confidence intervals.
 - **Closed-form O(1) fast-path decoder** with a provably sufficient 3×3 candidate
   window and an exhaustive-ML fallback that guarantees exactness for every symbol.
-- **Three channel models**: complex AWGN, 2-D impulsive, and flat Rayleigh fading
+- **Three channel models**: complex AWGN, 2D impulsive, and flat Rayleigh fading
   (perfect CSI).
 - **GPU-ready** trihexagonal six-colouring denoiser with a verified-proper colouring
   and CPU/GPU agreement to machine precision (~1e-16); the GPU run
   self-certifies via a `RAN_ON_CUDA` verdict and a `sim04_provenance.json` sidecar.
+  (The colouring is proper but not rotation-equivariant; only the underlying
+  3-colouring is — a checked artifact, `sim04_coloring_equivariance.csv`.)
+- **Phase-pair + inversion exactness layer**: a documented `phase_pair_sector`
+  integer primitive, an exact label-space circle-inversion duality (involution +
+  sector preservation, verified with zero violations), a radial-dual constellation
+  builder, and a folded ML decoder that is bitwise-identical to exhaustive ML while
+  storing only the fundamental domain.
 - **Self-documenting runs**: every study writes a `simNN_provenance.json`
   (versions + hardware) for the paper's Methods table.
-- **Automated test suite** (98 tests) pinning the invariants behind every claim.
+- **Automated test suite** (129 tests) pinning the invariants behind every claim.
 - **One-command reproduction** (`run_all.ps1` on Windows, `run_all.sh` on
   Linux/macOS) and a CSV-driven figure generator.
 - **Cross-platform**: Windows | Linux | macOS.
@@ -163,8 +194,14 @@ python src\simulation_03_symmetry_reduced_metric_exact.py
 # Six-colouring parallel denoiser, CPU vs GPU (C5)
 python src\simulation_04_sixcoloring_denoise_gpu.py
 
-# Phase-rotation robustness, differential hex (C6)
+# Phase-rotation robustness, differential hex (C6) + C6×Z2 differential (C8)
 python src\simulation_05_phase_rotation_robustness.py
+
+# Phase-pair + inversion-folded decoder (C1/C2 storage; C7 object)
+python src\simulation_06_phasepair_inversion_folded_decoder.py
+
+# Radial-dual constellation structure (C7)
+python src\simulation_07_radial_dual_constellation.py
 ```
 
 **Linux/macOS:**
@@ -179,9 +216,11 @@ python3 src/simulation_02_hex_vs_square_ber_packing_gain.py --rayleigh_ebn0_extr
 python3 src/simulation_03_symmetry_reduced_metric_exact.py
 python3 src/simulation_04_sixcoloring_denoise_gpu.py
 python3 src/simulation_05_phase_rotation_robustness.py
+python3 src/simulation_06_phasepair_inversion_folded_decoder.py
+python3 src/simulation_07_radial_dual_constellation.py
 ```
 
-To regenerate **everything** (all five studies plus figures) in one step:
+To regenerate **everything** (all seven studies plus figures) in one step:
 
 ```bash
 ./run_all.sh
@@ -194,17 +233,29 @@ To regenerate **everything** (all five studies plus figures) in one step:
 ### Core Library: `src/tqf_hex_signal.py`
 
 The shared signal-processing library: the Eisenstein/A₂ basis and exact
-integer/rational primitives (sector, shell, colour residue, circle inversion,
-order-6 orbits); hexagonal (filled and 6-fold-symmetric disk) and square-QAM
-constellation builders, each normalized to unit average energy; the closed-form
-O(1) fast-path decoder and an exhaustive-ML decoder; the three channel models;
-the differential hexagonal encoder/decoder; and exact Clopper–Pearson intervals.
+integer/rational primitives (the documented `phase_pair_sector` integer primitive
+— with `sector_index` kept as a backward-compatible alias — shell, colour residue,
+circle inversion, order-6 orbits); hexagonal (filled and 6-fold-symmetric disk),
+square-QAM, and **radial-dual** (`build_radial_dual_constellation`) constellation
+builders, each normalized to unit average energy; the closed-form O(1) fast-path
+decoder, an exhaustive-ML decoder, and the phase-pair + inversion **folded** ML
+decoder (`make_folded_decode_context` / `decode_hex_folded`); the exact label-space
+inversion duality (`invert_label`, `invert_sector_shell`, `dual_shell_norm`,
+`verify_inversion_commutativity` — the lattice paper's Prop. 4.15, cited and
+empirically verified, not re-derived); the three channel models; the differential
+hexagonal encoder/decoder and the combined rotation+inversion (C₆×Z₂)
+`differential_encode_t24` / `differential_decode_t24`; and exact Clopper–Pearson
+intervals.
 
 ### Lattice Graph: `src/tqf_lattice_graph.py`
 
 The truncated triangular lattice graph and the trihexagonal six-colouring used by
 the parallel denoiser (Simulation 04). The colouring is `2·((a−b) mod 3) + ((a+b)
-mod 2)` and is verified proper against the edge set on construction. A
+mod 2)` and is verified proper against the edge set on construction. It is
+**proper but not rotation-equivariant**: only the underlying triangular-lattice
+3-colouring `(a−b) mod 3` (exposed as `three_coloring`) is order-6-equivariant
+(rotation permutes its three classes); the parity refinement that yields six
+classes breaks equivariance. The conflict-free schedule needs only properness. A
 colour-ordered relaxation sweep (`relaxation_sweep_numpy`) provides the CPU
 baseline that the GPU kernel mirrors.
 
@@ -255,7 +306,13 @@ python3 src/simulation_03_symmetry_reduced_metric_exact.py
 
 Computes the pairwise squared-distance enumerator (→ d_min, kissing number, mean
 squared distance) on one sector representative per Z₆ orbit and verifies it equals
-the full enumerator bitwise (`==`), with an exact 6× operation-count reduction.
+the full enumerator bitwise (`==`), with an exact 6× operation-count reduction
+(`sim03_symmetry.csv`). It then writes a separate `sim03_inversion_reduction.csv`
+for the C7 radial-dual object: the **Euclidean** squared-distance enumerator folds
+by rotation **exactly 6×** (and inversion is shown *not* to be an isometry, so it
+cannot fold a metric — the firewall), while a discrete inversion-invariant
+**label** enumerator folds by the full C₆×Z₂ group (rotation 6×, combined 10.5×).
+The two reductions are reported separately and never multiplied.
 
 ### Simulation 04: Six-Colouring Parallel Denoiser, CPU vs GPU (C5)
 
@@ -273,9 +330,11 @@ capability, memory) so the artifact self-certifies where it ran; a runtime
 `assert` confirms the timed tensors are GPU-resident. CPU/GPU agreement (machine
 precision) is the exactness check, verified properness the conflict-free check.
 Requires CUDA + torch for the headline speedup; without it the GPU column is a
-torch-on-CPU reference backend and `RAN_ON_CUDA = False`.
+torch-on-CPU reference backend and `RAN_ON_CUDA = False`. It also writes a CPU-only
+`sim04_coloring_equivariance.csv` recording the checked fact that the 3-colouring
+is rotation-equivariant while the (proper) six-colouring is not.
 
-### Simulation 05: Phase-Rotation Robustness (C6)
+### Simulation 05: Phase-Rotation Robustness (C6) + C₆×Z₂ Differential (C8)
 
 ```bash
 python3 src/simulation_05_phase_rotation_robustness.py --trials 100000 --ebn0 10
@@ -283,7 +342,41 @@ python3 src/simulation_05_phase_rotation_robustness.py --trials 100000 --ebn0 10
 
 Verifies decoder equivariance exactly on a real hex constellation (persisted as
 `sim05_equivariance_check.csv`), then compares coherent vs differential hex SER
-across a phase-offset sweep crossing 60° (`sim05_phase.csv`).
+across a phase-offset sweep crossing 60° (`sim05_phase.csv`). It additionally
+verifies the **C8** combined rotation+inversion (C₆×Z₂) differential codec —
+recovering both the senary sector data and the inversion bit under all 12 static
+actions with zero violations (`sim05_t24_check.csv`). The C8 block uses an
+independent RNG (`--t24_seed`), so the two pre-existing CSVs are byte-identical.
+
+### Simulation 06: Phase-Pair + Inversion-Folded Decoder (C1/C2 storage; C7)
+
+```bash
+python3 src/simulation_06_phasepair_inversion_folded_decoder.py \
+    --r_sq 12 --max_norm_sq 60 --trials 200000
+```
+
+Builds the C7 radial-dual constellation and verifies the folded ML decoder is
+bitwise-identical to exhaustive ML on a dense grid and a Monte-Carlo stream
+(`sim06_folded_summary.csv`). Reports the storage ablation — full per-point label
+table vs phase-pair (rotation) fold (**6×**) vs phase-pair + inversion fold
+(**10.5×**) — as two separate factors (`sim06_folded_ablation.csv`), the fast-path
+coverage vs SNR (`sim06_coverage_vs_snr.csv`, intentionally moderate because the
+shell-complete object has radial gaps), and the exact involution/commutativity of
+the label-space inversion. Every Euclidean decision uses true distances; inversion
+folds storage only (the firewall).
+
+### Simulation 07: Radial-Dual Constellation Structure (C7)
+
+```bash
+python3 src/simulation_07_radial_dual_constellation.py --r_sq 12 --max_norm_sq 60
+```
+
+Verifies the C7 object's exact structure: the integer-dual shell pairs
+(3↔48, 4↔36, 9↔16, 12 self-dual; `sim07_shell_pairs.csv`), phase-pair uniformity
+(every complete shell has k points per sector, all six equal; `sim07_occupancy.csv`),
+and inversion pairing (a same-sector involution fixing the boundary shell pointwise;
+`sim07_structure.csv`). The object is invariant under the order-12 C₆×Z₂ group —
+the rotation×inversion subgroup of D₆ₕ, stated without over-claiming the full 24.
 
 ### Tool: Figure Generator
 
@@ -309,6 +402,8 @@ python3 src/simulation_02_hex_vs_square_ber_packing_gain.py --rayleigh_ebn0_extr
 python3 src/simulation_03_symmetry_reduced_metric_exact.py
 python3 src/simulation_04_sixcoloring_denoise_gpu.py 50 100 150 200 250 300 --sweeps 50 --sessions 5
 python3 src/simulation_05_phase_rotation_robustness.py
+python3 src/simulation_06_phasepair_inversion_folded_decoder.py
+python3 src/simulation_07_radial_dual_constellation.py
 python3 src/make_figures.py --format pdf
 ```
 
@@ -335,14 +430,17 @@ and prints a console summary; `run_all.ps1` also tees everything to
 The `tests/` suite pins the invariant behind each claim (exact decode == ML, unit
 energy, proper six-colouring, exact orbit reduction, decoder equivariance, the
 differential round-trip, the C3 packing-gain helpers — dB gain with CI band and the
-impulsive floor — and the run-provenance metadata). It runs in a few seconds and
-needs no GPU (PyTorch is optional). For the full
-testing documentation — coverage breakdown, how to interpret results,
+impulsive floor — and the run-provenance metadata), plus the Mark 2 additions: the
+phase-pair primitive and aliases, the exact inversion involution/commutativity, the
+C7 radial-dual structure, the folded decoder's bitwise-ML equivalence and storage
+folds, the C₆×Z₂ (C8) differential invariance, and the corrected colouring
+equivariance. It runs in a few seconds and needs no GPU (PyTorch is optional). For
+the full testing documentation — coverage breakdown, how to interpret results,
 troubleshooting, and a `pytest` command reference — see
 [`tests/TESTS_README.md`](tests/TESTS_README.md).
 
 ```bash
-# Run the full suite (88 tests)
+# Run the full suite (129 tests)
 python -m pytest tests/ -q
 
 # With coverage
@@ -361,6 +459,8 @@ radial_dual_signal_processing/
 │   ├── simulation_03_symmetry_reduced_metric_exact.py     # C4
 │   ├── simulation_04_sixcoloring_denoise_gpu.py           # C5
 │   ├── simulation_05_phase_rotation_robustness.py         # C6
+│   ├── simulation_06_phasepair_inversion_folded_decoder.py # C1/C2 storage, C7
+│   ├── simulation_07_radial_dual_constellation.py         # C7 structure
 │   └── make_figures.py                                    # Figure generator
 ├── tests/                                                # Automated test suite
 │   ├── conftest.py                                        # Puts src/ on the path
@@ -368,6 +468,7 @@ radial_dual_signal_processing/
 │   ├── test_tqf_lattice_graph.py                          # C5 graph + colouring
 │   ├── test_symmetry_and_equivariance.py                  # C4 + C6
 │   ├── test_packing_gain.py                               # C3 gain helpers (sim02)
+│   ├── test_phasepair_inversion.py                        # C7 + C8 + folded decoder
 │   └── TESTS_README.md                                    # Testing documentation
 ├── run_all.ps1                             # One-command full reproduction (Windows)
 ├── run_all.sh                              # One-command full reproduction (Linux/macOS)

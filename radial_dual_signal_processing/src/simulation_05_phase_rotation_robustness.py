@@ -27,20 +27,20 @@ penalty at zero offset, which the script reports.
 Scope: the six-point constellation is a DIDACTIC instance (differential 6-PSK)
 chosen because a pi/3 rotation maps each symbol exactly onto the next. The
 underlying equivariance -- the closed-form decoder commutes with the order-6
-rotation, permuting the sector index by +1 -- is a property of the 2-D hex
+rotation, permuting the sector index by +1 -- is a property of the 2D hex
 lattice itself; the script verifies it EXACTLY on a real 6-fold-symmetric hex
 (disk) constellation before the channel sweep. The sector-index differential
 idea generalizes to any hex constellation via the senary label s_6, with the
 caveat that a pi/3 rotation also permutes the within-sector (shell) structure,
 which a complete scheme must additionally handle.
 
-What to paste back: the SER-vs-offset table and the zero-offset penalty line.
+Output: the SER-vs-offset table and the zero-offset penalty line.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def _decode_sectors(received: np.ndarray, points: np.ndarray) -> np.ndarray:
 
 def verify_equivariance_on_hex(max_norm_sq: int = 37) -> Tuple[int, int]:
     """Exact check that the DECODER commutes with the order-6 rotation on a real
-    2-D hexagonal constellation (not just the 6-PSK demo).
+    2D hexagonal constellation (not just the 6-PSK demo).
 
     Uses the 6-fold-symmetric disk constellation (closed under R). Rotates every
     constellation point by +pi/3 in signal space, decodes the rotated point with
@@ -105,6 +105,44 @@ def verify_differential_roundtrip(trials: int = 2000) -> bool:
         data_hat = (dec[1:] - dec[:-1]) % 6
         ok = ok and bool(np.array_equal(data_hat, data))
     return ok
+
+
+def verify_t24_differential_invariance(trials: int, seed: int
+                                       ) -> Tuple[int, List[dict]]:
+    """Exact invariance of the combined rotation + inversion (C6 x Z2) differential
+    codec under all 12 static (rotation k*pi/3, inversion m) actions.
+
+    The T24 codec carries data as a (sector in Z6, inversion-bit in Z2) pair and
+    transmits consecutive differences of each component. Any static action -- a
+    constant sector offset k and/or a global inversion flip m, applied uniformly
+    to the whole stream -- cancels in the receiver's differences. This is a
+    label-domain construction (the inversion bit is a discrete state, never a
+    Euclidean operation), so the check is exact: every one of the 12 actions must
+    recover the data with zero error from the second symbol onward.
+
+    Returns (total_violations, per_action_rows).
+    """
+    rng = np.random.default_rng(seed)
+    d_sec = rng.integers(0, 6, trials)
+    d_inv = rng.integers(0, 2, trials)
+    s, u = t.differential_encode_t24(d_sec, d_inv)
+    rows: List[dict] = []
+    total_violations = 0
+    for k in range(6):                      # static rotation by k*60 deg
+        for m in (0, 1):                    # global amplitude inversion or not
+            s2 = (s + k) % 6                 # constant offset on the whole stream
+            u2 = (u + m) % 2
+            ds, du = t.differential_decode_t24(s2, u2)
+            sec_ok = bool(np.array_equal(ds[1:], d_sec[1:]))
+            inv_ok = bool(np.array_equal(du[1:], d_inv[1:]))
+            viol = int(np.sum(ds[1:] != d_sec[1:]) + np.sum(du[1:] != d_inv[1:]))
+            total_violations += viol
+            rows.append({
+                "rotation_k": k, "inversion_m": m,
+                "sector_recovered": sec_ok, "inversion_recovered": inv_ok,
+                "violations": viol,
+            })
+    return total_violations, rows
 
 
 def run_offset_sweep(dtheta_deg: List[float], trials: int, ebn0_db: float,
@@ -168,6 +206,12 @@ def main() -> None:
     ap.add_argument("--trials", type=int, default=100_000)
     ap.add_argument("--ebn0", type=float, default=10.0)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--t24_trials", type=int, default=20_000,
+                    help="trials for the C8 combined rotation+inversion (C6 x Z2) "
+                         "differential invariance check")
+    ap.add_argument("--t24_seed", type=int, default=808,
+                    help="independent seed for the C8 check (keeps the existing "
+                         "sim05 CSVs byte-identical)")
     ap.add_argument("--results_dir", type=str, default="results")
     args = ap.parse_args()
 
@@ -180,7 +224,7 @@ def main() -> None:
     print("=" * 72)
     t.emit_provenance(args.results_dir, "sim05", args=args)
 
-    # ---- Exact verifications on a REAL 2-D hex constellation (before sweep) --
+    # ---- Exact verifications on a REAL 2D hex constellation (before sweep) --
     npts, viol = verify_equivariance_on_hex()
     eq_pass = (viol == 0)
     rt_pass = verify_differential_roundtrip()
@@ -236,6 +280,39 @@ def main() -> None:
                     "exact recovery at every k*60deg, zero noise"])
     print(f"\nWrote {csv_path}")
     print(f"Wrote {check_path}")
+
+    # ---- C8: combined rotation + inversion (C6 x Z2) differential codec -----
+    # Additive and independent: uses its own RNG (args.t24_seed), so the two CSVs
+    # written above remain byte-identical. The inversion bit is a discrete label
+    # state, never a Euclidean operation (firewall).
+    t24_viol, t24_rows = verify_t24_differential_invariance(
+        args.t24_trials, args.t24_seed)
+    t24_pass = (t24_viol == 0)
+    print("\n[C8 verify] combined rotation + inversion (C6 x Z2) differential codec:")
+    print(f"   carries (sector in Z6, inversion-bit in Z2); transmits component-")
+    print(f"   wise differences. Invariance over all 12 static (rotation,inversion)")
+    print(f"   actions on a {args.t24_trials}-symbol stream -> "
+          f"{'PASS' if t24_pass else 'FAIL'} ({t24_viol} violations)")
+    print(f"   {'rot k':>6} {'inv m':>6} {'sector ok':>10} {'inv ok':>8} "
+          f"{'viol':>6}")
+    for r in t24_rows:
+        print(f"   {r['rotation_k']:>6} {r['inversion_m']:>6} "
+              f"{str(r['sector_recovered']):>10} {str(r['inversion_recovered']):>8} "
+              f"{r['violations']:>6}")
+    print("   [order-12 C6 x Z2 = the rotation x inversion subgroup of the")
+    print("    centrosymmetric hexagonal point group D_6h; stated without")
+    print("    overclaiming the full 24-element group.]")
+
+    t24_path = os.path.join(args.results_dir, "sim05_t24_check.csv")
+    with open(t24_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["rotation_k", "inversion_m", "sector_recovered",
+                    "inversion_recovered", "violations"])
+        for r in t24_rows:
+            w.writerow([r["rotation_k"], r["inversion_m"],
+                        int(r["sector_recovered"]), int(r["inversion_recovered"]),
+                        r["violations"]])
+    print(f"Wrote {t24_path}")
     print("=" * 72)
 
 

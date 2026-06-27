@@ -11,8 +11,8 @@ color_classes (list of 6 index arrays), and proper (bool).
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 import numpy as np
 import pytest

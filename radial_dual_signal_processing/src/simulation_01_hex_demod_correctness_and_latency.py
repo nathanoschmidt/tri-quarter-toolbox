@@ -20,13 +20,13 @@ C2 (Constant-time decode): the closed-form decoder is O(1) per symbol on its
     and the amortized cost is contingent on the fast-path coverage, which this
     script reports as a function of SNR.
 
-What to paste back: the two PASS/FAIL banners and the latency table.
+Output: the two PASS/FAIL banners and the latency table.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 
 from __future__ import annotations

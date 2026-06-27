@@ -8,7 +8,10 @@ conflict-free parallel signal-recovery benchmark of the Tri-Quarter Framework
 This helper constructs the hexagonal sampling lattice on which a signal field
 lives: the base triangular lattice L truncated to a Euclidean radius R, with
 nearest-neighbour edges (each interior vertex has six neighbours). It also
-builds a proper, order-6-equivariant six-coloring of that graph.
+builds a proper six-coloring of that graph. (The six-coloring is proper but is
+*not* rotation-equivariant; only the underlying triangular-lattice 3-coloring
+c3 = (a - b) mod 3 is equivariant under the order-6 rotation -- see
+``six_coloring`` for the precise statement.)
 
 The trihexagonal six-coloring partitions the vertices into six independent sets
 (no edge lies within a class), so the six classes can be relaxed in turn with
@@ -23,8 +26,8 @@ colour-class index arrays) are shared verbatim by the NumPy (CPU) and PyTorch
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.0.0
-Date: June 24, 2026
+Version: 1.1.0
+Date: June 27, 2026
 """
 
 from __future__ import annotations
@@ -116,8 +119,16 @@ def six_coloring(coords: np.ndarray,
     c3 = (a - b) mod 3 with the parity c2 = (a + b) mod 2 into the six-colour
     label  colour = 2 * c3 + c2.  Because adjacent lattice vertices never share
     c3, any refinement of the 3-coloring (here by c2) is automatically a proper
-    coloring; the result is also equivariant under the order-6 rotation. The
-    function verifies properness against the actual edge set before returning.
+    coloring. The function verifies properness against the actual edge set
+    before returning.
+
+    Equivariance (important, and easy to overclaim): the *3-coloring* c3 is
+    equivariant under the order-6 rotation R -- R sends c3 to (-c3) mod 3, a
+    permutation of the three classes -- but the *six-coloring* is NOT. The
+    refining parity c2 = (a + b) mod 2 maps to (a) mod 2 under R, which is not a
+    function of the colour pair alone, so R does not permute the six classes.
+    The six-coloring is used for conflict-free parallelism (a checked proper
+    coloring), not for any rotational-equivariance claim.
     """
     a = coords[:, 0]
     b = coords[:, 1]
@@ -128,8 +139,9 @@ def six_coloring(coords: np.ndarray,
     # Note: the 3-coloring c3 alone is already proper (every nearest-neighbour
     # offset changes (a - b) mod 3), so three colour classes would already be
     # conflict-free. The refinement to six classes by the parity c2 is chosen for
-    # continuity with the lattice paper -- it is the order-6-equivariant
-    # trihexagonal coloring tied to T_24, not a requirement of conflict-freedom.
+    # continuity with the lattice paper. Only the 3-coloring is rotation-
+    # equivariant; the six-coloring is proper but not order-6-equivariant (the
+    # parity c2 does not transform as a function of the colour pair under R).
 
     # Verify properness: no edge connects two equally-coloured vertices.
     proper = True
@@ -143,6 +155,34 @@ def six_coloring(coords: np.ndarray,
             break
 
     classes = [np.where(colour == c)[0].astype(np.int64) for c in range(6)]
+    return classes, proper
+
+
+def three_coloring(coords: np.ndarray,
+                   index_of: Dict[Tuple[int, int], int]
+                   ) -> Tuple[List[np.ndarray], bool]:
+    """Return the triangular-lattice 3-coloring c3 = (a - b) mod 3, plus a proper
+    flag.
+
+    Unlike the trihexagonal six-coloring, this 3-coloring *is* equivariant under
+    the order-6 rotation R: R sends c3 to (-c3) mod 3, a permutation of the three
+    classes. It is the colouring to use when a rotation-equivariant partition is
+    required; the six-coloring refines it (by parity) for a finer conflict-free
+    schedule but loses equivariance. Properness is verified against the edge set.
+    """
+    a = coords[:, 0]
+    b = coords[:, 1]
+    colour = np.mod(a - b, 3).astype(np.int64)
+    proper = True
+    for (av, bv), i in index_of.items():
+        for da, db in _NEIGHBOR_OFFSETS:
+            j = index_of.get((av + da, bv + db))
+            if j is not None and colour[i] == colour[j]:
+                proper = False
+                break
+        if not proper:
+            break
+    classes = [np.where(colour == c)[0].astype(np.int64) for c in range(3)]
     return classes, proper
 
 
