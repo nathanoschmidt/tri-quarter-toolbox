@@ -46,8 +46,8 @@ Design notes / conventions
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 from scipy import stats
 
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 
 # ---------------------------------------------------------------------------
 # Base lattice constants (Eisenstein / A2)
@@ -152,7 +152,7 @@ def phase_pair_sector(a: int, b: int) -> int:
     is the half-open wedge [d_k, d_{k+1}); a point lying exactly on the primary
     ray d_k is assigned to sector k. Because every test is an integer
     determinant, the sector is exact (no floating-point phase ever enters), which
-    is what makes labelling, orbit partitioning, equivariance, and the
+    is what makes labeling, orbit partitioning, equivariance, and the
     differential codec lossless and integer-only. The origin has no defined
     sector and returns -1.
 
@@ -195,7 +195,7 @@ def phase_pair_sector_array(ab: np.ndarray) -> np.ndarray:
 
 
 # Backward-compatible aliases: the sector index *is* the phase-pair sector. The
-# ``phase_pair_sector`` name is the documented first-class primitive (Mark 2);
+# ``phase_pair_sector`` name is the documented first-class primitive;
 # ``sector_index`` / ``sector_index_array`` are kept so existing callers and the
 # earlier studies/tests continue to work unchanged.
 sector_index = phase_pair_sector
@@ -407,7 +407,7 @@ class Constellation:
     name: str
     ab: np.ndarray = field(default_factory=lambda: np.zeros((0, 2), dtype=np.int64))
     scale_sq_exact: Fraction | None = None
-    # Optional radial-dual (Mark 2) metadata, set only by
+    # Optional radial-dual metadata, set only by
     # build_radial_dual_constellation; None/empty for the other constellations.
     shell_norms: Tuple[int, ...] | None = None        # the complete shells present
     inversion_r_sq: int | None = None                 # inversion radius^2 (e.g. 12)
@@ -426,7 +426,7 @@ def _gray_sequence_labels(order: Sequence[int], nbits: int) -> np.ndarray:
 
     ``order`` is a permutation of point indices; consecutive points in the order
     receive Gray-adjacent (1-bit-apart) codewords. When ``order`` lists spatial
-    neighbours consecutively, most adjacent constellation points differ by a
+    neighbors consecutively, most adjacent constellation points differ by a
     single bit -- a documented, reproducible "Gray-like" labeling. Not claimed
     to be an optimal hexagonal Gray map; SER (label-independent) is the headline
     metric for the packing-gain comparison.
@@ -493,6 +493,49 @@ def build_filled_constellation(m: int) -> Constellation:
     return Constellation(points_unit=points_unit, labels=labels,
                          bits_per_symbol=nbits, scale=scale,
                          name=f"hex-{m}", ab=ab, scale_sq_exact=scale_sq)
+
+
+def build_filled_constellation_any(m: int) -> Constellation:
+    """Build the minimum-energy hexagonal constellation of ANY size m >= 2.
+
+    Identical point-selection rule to :func:`build_filled_constellation` -- the
+    m lowest-energy lattice points (origin included; ties broken
+    deterministically by angle then coordinate), exact-rational unit-average-
+    energy normalization -- but with NO power-of-two requirement and NO bit
+    labeling (``bits_per_symbol = 0``, placeholder index labels). SER against
+    such a constellation is label-free, and with ``bits_per_symbol = 0`` the
+    channel helpers' Eb/N0 argument parameterizes Es/N0 directly (the honest
+    axis for a label-free object).
+
+    Used as the matched filled M=42 baseline that Study 8 compares against the
+    radial-dual constellation at equal order and equal average energy. For
+    power-of-two m the selected point set and exact scale agree with
+    :func:`build_filled_constellation` (only labels/bits differ).
+    """
+    if m < 2:
+        raise ValueError("m must be >= 2")
+    radius = max(4, int(math.ceil(math.sqrt(m))) + 3)
+    cand = _enumerate_lattice_points(radius)
+
+    def sort_key(t: Tuple[int, int, int]):
+        n_sq, a, b = t
+        ang = math.atan2(b * _OMEGA1_IM, a + b * _OMEGA1_RE) if (a or b) else -math.inf
+        return (n_sq, ang, a, b)
+
+    cand.sort(key=sort_key)
+    chosen = cand[:m]
+    ab = np.array([[a, b] for (_n, a, b) in chosen], dtype=np.int64)
+    raw = lattice_array_to_complex(ab)
+
+    sum_norm_sq = int(sum(n for (n, _a, _b) in chosen))
+    scale_sq = Fraction(m, sum_norm_sq) if sum_norm_sq > 0 else Fraction(1, 1)
+    scale = math.sqrt(float(scale_sq))
+    points_unit = raw * scale
+
+    labels = np.arange(m, dtype=np.int64)  # placeholder; no bit labeling
+    return Constellation(points_unit=points_unit, labels=labels,
+                         bits_per_symbol=0, scale=scale,
+                         name=f"hex-any-{m}", ab=ab, scale_sq_exact=scale_sq)
 
 
 def build_disk_constellation(max_norm_sq: int) -> Constellation:
@@ -579,7 +622,7 @@ def build_radial_dual_constellation(r_sq: int = 12, max_norm_sq: int = 60
     "filled" region, so this object is a symmetry/duality demonstrator (like the
     disk constellation), not a binary-M comparison constellation.
 
-    The returned :class:`Constellation` carries the Mark 2 metadata:
+    The returned :class:`Constellation` carries the radial-dual metadata:
     ``shell_norms``, ``inversion_r_sq``, ``phase_pair_uniform`` (every complete
     shell has exactly ``k`` points per sector, here k=1), ``inversion_paired``
     (closed under the exact iota_r point permutation), ``fundamental_domain_size``
@@ -862,6 +905,8 @@ class _FoldedDecodeContext:
     stored_shells: Tuple[int, ...]   # shell norms physically stored (the fold)
     full_shells: Tuple[int, ...]     # full shell set (reconstructed when folded)
     stored_table_size: int           # = len(stored_shells); the storage metric
+    stored_arr: np.ndarray           # stored_shells as int64 array (vectorized
+                                     # membership test; derived, not extra storage)
 
 
 def make_folded_decode_context(constellation: Constellation,
@@ -891,7 +936,8 @@ def make_folded_decode_context(constellation: Constellation,
     else:
         stored = full_shells                                        # all shells
     return _FoldedDecodeContext(constellation, r_sq, fold_inversion,
-                                stored, full_shells, len(stored))
+                                stored, full_shells, len(stored),
+                                np.asarray(stored, dtype=np.int64))
 
 
 def decode_hex_folded(received_unit: np.ndarray,
@@ -919,7 +965,6 @@ def decode_hex_folded(received_unit: np.ndarray,
     n = a * a + a * b + b * b                       # shell norm of each q*
     sec = phase_pair_sector_array(ab)
 
-    stored = set(ctx.stored_shells)
     # Fold each shell to its fundamental (stored) representative shell.
     if ctx.fold_inversion:
         is_inner = n <= r_sq
@@ -927,7 +972,10 @@ def decode_hex_folded(received_unit: np.ndarray,
         fold_n = np.where(is_inner, n, np.where(divisible, r4 // np.where(n > 0, n, 1), -1))
     else:
         fold_n = n
-    member = np.array([(int(fn) in stored) for fn in fold_n], dtype=bool) & (sec >= 0)
+    # Vectorized membership against the folded (stored) shell table, so the
+    # folded-vs-ML throughput comparison is apples-to-apples (both decoders are
+    # fully vectorized NumPy).
+    member = np.isin(fold_n, ctx.stored_arr) & (sec >= 0)
 
     # Reconstruct full index = 6 * rank(shell) + sector, ranks from the full set.
     full_sorted = np.array(ctx.full_shells, dtype=np.int64)
@@ -1032,12 +1080,19 @@ def differential_decode_t24(sector_stream: np.ndarray,
 # Channels (unit-average-energy input symbols)
 # ---------------------------------------------------------------------------
 
-def _noise_sigma_sq(ebn0_db: float, bits_per_symbol: int) -> float:
+def _noise_sigma_sq(ebn0_db: float, bits_per_symbol: float) -> float:
     """Total complex-noise variance sigma^2 = N0 for unit symbol energy Es = 1.
 
     Es/N0 (dB) = Eb/N0 (dB) + 10*log10(bits/symbol); N0 = Es / (Es/N0)_linear.
+
+    ``bits_per_symbol`` may be FRACTIONAL: a senary constellation
+    carries exactly log2(6) ~= 2.585 information bits per symbol, so passing
+    the true float makes the Eb/N0 axis per-information-bit exact rather than
+    rounded to the nearest integer. Integer inputs behave exactly as before.
+    ``bits_per_symbol <= 1`` (including the 0 used by label-free constellations)
+    clamps to 1, in which case ``ebn0_db`` parameterizes Es/N0 directly.
     """
-    es_n0_db = ebn0_db + 10.0 * math.log10(max(bits_per_symbol, 1))
+    es_n0_db = ebn0_db + 10.0 * math.log10(max(float(bits_per_symbol), 1.0))
     es_n0_lin = 10.0 ** (es_n0_db / 10.0)
     return 1.0 / es_n0_lin
 
@@ -1048,7 +1103,7 @@ def _complex_gaussian(n: int, sigma_sq: float, rng: np.random.Generator) -> np.n
     return rng.normal(0.0, s, n) + 1j * rng.normal(0.0, s, n)
 
 
-def awgn(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: int,
+def awgn(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: float,
          rng: np.random.Generator) -> np.ndarray:
     """Add complex AWGN at the given Eb/N0 to unit-energy symbols."""
     symbols = np.asarray(symbols, dtype=np.complex128)
@@ -1056,7 +1111,7 @@ def awgn(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: int,
     return symbols + _complex_gaussian(symbols.shape[0], sigma_sq, rng)
 
 
-def impulsive(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: int,
+def impulsive(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: float,
               rng: np.random.Generator, p: float = 0.1,
               amplitude: float = 5.0) -> np.ndarray:
     """Add 2D impulsive noise: background AWGN, plus with probability p a symbol
@@ -1072,7 +1127,7 @@ def impulsive(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: int,
     return out
 
 
-def rayleigh(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: int,
+def rayleigh(symbols: np.ndarray, ebn0_db: float, bits_per_symbol: float,
              rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray]:
     """Flat Rayleigh fading y = h*x + n with h ~ CN(0, 1) (E|h|^2 = 1).
 

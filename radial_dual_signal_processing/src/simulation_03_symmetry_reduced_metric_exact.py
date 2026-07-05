@@ -29,17 +29,46 @@ reproduces the full enumerator exactly.
 
 Output: the results table (sizes, speedup, exact-match flags).
 
+Exact constellation-geometry / fairness block
+---------------------------------------------
+A block (``--skip_geometry_block`` to disable) applies the same exact
+integer/rational machinery to the C3 comparison constellations themselves. For
+hexagonal C_M and square QAM at M in {16, 64, 256} -- plus the C7 radial-dual
+constellation and its matched filled hex-42 baseline -- it computes EXACTLY
+(fractions.Fraction, self-checked with ``==`` against a pre-registered table):
+
+  * d_min^2 at unit average energy, and the pure-d_min^2 predicted gain
+    10*log10(d2_hex / d2_sq);
+  * the average nearest-neighbor multiplicity K_bar (ordered NN pairs / M);
+  * the peak-to-average power ratio (PAPR) -- average-energy matching hides no
+    peak-power penalty, and hex's PAPR is <= square's at every M;
+  * the labeling quality: mean nearest-neighbor Hamming distance (square's
+    true Gray map is exactly 1; the hex Gray-like map is 1.73-2.43, which
+    PREDICTS the BER-vs-SER inversion instead of merely exhibiting it);
+  * a nearest-neighbor-approximation prediction, SER ~= K_bar * Q(d_min /
+    (sigma*sqrt(2))) with the same complex-noise convention as the channel
+    code, solved for the Eb/N0 that reaches each target SER. The predicted
+    hex-vs-square gains quantitatively explain the measured C3 gains: the
+    finite-M d_min^2 gain is 0.46-0.81 dB (ABOVE the 0.6 dB asymptote for
+    M >= 64); the larger hex multiplicity is what pulls the net measured gain
+    down to 0.29-0.50 dB.
+
+No randomness is used and the pre-existing sim03 CSVs are byte-identical; the
+block writes two new CSVs (sim03_constellation_geometry.csv and
+sim03_nn_prediction.csv).
+
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 import time
 from fractions import Fraction
@@ -180,10 +209,10 @@ def _combined_orbit_partition(con: t.Constellation) -> Tuple[List[int], List[int
                 continue
             orbit.add(j)
             ca, cb = int(a[j]), int(b[j])
-            rj = coord_to_idx[t.rotate60(ca, cb)]      # rotation neighbour
+            rj = coord_to_idx[t.rotate60(ca, cb)]      # rotation neighbor
             if rj not in orbit:
                 frontier.append(rj)
-            ij = int(dual[j])                          # inversion neighbour
+            ij = int(dual[j])                          # inversion neighbor
             if ij not in orbit:
                 frontier.append(ij)
         seen_all |= orbit
@@ -298,6 +327,234 @@ def radial_dual_reduction_block(r_sq: int, max_norm_sq: int,
     return block_pass
 
 
+# ---------------------------------------------------------------------------
+# Exact constellation-geometry / fairness block
+# ---------------------------------------------------------------------------
+
+def _exact_lattice_geometry(con: t.Constellation
+                            ) -> Tuple[Fraction, int, Fraction, int]:
+    """Exact (d_min^2, ordered NN-pair count, PAPR, lattice d_min^2) for a
+    lattice constellation, at its unit-average-energy normalization.
+
+    All pairwise squared distances are the integer Eisenstein norms of the
+    coordinate differences, so d_min^2 = (min lattice norm) * scale_sq_exact and
+    PAPR = (max point norm) * scale_sq_exact are exact rationals.
+    """
+    ab = con.ab.astype(np.int64)
+    a = ab[:, 0]; b = ab[:, 1]
+    da = a[:, None] - a[None, :]
+    db = b[:, None] - b[None, :]
+    sq = da * da + da * db + db * db
+    np.fill_diagonal(sq, np.iinfo(np.int64).max)
+    d_lat = int(sq.min())
+    nn_pairs = int(np.sum(sq == d_lat))                 # ordered pairs
+    peak = int(np.max(a * a + a * b + b * b))
+    s2 = con.scale_sq_exact
+    return Fraction(d_lat) * s2, nn_pairs, Fraction(peak) * s2, d_lat
+
+
+def _hex_gray_nn_hamming(con: t.Constellation, d_lat_min: int) -> Fraction:
+    """Exact mean Hamming distance over ordered nearest-neighbor label pairs."""
+    ab = con.ab.astype(np.int64)
+    a = ab[:, 0]; b = ab[:, 1]
+    da = a[:, None] - a[None, :]
+    db = b[:, None] - b[None, :]
+    sq = da * da + da * db + db * db
+    np.fill_diagonal(sq, np.iinfo(np.int64).max)
+    nn = np.argwhere(sq == d_lat_min)
+    lab = con.labels
+    total = sum(bin(int(lab[i]) ^ int(lab[j])).count("1") for i, j in nn)
+    return Fraction(total, len(nn))
+
+
+def _exact_square_geometry(m: int) -> Tuple[Fraction, int, Fraction, Fraction]:
+    """Exact (d_min^2, ordered NN pairs, PAPR, mean NN Hamming) for square M-QAM.
+
+    Per-axis amplitudes are the odd integers; the exact average energy is
+    2*sum(amps^2)/side, the minimum step is 2, the peak is 2*(side-1)^2, the
+    grid has 4*side*(side-1) ordered nearest-neighbor pairs, and the true
+    per-axis Gray map makes every NN label pair differ in EXACTLY one bit.
+    """
+    side = int(round(math.sqrt(m)))
+    assert side * side == m, "square QAM geometry requires a perfect square M"
+    amps = [2 * i - (side - 1) for i in range(side)]
+    avg = Fraction(2 * sum(x * x for x in amps), side)
+    d2 = Fraction(4) / avg
+    papr = Fraction(2 * (side - 1) ** 2) / avg
+    nn_pairs = 4 * side * (side - 1)
+    # true Gray: verify (not assume) the exact mean-NN-Hamming of 1 on the grid.
+    con = t.build_square_qam(m)
+    lab = con.labels.reshape(side, side)                # [i, q] layout by builder
+    total = 0
+    for i in range(side):
+        for q in range(side):
+            if i + 1 < side:
+                total += 2 * bin(int(lab[i, q]) ^ int(lab[i + 1, q])).count("1")
+            if q + 1 < side:
+                total += 2 * bin(int(lab[i, q]) ^ int(lab[i, q + 1])).count("1")
+    gray = Fraction(total, nn_pairs)
+    return d2, nn_pairs, papr, gray
+
+
+def _qfunc(x: float) -> float:
+    return 0.5 * math.erfc(x / math.sqrt(2.0))
+
+
+def _nn_predicted_ebn0(d2: float, kbar: float, bits: float,
+                       target: float) -> float:
+    """Eb/N0 (dB) at which the nearest-neighbor approximation
+    SER ~= K_bar * Q(d_min / (sigma * sqrt(2))) reaches ``target``.
+
+    Convention matches the channel code exactly: unit Es, sigma^2 = N0 =
+    1 / (Es/N0)_lin with Es/N0 (dB) = Eb/N0 (dB) + 10*log10(bits); complex
+    CN(0, sigma^2) noise projects onto the line between two points as a real
+    N(0, sigma^2 / 2), so the pairwise error is Q((d/2) / sqrt(sigma^2 / 2)).
+    Solved by bisection (SER is monotone decreasing in Eb/N0).
+    """
+    lo, hi = -10.0, 80.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        sigma_sq = t._noise_sigma_sq(mid, bits)
+        ser = kbar * _qfunc(math.sqrt(d2) / math.sqrt(2.0 * sigma_sq))
+        if ser > target:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+# Pre-registered exact values (MARK3_PLAN T3-14, verified independently before
+# implementation). The block FAILS if the code does not reproduce these with ==.
+_GEOM_EXPECTED = {
+    "hex-16":     dict(d2=Fraction(4, 9),      nn=66,   papr=Fraction(16, 9),
+                       gray=Fraction(19, 11)),
+    "hex-64":     dict(d2=Fraction(64, 567),   nn=326,  papr=Fraction(1216, 567),
+                       gray=Fraction(342, 163)),
+    "hex-256":    dict(d2=Fraction(256, 9027), nn=1422, papr=Fraction(18688, 9027),
+                       gray=Fraction(1726, 711)),
+    "sqQAM-16":   dict(d2=Fraction(2, 5),      nn=48,   papr=Fraction(9, 5),
+                       gray=Fraction(1)),
+    "sqQAM-64":   dict(d2=Fraction(2, 21),     nn=224,  papr=Fraction(7, 3),
+                       gray=Fraction(1)),
+    "sqQAM-256":  dict(d2=Fraction(2, 85),     nn=960,  papr=Fraction(45, 17),
+                       gray=Fraction(1)),
+    "radial-dual-r12-Nle60": dict(d2=Fraction(7, 128), nn=48,
+                                  papr=Fraction(21, 8), gray=None),
+    "hex-any-42": dict(d2=Fraction(7, 41),     nn=200,  papr=Fraction(84, 41),
+                       gray=None),
+}
+
+
+def constellation_geometry_block(results_dir: str, targets=(1e-2, 1e-3),
+                                 rd_r_sq: int = 12, rd_max_norm_sq: int = 60
+                                 ) -> bool:
+    """Exact geometry / fairness facts for the C3 constellations (+ the C7 pair).
+
+    Everything here is a constellation PROPERTY -- no channel, no randomness --
+    computed in exact rational arithmetic and checked with ``==`` against the
+    pre-registered table above, then written to two CSVs. The NN-approximation
+    predictions are the only floats (a Q-function has no exact form) and are the
+    quantitative bridge from these exact facts to the measured Study 2 gains.
+    """
+    print("\n" + "-" * 84)
+    print("  Mark 3: exact constellation geometry & fairness facts "
+          "(d_min^2, K_bar, PAPR, Gray)")
+    print("-" * 84)
+
+    rows = []      # per-constellation facts
+    facts = {}     # name -> dict for the prediction step
+    hex_cons = {m: t.build_filled_constellation(m) for m in (16, 64, 256)}
+    others = [t.build_radial_dual_constellation(rd_r_sq, rd_max_norm_sq),
+              t.build_filled_constellation_any(42)]
+
+    all_ok = True
+    for con in list(hex_cons.values()) + others:
+        d2, nn, papr, d_lat = _exact_lattice_geometry(con)
+        gray = (_hex_gray_nn_hamming(con, d_lat)
+                if con.name.startswith("hex-") and con.bits_per_symbol > 0
+                else None)
+        exp = _GEOM_EXPECTED[con.name]
+        ok = (d2 == exp["d2"] and nn == exp["nn"] and papr == exp["papr"]
+              and (exp["gray"] is None or gray == exp["gray"]))
+        all_ok = all_ok and ok
+        facts[con.name] = dict(d2=d2, kbar=Fraction(nn, con.size), M=con.size)
+        rows.append((con.name, con.size, str(d2), float(d2), nn,
+                     float(Fraction(nn, con.size)), str(papr), float(papr),
+                     10.0 * math.log10(float(papr)),
+                     (str(gray) if gray is not None else ""),
+                     (float(gray) if gray is not None else float("nan")),
+                     int(ok)))
+    for m in (16, 64, 256):
+        d2, nn, papr, gray = _exact_square_geometry(m)
+        name = f"sqQAM-{m}"
+        exp = _GEOM_EXPECTED[name]
+        ok = (d2 == exp["d2"] and nn == exp["nn"] and papr == exp["papr"]
+              and gray == exp["gray"] == Fraction(1))
+        all_ok = all_ok and ok
+        facts[name] = dict(d2=d2, kbar=Fraction(nn, m), M=m)
+        rows.append((name, m, str(d2), float(d2), nn, float(Fraction(nn, m)),
+                     str(papr), float(papr), 10.0 * math.log10(float(papr)),
+                     str(gray), float(gray), int(ok)))
+
+    print(f"  {'constellation':<24}{'M':>5}{'d_min^2':>14}{'K_bar':>8}"
+          f"{'PAPR(dB)':>10}{'GrayNN':>8}{'==':>4}")
+    for r in sorted(rows, key=lambda x: (x[1], x[0])):
+        gtxt = f"{r[10]:.3f}" if r[10] == r[10] else "  -- "
+        print(f"  {r[0]:<24}{r[1]:>5}{r[2]:>14}{r[5]:>8.3f}"
+              f"{r[8]:>10.2f}{gtxt:>8}{('ok' if r[11] else 'FAIL'):>4}")
+    print("  [PAPR fairness: hex <= square at every M -- matching AVERAGE energy")
+    print("   hides no PEAK-power penalty. GrayNN: square's true Gray map is")
+    print("   exactly 1 bit per NN step; the hex Gray-like map is 1.73-2.43,")
+    print("   which predicts hex BER > square BER even where hex SER is lower.]")
+
+    # NN-approximation predictions for the hex-vs-square pairs.
+    pred_rows = []
+    print(f"\n  NN-approx prediction SER ~= K_bar * Q(d_min/(sigma*sqrt(2))):")
+    print(f"  {'M':>5}{'target':>9}{'Eb/N0 hex':>11}{'Eb/N0 sq':>10}"
+          f"{'pred gain':>10}{'pure-dmin':>10}")
+    for m in (16, 64, 256):
+        h = facts[f"hex-{m}"]; q = facts[f"sqQAM-{m}"]
+        bits = math.log2(m)
+        pure = 10.0 * math.log10(float(h["d2"]) / float(q["d2"]))
+        for target in targets:
+            eh = _nn_predicted_ebn0(float(h["d2"]), float(h["kbar"]), bits, target)
+            eq = _nn_predicted_ebn0(float(q["d2"]), float(q["kbar"]), bits, target)
+            pred_rows.append((m, target, eh, eq, eq - eh, pure))
+            print(f"  {m:>5}{target:>9.0e}{eh:>11.2f}{eq:>10.2f}"
+                  f"{eq - eh:>+10.3f}{pure:>+10.3f}")
+    print("  [The finite-M pure-d_min^2 gain is ABOVE the 0.6 dB asymptote for")
+    print("   M >= 64; the larger hex NN multiplicity is what pulls the net,")
+    print("   NN-predicted gain down to the 0.13-0.55 dB range that the measured")
+    print("   Study 2 gains land in -- the exact two-factor account of C3.]")
+    price = 10.0 * math.log10(float(facts["hex-any-42"]["d2"]) /
+                              float(facts["radial-dual-r12-Nle60"]["d2"]))
+    print(f"  C7 geometry-price preview (Study 8): pure-d_min^2 penalty of the")
+    print(f"  radial-dual constellation vs filled hex-42 = {price:+.2f} dB "
+          f"(7/128 vs 7/41).")
+
+    print(f"\n  GEOMETRY-BLOCK RESULT: "
+          f"{'PASS' if all_ok else 'FAIL'} (every exact value reproduced the "
+          f"pre-registered table with ==)")
+
+    geom_path = os.path.join(results_dir, "sim03_constellation_geometry.csv")
+    with open(geom_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["constellation", "M", "d2min_exact", "d2min",
+                    "ordered_nn_pairs", "avg_nn_multiplicity",
+                    "papr_exact", "papr", "papr_db",
+                    "gray_nn_hamming_exact", "gray_nn_hamming", "matches_expected"])
+        w.writerows(rows)
+    pred_path = os.path.join(results_dir, "sim03_nn_prediction.csv")
+    with open(pred_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["M", "target_ser", "ebn0_hex_pred_db", "ebn0_sq_pred_db",
+                    "gain_pred_db", "gain_pure_dmin_db"])
+        w.writerows(pred_rows)
+    print(f"  Wrote {geom_path}")
+    print(f"  Wrote {pred_path}")
+    return all_ok
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -316,6 +573,10 @@ def main() -> None:
     ap.add_argument("--skip_inversion_block", action="store_true",
                     help="skip the combined rotation+inversion block (kept additive; "
                          "existing sim03_symmetry.csv is unaffected either way)")
+    ap.add_argument("--skip_geometry_block", action="store_true",
+                    help="skip the Mark 3 exact constellation-geometry / fairness "
+                         "block (kept additive; existing sim03 CSVs are unaffected "
+                         "either way)")
     ap.add_argument("--results_dir", type=str, default="results")
     args = ap.parse_args()
 
@@ -388,6 +649,13 @@ def main() -> None:
     if not args.skip_inversion_block:
         radial_dual_reduction_block(args.rd_r_sq, args.rd_max_norm_sq,
                                     args.results_dir)
+
+    # Exact-geometry / fairness block (self-checked with ==). No randomness;
+    # the sim03 CSVs written above are unaffected.
+    if not args.skip_geometry_block:
+        constellation_geometry_block(args.results_dir,
+                                     rd_r_sq=args.rd_r_sq,
+                                     rd_max_norm_sq=args.rd_max_norm_sq)
     print("=" * 84)
 
 

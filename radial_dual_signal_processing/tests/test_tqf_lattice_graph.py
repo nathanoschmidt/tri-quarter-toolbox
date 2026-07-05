@@ -1,7 +1,4 @@
-"""
-test_tqf_lattice_graph.py - Lattice Graph and Trihexagonal Six-Coloring Tests (Claim C5)
-
-Tests for tqf_lattice_graph.py -- truncated triangular lattice graph and the
+"""Tests for tqf_lattice_graph.py -- truncated triangular lattice graph and the
 trihexagonal six-coloring underpinning claim C5 (conflict-free parallel recovery).
 
 The graph dict exposes: num_vertices, num_edges, coords (N,2), neighbor_idx
@@ -11,8 +8,8 @@ color_classes (list of 6 index arrays), and proper (bool).
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 import numpy as np
 import pytest

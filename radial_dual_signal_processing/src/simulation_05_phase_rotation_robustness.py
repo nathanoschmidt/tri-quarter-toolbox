@@ -16,7 +16,7 @@ C6 (Equivariant / rotation-robust decode): rotation by pi/3 is a symmetry of the
     sector-slip as the offset approaches 60 degrees.
 
 Demonstration vehicle: a six-point constellation with one unit-energy symbol at
-the centre of each angular sector (the cleanest carrier of the sector-rotation
+the center of each angular sector (the cleanest carrier of the sector-rotation
 story). Coherent and differential schemes are compared over a residual
 phase-offset sweep under AWGN, with common random numbers (identical data and
 noise for both schemes at each offset). The differential scheme returns to the
@@ -36,11 +36,20 @@ which a complete scheme must additionally handle.
 
 Output: the SER-vs-offset table and the zero-offset penalty line.
 
+Eb/N0 convention (per information bit)
+-------------------------------------
+The senary constellation carries exactly log2(6) ~= 2.585 information bits per
+symbol, so the --ebn0 flag is defined per information bit: the true float
+log2(6) is passed through the noise mapping (for this constellation
+Es/N0 = Eb/N0 + 10*log10(log2 6) ~= Eb/N0 + 4.12 dB). The exact zero-noise
+equivariance and differential round-trip checks below use no channel and are
+independent of this scaling.
+
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 
 from __future__ import annotations
@@ -57,7 +66,7 @@ import tqf_hex_signal as t
 
 
 def _sector_center_constellation() -> np.ndarray:
-    """Six unit-energy points, one at the centre (30 + 60k degrees) of each sector."""
+    """Six unit-energy points, one at the center (30 + 60k degrees) of each sector."""
     angles = np.deg2rad(30.0 + 60.0 * np.arange(6))
     return np.exp(1j * angles)
 
@@ -149,7 +158,7 @@ def run_offset_sweep(dtheta_deg: List[float], trials: int, ebn0_db: float,
                      seed: int) -> List[dict]:
     """Compare coherent vs differential-hex SER across a phase-offset sweep (CRN)."""
     points = _sector_center_constellation()
-    k_bits = math.log2(6)  # senary symbols
+    k_bits = math.log2(6.0)          # exactly log2(6) information bits/symbol
     rng = np.random.default_rng(seed)
 
     # Common random data and noise, drawn once and reused at every offset and by
@@ -166,7 +175,9 @@ def run_offset_sweep(dtheta_deg: List[float], trials: int, ebn0_db: float,
     coh_sectors[1:] = data
 
     noise = (rng.standard_normal(trials + 1) + 1j * rng.standard_normal(trials + 1))
-    sigma = math.sqrt(t._noise_sigma_sq(ebn0_db, max(int(round(k_bits)), 1)))
+    # Pass the true fractional bits/symbol so Eb/N0 is per information bit
+    # (rounding to an integer bit count would misstate the noise scale by ~0.65 dB).
+    sigma = math.sqrt(t._noise_sigma_sq(ebn0_db, k_bits))
     noise = noise * (sigma / math.sqrt(2.0))          # CN(0, sigma^2)
 
     rows: List[dict] = []
@@ -219,7 +230,9 @@ def main() -> None:
 
     print("=" * 72)
     print("SIMULATION 05 -- phase-rotation robustness: coherent vs differential (C6)")
-    print(f"seed={args.seed}  trials={args.trials}  Eb/N0={args.ebn0} dB  "
+    es_n0 = args.ebn0 + 10.0 * math.log10(math.log2(6.0))
+    print(f"seed={args.seed}  trials={args.trials}  Eb/N0={args.ebn0} dB per "
+          f"information bit (log2(6) bits/symbol; Es/N0 = {es_n0:.2f} dB)  "
           f"6-point sector constellation")
     print("=" * 72)
     t.emit_provenance(args.results_dir, "sim05", args=args)

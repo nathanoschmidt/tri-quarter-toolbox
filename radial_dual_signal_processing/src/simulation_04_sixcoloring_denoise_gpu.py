@@ -25,16 +25,28 @@ Notes
   runs: it executes the NumPy CPU baseline and (if torch is installed) a
   torch-CPU backend, and clearly flags that the "GPU" column is not a GPU. Run
   on a CUDA machine for the headline speedup.
-* Both backends use float64 and the identical colour classes / neighbour arrays,
+* Both backends use float64 and the identical color classes / neighbor arrays,
   so the comparison isolates CPU-vs-GPU execution of one fixed workload.
 
 Output: the header (hardware/versions) and the results table.
 
+Optional torch-CPU middle baseline (--also_torch_cpu)
+-----------------------------------------------------
+When CUDA is the primary device, ``--also_torch_cpu`` additionally times the
+IDENTICAL torch backend on ``device='cpu'`` (multi-threaded), inserting an
+honest middle column between the single-threaded NumPy baseline and the GPU.
+This separates what the six-coloring's conflict-free parallelism buys on the
+same silicon from what the GPU hardware adds on top. With the flag off, the
+script runs the single-threaded-NumPy-vs-CUDA benchmark and its CSV schema is
+unchanged. NOTE: any run re-measures wall-clock medians, so opt in only when
+you intend to refresh the C5 table; otherwise the committed sim04 CSVs stay
+locked.
+
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 
 from __future__ import annotations
@@ -69,7 +81,7 @@ def _ground_truth_field(coords: np.ndarray) -> np.ndarray:
 def relaxation_torch(state, neighbor_idx, neighbor_cnt, color_classes,
                      alpha: float, device):
     """One color-ordered relaxation sweep on a torch device (mirrors the NumPy
-    kernel exactly: own state blended with the neighbour mean, per colour class)."""
+    kernel exactly: own state blended with the neighbor mean, per color class)."""
     n = state.shape[0]
     for cls in color_classes:
         if cls.shape[0] == 0:
@@ -138,7 +150,7 @@ def _time_torch(field0: np.ndarray, graph, alpha: float, sweeps: int,
 
 def run_radius(radius: float, alpha: float, sweeps: int, repeats: int,
                sessions: int, noise_sigma: float, base_seed: int,
-               device) -> dict:
+               device, also_torch_cpu: bool = False) -> dict:
     """Benchmark one lattice radius across several sessions; return summary."""
     graph = g.build_lattice_graph(radius)
     proper = bool(graph["proper"])
@@ -148,8 +160,11 @@ def run_radius(radius: float, alpha: float, sweeps: int, repeats: int,
 
     cpu_per_sweep: List[float] = []
     gpu_per_sweep: List[float] = []
+    tcpu_per_sweep: List[float] = []
     agreements: List[float] = []
     mse_before = mse_after = float("nan")
+    do_tcpu = bool(also_torch_cpu and _HAVE_TORCH and device is not None
+                   and device.type == "cuda")
 
     for sess in range(sessions):
         rng = np.random.default_rng(base_seed + sess)
@@ -172,6 +187,13 @@ def run_radius(radius: float, alpha: float, sweeps: int, repeats: int,
             gpu_ms, s_gpu = _time_torch(noisy, graph, alpha, sweeps, repeats, device)
             gpu_per_sweep.append(gpu_ms)
             agreements.append(float(np.max(np.abs(s_cpu - s_gpu))))
+        if do_tcpu:
+            # Same torch kernel, same color classes, device='cpu'
+            # (multi-threaded): the honest middle baseline between the
+            # single-threaded NumPy column and the CUDA column.
+            tcpu_ms, _s_tcpu = _time_torch(noisy, graph, alpha, sweeps,
+                                           repeats, torch.device("cpu"))
+            tcpu_per_sweep.append(tcpu_ms)
 
     cpu_med = float(np.median(cpu_per_sweep))
     if gpu_per_sweep:
@@ -180,6 +202,17 @@ def run_radius(radius: float, alpha: float, sweeps: int, repeats: int,
         agree = max(agreements)
     else:
         gpu_med = float("nan"); speedup = float("nan"); agree = float("nan")
+
+    if tcpu_per_sweep:
+        tcpu_med = float(np.median(tcpu_per_sweep))
+        tcpu_min = float(np.min(tcpu_per_sweep))
+        tcpu_max = float(np.max(tcpu_per_sweep))
+        speed_np_vs_tcpu = cpu_med / tcpu_med if tcpu_med > 0 else float("nan")
+        speed_tcpu_vs_gpu = (tcpu_med / gpu_med
+                             if gpu_per_sweep and gpu_med > 0 else float("nan"))
+    else:
+        tcpu_med = tcpu_min = tcpu_max = float("nan")
+        speed_np_vs_tcpu = speed_tcpu_vs_gpu = float("nan")
 
     return {
         "radius": radius,
@@ -196,18 +229,24 @@ def run_radius(radius: float, alpha: float, sweeps: int, repeats: int,
         "max_abs_cpu_gpu_diff": agree,
         "mse_before": mse_before,
         "mse_after": mse_after,
+        # torch-CPU middle-baseline columns (NaN unless --also_torch_cpu on a CUDA run):
+        "torch_cpu_ms_per_sweep": tcpu_med,
+        "torch_cpu_ms_min": tcpu_min,
+        "torch_cpu_ms_max": tcpu_max,
+        "speedup_numpy_vs_torch_cpu": speed_np_vs_tcpu,
+        "speedup_torch_cpu_vs_gpu": speed_tcpu_vs_gpu,
     }
 
 
 def verify_coloring_equivariance(radius: float) -> dict:
-    """Check, exactly, which lattice colouring is rotation-equivariant.
+    """Check, exactly, which lattice coloring is rotation-equivariant.
 
     Corrects a subtle point: the conflict-free SCHEDULE uses the trihexagonal
-    six-colouring (proper, fine-grained), but only the underlying triangular-
-    lattice 3-colouring c3 = (a - b) mod 3 is equivariant under the order-6
+    six-coloring (proper, fine-grained), but only the underlying triangular-
+    lattice 3-coloring c3 = (a - b) mod 3 is equivariant under the order-6
     rotation R (R sends c3 to (-c3) mod 3, a permutation of the three classes).
-    The six-colouring refines c3 by the parity c2 = (a + b) mod 2, which does NOT
-    transform as a function of the colour pair under R, so the six-colouring is
+    The six-coloring refines c3 by the parity c2 = (a + b) mod 2, which does NOT
+    transform as a function of the color pair under R, so the six-coloring is
     proper but NOT rotation-equivariant. This block verifies both facts on the
     actual graph so the distinction is a checked artifact, not a claim.
 
@@ -224,7 +263,7 @@ def verify_coloring_equivariance(radius: float) -> dict:
 
     c3 = np.mod(a - b, 3)
     c6 = (2 * np.mod(a - b, 3) + np.mod(a + b, 2)).astype(np.int64)
-    # Rotate every vertex by +60 deg and read the colours of the rotated points.
+    # Rotate every vertex by +60 deg and read the colors of the rotated points.
     ra = np.empty_like(a)
     rb = np.empty_like(b)
     for i in range(a.shape[0]):
@@ -233,7 +272,7 @@ def verify_coloring_equivariance(radius: float) -> dict:
     c6_rot = (2 * np.mod(ra - rb, 3) + np.mod(ra + rb, 2)).astype(np.int64)
 
     def is_equivariant(orig: np.ndarray, rot: np.ndarray, k: int) -> bool:
-        # Equivariant iff each original colour maps to a SINGLE rotated colour
+        # Equivariant iff each original color maps to a SINGLE rotated color
         # (a fixed permutation of the classes).
         for c in range(k):
             vals = set(int(v) for v in rot[orig == c])
@@ -263,6 +302,11 @@ def main() -> None:
     ap.add_argument("--timing_repeats", type=int, default=10)
     ap.add_argument("--sessions", type=int, default=5)
     ap.add_argument("--noise_sigma", type=float, default=0.5)
+    ap.add_argument("--also_torch_cpu", action="store_true",
+                    help="on a CUDA run, ALSO time the identical torch kernel on "
+                         "device='cpu' (multi-threaded) as an honest middle "
+                         "baseline between single-threaded NumPy and the GPU "
+                         "(Mark 3, additive columns; off by default)")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--results_dir", type=str, default="results")
     args = ap.parse_args()
@@ -305,7 +349,8 @@ def main() -> None:
     proper_all = True
     for radius in args.radii:
         r = run_radius(radius, args.alpha, args.sweeps, args.timing_repeats,
-                       args.sessions, args.noise_sigma, args.seed, device)
+                       args.sessions, args.noise_sigma, args.seed, device,
+                       also_torch_cpu=args.also_torch_cpu)
         r["device"] = prov["device_used"]
         r["ran_on_cuda"] = prov["ran_on_cuda"]
         rows.append(r)
@@ -316,6 +361,11 @@ def main() -> None:
         print(f"{r['radius']:>5.0f} {r['num_vertices']:>8} {r['num_edges']:>9} "
               f"{r['cpu_ms_per_sweep']:>10.3f} {gpu:>10} {speed:>8} {agree:>10} "
               f"{r['mse_before']:>7.4f}->{r['mse_after']:.4f}")
+        if r["torch_cpu_ms_per_sweep"] == r["torch_cpu_ms_per_sweep"]:
+            print(f"      torch-CPU (multi-thread) middle baseline: "
+                  f"{r['torch_cpu_ms_per_sweep']:.3f} ms/sw  "
+                  f"[NumPy/torch-CPU = {r['speedup_numpy_vs_torch_cpu']:.2f}x, "
+                  f"torch-CPU/GPU = {r['speedup_torch_cpu_vs_gpu']:.2f}x]")
 
     print("-" * 86)
     if _HAVE_TORCH and prov["ran_on_cuda"]:
@@ -335,10 +385,10 @@ def main() -> None:
     print(f"\nWrote {csv_path}  (device + ran_on_cuda stamped on every row)")
     print(f"Wrote {os.path.join(args.results_dir, 'sim04_provenance.json')}")
 
-    # ---- Additive, CPU-only colouring-equivariance check --------------------
+    # ---- Additive, CPU-only coloring-equivariance check --------------------
     # Independent of the timed GPU benchmark above (sim04_sixcoloring.csv is
-    # unaffected). Records the checked fact that the 3-colouring is rotation-
-    # equivariant while the conflict-free six-colouring is proper but NOT.
+    # unaffected). Records the checked fact that the 3-coloring is rotation-
+    # equivariant while the conflict-free six-coloring is proper but NOT.
     eq_radius = max(args.radii) if args.radii else 20.0
     eq = verify_coloring_equivariance(eq_radius)
     print(f"\n[C5 colouring equivariance] verified on radius {eq['radius']:.0f}:")

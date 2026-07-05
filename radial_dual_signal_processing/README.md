@@ -4,8 +4,8 @@ Reproducible experiments for the paper *"Tri-Quarter Framework Method: Exact,
 Symmetry-Reduced, and Parallel Signal Processing on the Radial Dual Triangular
 Lattice."* This `radial_dual_signal_processing` subproject applies the Tri-Quarter
 Framework (TQF) hexagonal-lattice machinery — Eisenstein/A₂ basis, the order-6
-rotation, sector/shell/colour encodings, circle inversion, and the trihexagonal
-six-colouring — to digital communications. Every claim in the paper is backed by
+rotation, sector/shell/color encodings, circle inversion, and the trihexagonal
+six-coloring — to digital communications. Every claim in the paper is backed by
 a script here that prints a clean, copy-pasteable results table, and by an
 automated test that pins the underlying invariant.
 
@@ -59,13 +59,13 @@ claim borrows credit from another:
   separate, label-domain combinatorial enumerator additionally folds by the full
   C₆×Z₂ group (a storage/label reduction, **not** multiplied with the exact 6×
   Euclidean reduction — inversion is conformal, not isometric).
-- **C5 — Conflict-free parallel recovery.** The trihexagonal six-colouring
+- **C5 — Conflict-free parallel recovery.** The trihexagonal six-coloring
   schedules a lock-free parallel lattice-signal denoiser; on a CUDA GPU (RTX 4060)
   the speedup over a single-threaded CPU baseline widens with lattice size —
   median **~13.8× at ~290k vertices**, crossing unity at ~73k and sub-unity below
-  it — a systems result that bundles the colouring's parallelism with GPU hardware.
-  (The six-colouring is **proper** but **not** rotation-equivariant; only the
-  underlying triangular-lattice 3-colouring is order-6-equivariant. The schedule
+  it — a systems result that bundles the coloring's parallelism with GPU hardware.
+  (The six-coloring is **proper** but **not** rotation-equivariant; only the
+  underlying triangular-lattice 3-coloring is order-6-equivariant. The schedule
   needs only properness, so this distinction does not affect C5.)
 - **C6 — Equivariant / rotation-robust decode.** The decoder commutes with the
   order-6 rotation (verified exactly on a real hex constellation); a differential
@@ -92,13 +92,17 @@ claim borrows credit from another:
 does not change BER/SER versus ML — the wins are in **cost** (C1/C2/C4/C5/C7) and in
 **constellation geometry** (C3/C6/C7/C8), never in beating ML. The exact 6× rotation
 (Euclidean) reduction and the inversion (label-only) fold are kept distinct and are
-never multiplied into a combined figure.
+never multiplied into a combined figure. And where a structural choice *costs*
+error-rate performance, that cost is measured and **pre-registered** rather than
+hidden: Simulation 08 prices the radial-dual constellation against a matched hex-42
+baseline in AWGN (~+3.3 dB at SER 1e-2, predicted from first principles and reported
+honestly either way).
 
 ---
 
 ## 2. Key Features
 
-- **Exact integer/rational arithmetic** for all geometry (sector, shell, colour,
+- **Exact integer/rational arithmetic** for all geometry (sector, shell, color,
   inversion, orbit reduction) — no floating-point tolerance in the exactness claims.
 - **Apples-to-apples methodology**: matched M, matched average energy, common
   random numbers (identical noise/fading realizations across the compared schemes),
@@ -107,11 +111,11 @@ never multiplied into a combined figure.
   window and an exhaustive-ML fallback that guarantees exactness for every symbol.
 - **Three channel models**: complex AWGN, 2D impulsive, and flat Rayleigh fading
   (perfect CSI).
-- **GPU-ready** trihexagonal six-colouring denoiser with a verified-proper colouring
+- **GPU-ready** trihexagonal six-coloring denoiser with a verified-proper coloring
   and CPU/GPU agreement to machine precision (~1e-16); the GPU run
   self-certifies via a `RAN_ON_CUDA` verdict and a `sim04_provenance.json` sidecar.
-  (The colouring is proper but not rotation-equivariant; only the underlying
-  3-colouring is — a checked artifact, `sim04_coloring_equivariance.csv`.)
+  (The coloring is proper but not rotation-equivariant; only the underlying
+  3-coloring is — a checked artifact, `sim04_coloring_equivariance.csv`.)
 - **Phase-pair + inversion exactness layer**: a documented `phase_pair_sector`
   integer primitive, an exact label-space circle-inversion duality (involution +
   sector preservation, verified with zero violations), a radial-dual constellation
@@ -119,7 +123,7 @@ never multiplied into a combined figure.
   storing only the fundamental domain.
 - **Self-documenting runs**: every study writes a `simNN_provenance.json`
   (versions + hardware) for the paper's Methods table.
-- **Automated test suite** (129 tests) pinning the invariants behind every claim.
+- **Automated test suite** (173 tests) pinning the invariants behind every claim.
 - **One-command reproduction** (`run_all.ps1` on Windows, `run_all.sh` on
   Linux/macOS) and a CSV-driven figure generator.
 - **Cross-platform**: Windows | Linux | macOS.
@@ -191,7 +195,7 @@ python src\simulation_02_hex_vs_square_ber_packing_gain.py
 # Symmetry-reduced exact metric (C4)
 python src\simulation_03_symmetry_reduced_metric_exact.py
 
-# Six-colouring parallel denoiser, CPU vs GPU (C5)
+# Six-coloring parallel denoiser, CPU vs GPU (C5)
 python src\simulation_04_sixcoloring_denoise_gpu.py
 
 # Phase-rotation robustness, differential hex (C6) + C6×Z2 differential (C8)
@@ -202,6 +206,9 @@ python src\simulation_06_phasepair_inversion_folded_decoder.py
 
 # Radial-dual constellation structure (C7)
 python src\simulation_07_radial_dual_constellation.py
+
+# Radial-dual AWGN geometry price (C7 honesty)
+python src\simulation_08_radial_dual_geometry_price.py
 ```
 
 **Linux/macOS:**
@@ -218,9 +225,10 @@ python3 src/simulation_04_sixcoloring_denoise_gpu.py
 python3 src/simulation_05_phase_rotation_robustness.py
 python3 src/simulation_06_phasepair_inversion_folded_decoder.py
 python3 src/simulation_07_radial_dual_constellation.py
+python3 src/simulation_08_radial_dual_geometry_price.py
 ```
 
-To regenerate **everything** (all seven studies plus figures) in one step:
+To regenerate **everything** (all eight studies plus figures) in one step:
 
 ```bash
 ./run_all.sh
@@ -234,7 +242,7 @@ To regenerate **everything** (all seven studies plus figures) in one step:
 
 The shared signal-processing library: the Eisenstein/A₂ basis and exact
 integer/rational primitives (the documented `phase_pair_sector` integer primitive
-— with `sector_index` kept as a backward-compatible alias — shell, colour residue,
+— with `sector_index` kept as a backward-compatible alias — shell, color residue,
 circle inversion, order-6 orbits); hexagonal (filled and 6-fold-symmetric disk),
 square-QAM, and **radial-dual** (`build_radial_dual_constellation`) constellation
 builders, each normalized to unit average energy; the closed-form O(1) fast-path
@@ -249,14 +257,14 @@ intervals.
 
 ### Lattice Graph: `src/tqf_lattice_graph.py`
 
-The truncated triangular lattice graph and the trihexagonal six-colouring used by
-the parallel denoiser (Simulation 04). The colouring is `2·((a−b) mod 3) + ((a+b)
+The truncated triangular lattice graph and the trihexagonal six-coloring used by
+the parallel denoiser (Simulation 04). The coloring is `2·((a−b) mod 3) + ((a+b)
 mod 2)` and is verified proper against the edge set on construction. It is
 **proper but not rotation-equivariant**: only the underlying triangular-lattice
-3-colouring `(a−b) mod 3` (exposed as `three_coloring`) is order-6-equivariant
+3-coloring `(a−b) mod 3` (exposed as `three_coloring`) is order-6-equivariant
 (rotation permutes its three classes); the parity refinement that yields six
 classes breaks equivariance. The conflict-free schedule needs only properness. A
-colour-ordered relaxation sweep (`relaxation_sweep_numpy`) provides the CPU
+color-ordered relaxation sweep (`relaxation_sweep_numpy`) provides the CPU
 baseline that the GPU kernel mirrors.
 
 ---
@@ -312,9 +320,14 @@ for the C7 radial-dual object: the **Euclidean** squared-distance enumerator fol
 by rotation **exactly 6×** (and inversion is shown *not* to be an isometry, so it
 cannot fold a metric — the firewall), while a discrete inversion-invariant
 **label** enumerator folds by the full C₆×Z₂ group (rotation 6×, combined 10.5×).
-The two reductions are reported separately and never multiplied.
+The two reductions are reported separately and never multiplied. It also writes an
+exact constellation-geometry / fairness block (`sim03_constellation_geometry.csv`,
+`sim03_nn_prediction.csv`): d_min², nearest-neighbor multiplicity, PAPR, and Gray-map
+Hamming for hex and square QAM, plus a nearest-neighbor-approximation SER prediction
+that quantitatively accounts for the measured C3 gains (`--skip_geometry_block` to
+disable).
 
-### Simulation 04: Six-Colouring Parallel Denoiser, CPU vs GPU (C5)
+### Simulation 04: Six-Coloring Parallel Denoiser, CPU vs GPU (C5)
 
 ```bash
 # Example: scaling curve to ~290k vertices
@@ -322,7 +335,7 @@ python3 src/simulation_04_sixcoloring_denoise_gpu.py \
     50 100 150 200 250 300 --sweeps 50 --sessions 5 --timing_repeats 5
 ```
 
-Runs a conflict-free, colour-scheduled graph-diffusion denoiser on the lattice and
+Runs a conflict-free, color-scheduled graph-diffusion denoiser on the lattice and
 benchmarks CPU (single-threaded NumPy) vs GPU in one pass. Prints a decisive
 `RAN_ON_CUDA = True/False` verdict, stamps `device` + `ran_on_cuda` onto every CSV
 row, and writes `sim04_provenance.json` (torch/CUDA build, GPU name, compute
@@ -331,8 +344,8 @@ capability, memory) so the artifact self-certifies where it ran; a runtime
 precision) is the exactness check, verified properness the conflict-free check.
 Requires CUDA + torch for the headline speedup; without it the GPU column is a
 torch-on-CPU reference backend and `RAN_ON_CUDA = False`. It also writes a CPU-only
-`sim04_coloring_equivariance.csv` recording the checked fact that the 3-colouring
-is rotation-equivariant while the (proper) six-colouring is not.
+`sim04_coloring_equivariance.csv` recording the checked fact that the 3-coloring
+is rotation-equivariant while the (proper) six-coloring is not.
 
 ### Simulation 05: Phase-Rotation Robustness (C6) + C₆×Z₂ Differential (C8)
 
@@ -346,7 +359,9 @@ across a phase-offset sweep crossing 60° (`sim05_phase.csv`). It additionally
 verifies the **C8** combined rotation+inversion (C₆×Z₂) differential codec —
 recovering both the senary sector data and the inversion bit under all 12 static
 actions with zero violations (`sim05_t24_check.csv`). The C8 block uses an
-independent RNG (`--t24_seed`), so the two pre-existing CSVs are byte-identical.
+independent RNG (`--t24_seed`), so the two pre-existing CSVs are byte-identical. The
+senary constellation's Eb/N0 is defined per information bit (the true log₂6 ≈ 2.585
+bits/symbol).
 
 ### Simulation 06: Phase-Pair + Inversion-Folded Decoder (C1/C2 storage; C7)
 
@@ -361,7 +376,8 @@ bitwise-identical to exhaustive ML on a dense grid and a Monte-Carlo stream
 table vs phase-pair (rotation) fold (**6×**) vs phase-pair + inversion fold
 (**10.5×**) — as two separate factors (`sim06_folded_ablation.csv`), the fast-path
 coverage vs SNR (`sim06_coverage_vs_snr.csv`, intentionally moderate because the
-shell-complete object has radial gaps), and the exact involution/commutativity of
+shell-complete object has radial gaps; the object is label-free, so the axis is **Es/N0**
+— flags `--esn0` / `--esn0_grid`, with `--ebn0` aliases, and column `esn0_db`), and the exact involution/commutativity of
 the label-space inversion. Every Euclidean decision uses true distances; inversion
 folds storage only (the firewall).
 
@@ -377,6 +393,24 @@ Verifies the C7 object's exact structure: the integer-dual shell pairs
 and inversion pairing (a same-sector involution fixing the boundary shell pointwise;
 `sim07_structure.csv`). The object is invariant under the order-12 C₆×Z₂ group —
 the rotation×inversion subgroup of D₆ₕ, stated without over-claiming the full 24.
+
+### Simulation 08: Radial-Dual AWGN Geometry Price (C7 honesty)
+
+```bash
+python3 src/simulation_08_radial_dual_geometry_price.py --trials 100000
+```
+
+A **pre-registered null-to-negative** result that prices the C7 radial-dual
+constellation honestly. It measures the AWGN SER *cost* of the radial-dual object
+against a matched **filled hex-42** baseline at equal order (M=42) and equal average
+energy — common random numbers, paired **McNemar + Holm**, Clopper–Pearson bands —
+with **both** decoders asserted bitwise-identical to ML at every point (the C1 tie-in),
+so the gap is pure geometry. The nearest-neighbor approximation (the same model behind
+the C3 gains) predicts a price of **~+3.33 dB at SER 1e-2**; the pre-registered bracket
+**2.8–4.0 dB** is centered on that prediction and the measured price is reported against
+it either way (`sim08_ser.csv`, `sim08_gap_summary.csv`, `sim08_provenance.json`). The
+geometry that makes C7 elegant is *not* the geometry that minimises AWGN SER — and the
+cost is stated with a number rather than hidden.
 
 ### Tool: Figure Generator
 
@@ -404,6 +438,7 @@ python3 src/simulation_04_sixcoloring_denoise_gpu.py 50 100 150 200 250 300 --sw
 python3 src/simulation_05_phase_rotation_robustness.py
 python3 src/simulation_06_phasepair_inversion_folded_decoder.py
 python3 src/simulation_07_radial_dual_constellation.py
+python3 src/simulation_08_radial_dual_geometry_price.py
 python3 src/make_figures.py --format pdf
 ```
 
@@ -428,19 +463,21 @@ and prints a console summary; `run_all.ps1` also tees everything to
 ### Testing
 
 The `tests/` suite pins the invariant behind each claim (exact decode == ML, unit
-energy, proper six-colouring, exact orbit reduction, decoder equivariance, the
+energy, proper six-coloring, exact orbit reduction, decoder equivariance, the
 differential round-trip, the C3 packing-gain helpers — dB gain with CI band and the
-impulsive floor — and the run-provenance metadata), plus the Mark 2 additions: the
-phase-pair primitive and aliases, the exact inversion involution/commutativity, the
-C7 radial-dual structure, the folded decoder's bitwise-ML equivalence and storage
-folds, the C₆×Z₂ (C8) differential invariance, and the corrected colouring
-equivariance. It runs in a few seconds and needs no GPU (PyTorch is optional). For
+impulsive floor — and the run-provenance metadata), the phase-pair primitive and
+aliases, the exact inversion involution/commutativity, the C7 radial-dual structure,
+the folded decoder's bitwise-ML equivalence and storage folds, the C₆×Z₂ (C8)
+differential invariance, the corrected coloring equivariance, and the exact
+constellation-geometry / geometry-price helpers (Study 3 / Study 8) together with the
+fractional-bits Eb/N0 mapping and the vectorized folded decoder. It runs in a few
+seconds and needs no GPU (PyTorch is optional). For
 the full testing documentation — coverage breakdown, how to interpret results,
 troubleshooting, and a `pytest` command reference — see
 [`tests/TESTS_README.md`](tests/TESTS_README.md).
 
 ```bash
-# Run the full suite (129 tests)
+# Run the full suite (173 tests)
 python -m pytest tests/ -q
 
 # With coverage
@@ -453,22 +490,25 @@ python -m pytest tests/ --cov=tqf_hex_signal --cov=tqf_lattice_graph -q
 radial_dual_signal_processing/
 ├── src/                                                  # Source code directory
 │   ├── tqf_hex_signal.py                                  # Core signal library
-│   ├── tqf_lattice_graph.py                               # Lattice graph + six-colouring
+│   ├── tqf_lattice_graph.py                               # Lattice graph + six-coloring
 │   ├── simulation_01_hex_demod_correctness_and_latency.py # C1, C2
 │   ├── simulation_02_hex_vs_square_ber_packing_gain.py    # C3
 │   ├── simulation_03_symmetry_reduced_metric_exact.py     # C4
 │   ├── simulation_04_sixcoloring_denoise_gpu.py           # C5
-│   ├── simulation_05_phase_rotation_robustness.py         # C6
+│   ├── simulation_05_phase_rotation_robustness.py         # C6, C8
 │   ├── simulation_06_phasepair_inversion_folded_decoder.py # C1/C2 storage, C7
 │   ├── simulation_07_radial_dual_constellation.py         # C7 structure
+│   ├── simulation_08_radial_dual_geometry_price.py        # C7 honesty (geometry price)
 │   └── make_figures.py                                    # Figure generator
 ├── tests/                                                # Automated test suite
 │   ├── conftest.py                                        # Puts src/ on the path
 │   ├── test_tqf_hex_signal.py                             # C1 + core primitives
-│   ├── test_tqf_lattice_graph.py                          # C5 graph + colouring
+│   ├── test_tqf_lattice_graph.py                          # C5 graph + coloring
 │   ├── test_symmetry_and_equivariance.py                  # C4 + C6
 │   ├── test_packing_gain.py                               # C3 gain helpers (sim02)
 │   ├── test_phasepair_inversion.py                        # C7 + C8 + folded decoder
+│   ├── test_constellation_geometry.py                     # C3/C7 exact geometry + price
+│   ├── test_noise_and_decoding.py                         # C1/C3/C6 noise mapping + folded decoder
 │   └── TESTS_README.md                                    # Testing documentation
 ├── run_all.ps1                             # One-command full reproduction (Windows)
 ├── run_all.sh                              # One-command full reproduction (Linux/macOS)
@@ -548,8 +588,8 @@ See [`LICENSE`](LICENSE) file for complete license text.
 
 **`QED`**
 
-**Last Updated:** June 23, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** July 4, 2026<br>
+**Version:** 1.2.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

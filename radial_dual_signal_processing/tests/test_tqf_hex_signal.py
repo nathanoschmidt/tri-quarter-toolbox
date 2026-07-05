@@ -1,7 +1,4 @@
-"""
-test_tqf_hex_signal.py - Core Hexagonal Signal Library Tests (Claim C1, C3 Preconditions)
-
-Tests for tqf_hex_signal.py -- the core hexagonal signal library.
+"""Tests for tqf_hex_signal.py -- the core hexagonal signal library.
 
 Covers the foundations of claims C1 (exact ML-equivalent demodulation) and C3's
 fairness preconditions (unit-energy normalization), plus the exact integer/
@@ -10,8 +7,8 @@ rational primitives the framework relies on.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 import math
 

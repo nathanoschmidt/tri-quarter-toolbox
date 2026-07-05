@@ -46,8 +46,13 @@ Output: the per-channel tables and the packing-gain summary.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
+
+Reproducibility invariant: this script's RNG consumption order is load-bearing.
+The committed sim02_*.csv files reproduce byte-identically under seed 42 only if
+no computation, loop order, or random draw is changed; treat the draw sequence
+as fixed when editing.
 """
 
 from __future__ import annotations

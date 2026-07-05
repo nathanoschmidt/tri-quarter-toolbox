@@ -1,7 +1,4 @@
-"""
-test_packing_gain.py - Packing-Gain Readout Tests (Claim C3, Simulation 02)
-
-Tests for the packing-gain readout helpers in Simulation 02 (claim C3).
+"""Tests for the packing-gain readout helpers in Simulation 02 (claim C3).
 
 These exercise the shipped simulation helpers directly (importing the simulation
 module, whose ``main()`` is guarded), so the tests validate the actual code that
@@ -15,8 +12,8 @@ and the ``sq_`` counterparts).
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 import numpy as np
 import pytest

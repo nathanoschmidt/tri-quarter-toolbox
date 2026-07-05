@@ -22,11 +22,23 @@ C2 (Constant-time decode): the closed-form decoder is O(1) per symbol on its
 
 Output: the two PASS/FAIL banners and the latency table.
 
+Timing methodology
+------------------
+* TQF and ML repeats are INTERLEAVED (A/B, A/B, ...) on the same batch rather
+  than timing all-TQF-then-all-ML, so slow environmental drift (thermal/boost
+  states, background load) cannot bias one column.
+* Every timing is reported as median [min, max] over the repeats; the min/max
+  dispersion columns are persisted in the CSV.
+* The TQF per-symbol cost is near-flat in M; read its shape against the
+  [min, max] dispersion rather than as a trend. The hardware-independent C2
+  claim is the growth of the ML/TQF speedup with M, not the fine structure of
+  the TQF column.
+
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 
 from __future__ import annotations
@@ -77,30 +89,50 @@ def verify_monte_carlo(m: int, trials: int, ebn0_db: float,
     return int(np.sum(dec_fast != dec_ml)), float(np.mean(fast_mask))
 
 
-def _median_ns_per_symbol(decode_call, n_symbols: int, repeats: int) -> float:
-    """Time a decode call over a fixed batch and return median ns per symbol."""
-    decode_call()  # warm-up (JIT-free here, but primes caches/allocations)
-    samples = []
-    for _ in range(repeats):
-        t0 = time.perf_counter()
-        decode_call()
-        t1 = time.perf_counter()
-        samples.append((t1 - t0) / n_symbols * 1e9)
-    return float(np.median(samples))
+def _stats_ns(samples: list[float]) -> tuple[float, float, float]:
+    """(median, min, max) of a per-symbol nanosecond sample list."""
+    arr = np.asarray(samples, dtype=float)
+    return float(np.median(arr)), float(np.min(arr)), float(np.max(arr))
 
 
 def measure_latency(m: int, batch: int, repeats: int, ebn0_db: float,
-                    rng: np.random.Generator) -> tuple[float, float, float]:
-    """Return (ns/symbol TQF, ns/symbol ML, fast-path fraction) for one batch."""
+                    rng: np.random.Generator) -> dict:
+    """Interleaved (A/B) timing of the TQF and ML decoders on one shared batch.
+
+    Both decoders are warmed once, then each repeat times TQF immediately
+    followed by ML on the SAME received batch, so any slow environmental drift
+    hits both columns equally instead of biasing whichever ran second. Returns
+    median/min/max ns-per-symbol for each decoder plus the fast-path fraction.
+    """
     con = t.build_filled_constellation(m)
     ctx = t.make_hex_decode_context(con)
     tx = rng.integers(0, con.size, batch)
     rx = t.awgn(con.points_unit[tx], ebn0_db, con.bits_per_symbol, rng)
     _idx, fast_mask = t.decode_hex_fast(rx, ctx)
     fast_frac = float(np.mean(fast_mask))
-    ns_tqf = _median_ns_per_symbol(lambda: t.decode_hex_fast(rx, ctx), batch, repeats)
-    ns_ml = _median_ns_per_symbol(lambda: t.decode_ml(rx, con.points_unit), batch, repeats)
-    return ns_tqf, ns_ml, fast_frac
+
+    # warm-up both paths (primes caches/allocations; there is no JIT here)
+    t.decode_hex_fast(rx, ctx)
+    t.decode_ml(rx, con.points_unit)
+
+    tqf_ns: list[float] = []
+    ml_ns: list[float] = []
+    for _ in range(repeats):                       # interleaved A/B repeats
+        t0 = time.perf_counter()
+        t.decode_hex_fast(rx, ctx)
+        t1 = time.perf_counter()
+        t.decode_ml(rx, con.points_unit)
+        t2 = time.perf_counter()
+        tqf_ns.append((t1 - t0) / batch * 1e9)
+        ml_ns.append((t2 - t1) / batch * 1e9)
+
+    tqf_med, tqf_min, tqf_max = _stats_ns(tqf_ns)
+    ml_med, ml_min, ml_max = _stats_ns(ml_ns)
+    return {
+        "ns_per_symbol_tqf": tqf_med, "tqf_ns_min": tqf_min, "tqf_ns_max": tqf_max,
+        "ns_per_symbol_ml": ml_med, "ml_ns_min": ml_min, "ml_ns_max": ml_max,
+        "fast_path_fraction": fast_frac,
+    }
 
 
 def fast_path_fraction(m: int, trials: int, ebn0_db: float,
@@ -183,28 +215,42 @@ def main() -> None:
 
     # ---- C2 (throughput): amortized per-symbol decode time vs M -----------
     print(f"\n[C2 throughput] Amortized per-symbol decode time "
-          f"(median over {args.timing_repeats} repeats, batch={args.latency_batch}, "
-          f"Eb/N0={args.ebn0} dB)")
+          f"(median [min, max] over {args.timing_repeats} INTERLEAVED A/B repeats, "
+          f"batch={args.latency_batch}, Eb/N0={args.ebn0} dB)")
     print("  NOTE: this is batched-NumPy throughput per symbol, not single-symbol "
           "latency.")
-    print(f"{'M':>5} {'TQF ns/sym':>12} {'ML ns/sym':>12} {'speedup':>9} {'fast%':>8}")
+    print(f"{'M':>5} {'TQF ns/sym [min, max]':>28} {'ML ns/sym [min, max]':>28} "
+          f"{'speedup':>9} {'fast%':>8}")
     rows: List[tuple] = []
     speedups = []
+    tqf_meds = []
     for m in args.M:
-        ns_tqf, ns_ml, fast_frac = measure_latency(m, args.latency_batch,
-                                                    args.timing_repeats, args.ebn0, rng)
-        speedup = ns_ml / ns_tqf if ns_tqf > 0 else float("nan")
+        r = measure_latency(m, args.latency_batch, args.timing_repeats,
+                            args.ebn0, rng)
+        speedup = (r["ns_per_symbol_ml"] / r["ns_per_symbol_tqf"]
+                   if r["ns_per_symbol_tqf"] > 0 else float("nan"))
         speedups.append(speedup)
-        rows.append((m, ns_tqf, ns_ml, speedup, fast_frac, args.ebn0))
-        print(f"{m:>5} {ns_tqf:>12.2f} {ns_ml:>12.2f} {speedup:>8.2f}x "
-              f"{fast_frac * 100:>7.2f}%")
+        tqf_meds.append(r["ns_per_symbol_tqf"])
+        rows.append((m, r["ns_per_symbol_tqf"], r["ns_per_symbol_ml"], speedup,
+                     r["fast_path_fraction"], args.ebn0,
+                     r["tqf_ns_min"], r["tqf_ns_max"],
+                     r["ml_ns_min"], r["ml_ns_max"]))
+        print(f"{m:>5} {r['ns_per_symbol_tqf']:>10.2f} "
+              f"[{r['tqf_ns_min']:>8.2f}, {r['tqf_ns_max']:>8.2f}] "
+              f"{r['ns_per_symbol_ml']:>10.2f} "
+              f"[{r['ml_ns_min']:>8.2f}, {r['ml_ns_max']:>8.2f}] "
+              f"{speedup:>8.2f}x {r['fast_path_fraction'] * 100:>7.2f}%")
     monotonic = all(speedups[i] <= speedups[i + 1] + 1e-9
                     for i in range(len(speedups) - 1))
     crossover = next((m for m, s in zip(args.M, speedups) if s >= 1.0), None)
-    print("\n  C2 NOTE: ML cost ~ O(M). TQF is O(1) on the fast path, but its")
-    print("  measured cost is NOT strictly flat in M: the O(M) exterior fallback")
-    print("  and a larger occupancy grid (cache pressure) make it drift upward.")
-    print("  Worst case is O(M); typical case O(1) when fast-path coverage ~ 1.")
+    tqf_band = (min(tqf_meds), max(tqf_meds)) if tqf_meds else (0.0, 0.0)
+    print("\n  C2 NOTE: ML cost ~ O(M); worst case for TQF is O(M) (the exterior")
+    print("  fallback), typical case O(1) when fast-path coverage ~ 1. The measured")
+    print(f"  TQF median sits in a {tqf_band[0]:.0f}-{tqf_band[1]:.0f} ns/sym band "
+          f"across M -- read its shape")
+    print("  against the [min, max] dispersion above rather than as a trend; the")
+    print("  hardware-independent C2 claim is the speedup's growth with M, not the")
+    print("  fine structure of the near-flat TQF column.")
     print(f"  Speedup monotonic in M: {monotonic}; TQF first wins (speedup>=1) at "
           f"M={crossover} (slower below that).")
 
@@ -212,7 +258,8 @@ def main() -> None:
     with open(csv_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["M", "ns_per_symbol_tqf", "ns_per_symbol_ml", "speedup",
-                    "fast_path_fraction", "ebn0_db"])
+                    "fast_path_fraction", "ebn0_db",
+                    "tqf_ns_min", "tqf_ns_max", "ml_ns_min", "ml_ns_max"])
         w.writerows(rows)
     print(f"\nWrote {csv_path}")
     print("=" * 72)

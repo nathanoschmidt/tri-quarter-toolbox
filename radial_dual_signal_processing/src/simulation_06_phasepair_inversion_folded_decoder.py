@@ -37,11 +37,23 @@ Output: the two PASS/FAIL banners (exactness, internal consistency),
 the storage-ablation table, the coverage-vs-SNR table, and the commutativity/
 involution verification line.
 
+SNR axis and throughput notes
+-----------------------------
+* The radial-dual constellation carries no bit labeling (bits_per_symbol = 0),
+  so the SNR knob parameterizes Es/N0 directly. The flags are --esn0 /
+  --esn0_grid (--ebn0 / --ebn0_grid are accepted as aliases) and the coverage
+  CSV column is esn0_db. (With a log2(42)-bit labeling attached,
+  Eb/N0 = Es/N0 - 10*log10(log2 42) ~= Es/N0 - 7.29 dB.)
+* The folded decoder uses a vectorized (np.isin) membership test, so the
+  folded-vs-ML throughput comparison is apples-to-apples (both decoders are
+  fully vectorized NumPy). That timing is corroboration only; the exactness,
+  fold, and violation results are this object's actual value.
+
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 
 from __future__ import annotations
@@ -76,13 +88,17 @@ def verify_dense_grid(con: t.Constellation, ctx_pp, ctx_ppi,
 
 
 def verify_monte_carlo(con: t.Constellation, ctx_pp, ctx_ppi,
-                       trials: int, ebn0_db: float,
+                       trials: int, esn0_db: float,
                        rng: np.random.Generator) -> Tuple[int, int, float]:
     """Folded decode == exhaustive ML on an AWGN stream. Returns
-    (mismatches_pp, mismatches_ppi, fast_path_fraction_ppi)."""
+    (mismatches_pp, mismatches_ppi, fast_path_fraction_ppi).
+
+    ``esn0_db`` is Es/N0: with bits_per_symbol = 0 the channel helper's Eb/N0
+    argument clamps to 1 bit and therefore parameterizes Es/N0 directly.
+    """
     m = con.size
     tx = rng.integers(0, m, trials)
-    rx = t.awgn(con.points_unit[tx], ebn0_db, con.bits_per_symbol, rng)
+    rx = t.awgn(con.points_unit[tx], esn0_db, con.bits_per_symbol, rng)
     ml = t.decode_ml(rx, con.points_unit)
     idx_pp, _ = t.decode_hex_folded(rx, ctx_pp)
     idx_ppi, fast = t.decode_hex_folded(rx, ctx_ppi)
@@ -92,12 +108,12 @@ def verify_monte_carlo(con: t.Constellation, ctx_pp, ctx_ppi,
 
 
 def fast_path_fraction(con: t.Constellation, ctx, trials: int,
-                       ebn0_db: float, rng: np.random.Generator) -> float:
+                       esn0_db: float, rng: np.random.Generator) -> float:
     """Fraction of symbols whose nearest lattice point is a constellation point
-    (the O(1) fast path) at a given Eb/N0."""
+    (the O(1) fast path) at a given Es/N0 (bits = 0 -> the SNR knob is Es/N0)."""
     m = con.size
     tx = rng.integers(0, m, trials)
-    rx = t.awgn(con.points_unit[tx], ebn0_db, con.bits_per_symbol, rng)
+    rx = t.awgn(con.points_unit[tx], esn0_db, con.bits_per_symbol, rng)
     _idx, fast = t.decode_hex_folded(rx, ctx)
     return float(np.mean(fast))
 
@@ -134,11 +150,15 @@ def main() -> None:
     ap.add_argument("--trials", type=int, default=200_000)
     ap.add_argument("--grid_extent", type=float, default=2.5)
     ap.add_argument("--grid_step", type=float, default=0.01)
-    ap.add_argument("--ebn0", type=float, default=12.0,
-                    help="Eb/N0 (dB) for the correctness Monte-Carlo stream")
-    ap.add_argument("--ebn0_grid", type=float, nargs="+",
-                    default=[0.0, 4.0, 8.0, 12.0, 16.0, 20.0],
-                    help="Eb/N0 grid (dB) for the fast-path coverage sweep")
+    ap.add_argument("--esn0", "--ebn0", dest="esn0", type=float, default=12.0,
+                    help="Es/N0 (dB) for the correctness Monte-Carlo stream and "
+                         "the throughput batch. (The constellation carries no bit "
+                         "labeling, so the SNR knob is Es/N0; --ebn0 is kept as a "
+                         "deprecated alias with identical meaning.)")
+    ap.add_argument("--esn0_grid", "--ebn0_grid", dest="esn0_grid", type=float,
+                    nargs="+", default=[0.0, 4.0, 8.0, 12.0, 16.0, 20.0],
+                    help="Es/N0 grid (dB) for the fast-path coverage sweep "
+                         "(--ebn0_grid kept as a deprecated alias)")
     ap.add_argument("--throughput_batch", type=int, default=200_000)
     ap.add_argument("--timing_repeats", type=int, default=9)
     ap.add_argument("--coord_radius", type=int, default=8,
@@ -180,12 +200,12 @@ def main() -> None:
         con, ctx_pp, ctx_ppi, args.grid_extent, args.grid_step)
     rng = np.random.default_rng(args.seed)
     mm_pp_mc, mm_ppi_mc, fast_mc = verify_monte_carlo(
-        con, ctx_pp, ctx_ppi, args.trials, args.ebn0, rng)
+        con, ctx_pp, ctx_ppi, args.trials, args.esn0, rng)
     exact_pass = (mm_pp_g == 0 and mm_ppi_g == 0 and mm_pp_mc == 0 and mm_ppi_mc == 0)
     print(f"\n[C1 exactness] folded decode vs exhaustive ML (zero mismatches expected):")
     print(f"   dense grid ({n_grid} pts): phase-pair fold={mm_pp_g} mismatches, "
           f"phase-pair+inversion fold={mm_ppi_g} mismatches")
-    print(f"   Monte-Carlo ({args.trials} sym @ {args.ebn0} dB): "
+    print(f"   Monte-Carlo ({args.trials} sym @ Es/N0 {args.esn0} dB): "
           f"phase-pair fold={mm_pp_mc}, phase-pair+inversion fold={mm_ppi_mc}")
     print(f"   -> {'PASS' if exact_pass else 'FAIL'} "
           f"(folding preserves bitwise-ML; inversion folds storage only)")
@@ -219,27 +239,34 @@ def main() -> None:
     print("    inversion fold are distinct and are not multiplied into one number.]")
 
     # ---- C2 coverage: O(1) fast-path fraction vs SNR ------------------------
-    print(f"\n[C2 coverage] fast-path fraction vs Eb/N0 (M={con.size}); "
+    print(f"\n[C2 coverage] fast-path fraction vs Es/N0 (M={con.size}); "
           f"moderate by design (shell-complete -> radial gaps):")
     coverage_rows: List[tuple] = []
     rng_cov = np.random.default_rng(args.seed + 1)
-    print(f"   {'Eb/N0(dB)':>9} {'fast-path':>10} {'fallback':>9}")
-    for ebn0 in args.ebn0_grid:
-        frac = fast_path_fraction(con, ctx_ppi, args.trials, ebn0, rng_cov)
-        coverage_rows.append((con.size, ebn0, frac, 1.0 - frac))
-        print(f"   {ebn0:>9.1f} {frac:>9.3f} {1.0 - frac:>9.3f}")
+    print(f"   {'Es/N0(dB)':>9} {'fast-path':>10} {'fallback':>9}")
+    for esn0 in args.esn0_grid:
+        frac = fast_path_fraction(con, ctx_ppi, args.trials, esn0, rng_cov)
+        coverage_rows.append((con.size, esn0, frac, 1.0 - frac))
+        print(f"   {esn0:>9.1f} {frac:>9.3f} {1.0 - frac:>9.3f}")
+    print("   [Axis note: bits_per_symbol = 0, so this is Es/N0 exactly; with a"
+          " log2(42)-bit")
+    print("    labeling attached it would read Eb/N0 = Es/N0 - 7.29 dB. Same"
+          " seeds/streams as")
+    print("    Mark 2 -- the fractions are byte-identical; only the axis name is"
+          " corrected.]")
 
     # ---- Throughput (corroboration only; NOT the headline for this object) --
     rng_tp = np.random.default_rng(args.seed + 2)
     tx = rng_tp.integers(0, con.size, args.throughput_batch)
-    rx = t.awgn(con.points_unit[tx], args.ebn0, con.bits_per_symbol, rng_tp)
+    rx = t.awgn(con.points_unit[tx], args.esn0, con.bits_per_symbol, rng_tp)
     ns_folded = _median_ns_per_symbol(
         lambda: t.decode_hex_folded(rx, ctx_ppi), args.throughput_batch, args.timing_repeats)
     ns_ml = _median_ns_per_symbol(
         lambda: t.decode_ml(rx, con.points_unit), args.throughput_batch, args.timing_repeats)
     speedup = ns_ml / ns_folded if ns_folded > 0 else float("nan")
-    print(f"\n[throughput] batched per-symbol decode @ {args.ebn0} dB "
-          f"(corroboration, includes fold/mapping overhead):")
+    print(f"\n[throughput] batched per-symbol decode @ Es/N0 {args.esn0} dB "
+          f"(corroboration, includes fold/mapping overhead; Mark 3: both "
+          f"decoders fully vectorized):")
     print(f"   folded={ns_folded:.1f} ns/sym, exhaustive ML={ns_ml:.1f} ns/sym, "
           f"speedup={speedup:.2f}x")
     print("   NOTE: this object's value is EXACT ML at folded storage, not latency;")
@@ -275,7 +302,7 @@ def main() -> None:
     coverage_path = os.path.join(args.results_dir, "sim06_coverage_vs_snr.csv")
     with open(coverage_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["M", "ebn0_db", "fast_path_fraction", "fallback_fraction"])
+        w.writerow(["M", "esn0_db", "fast_path_fraction", "fallback_fraction"])
         w.writerows(coverage_rows)
 
     summary_path = os.path.join(args.results_dir, "sim06_folded_summary.csv")

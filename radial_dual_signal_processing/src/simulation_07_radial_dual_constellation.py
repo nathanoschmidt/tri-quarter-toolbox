@@ -28,14 +28,14 @@ tolerance). Inversion is a label/structure operation here -- a Z2 involution on
 shells and a same-sector point permutation -- never a Euclidean operation (the
 firewall: iota_r is conformal, not isometric).
 
-Output: the structure PASS/FAIL banner, the integer-dual shell-pair
+What to paste back: the structure PASS/FAIL banner, the integer-dual shell-pair
 table, and the per-shell occupancy table.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 
 from __future__ import annotations

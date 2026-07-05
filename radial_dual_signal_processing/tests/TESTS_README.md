@@ -5,14 +5,14 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Date:** June 27, 2026<br>
+**Version:** 1.2.0<br>
+**Date:** July 4, 2026<br>
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![NumPy](https://img.shields.io/badge/NumPy-1.24+-013243.svg)](https://numpy.org/)
 [![SciPy](https://img.shields.io/badge/SciPy-1.10+-8caae6.svg)](https://scipy.org/)
 [![pytest](https://img.shields.io/badge/pytest-compatible-green.svg)](https://pytest.org/)
-[![Coverage](https://img.shields.io/badge/core--library%20coverage-81%25-green.svg)](https://coverage.readthedocs.io/)
+[![Coverage](https://img.shields.io/badge/core--library%20coverage-85%25-green.svg)](https://coverage.readthedocs.io/)
 
 ---
 
@@ -39,7 +39,7 @@ the subproject's eight falsifiable claims (C1-C8), so that the experiments and t
 paper rest on continuously-verified foundations rather than one-off runs.
 
 Key Features:
-- **129 total test cases** across 5 test files
+- **173 total test cases** across 7 test files
 - **~5 second** full test suite execution time
 - **No GPU required** (CPU-only; PyTorch not needed for the suite)
 - Shared path configuration (`conftest.py`) so tests import `src/` modules directly
@@ -49,6 +49,9 @@ Key Features:
 - Statistical-tooling checks (exact Clopper-Pearson intervals)
 - C3 packing-gain helpers: log-linear SER interpolation, CI-bounded dB gain, impulsive floor
 - Phase-pair + inversion exactness: involution, sector-preserving commutativity, folded ML
+- Exact constellation geometry + fairness: d_min^2, nearest-neighbor multiplicity, PAPR, Gray-Hamming, and the nearest-neighbor SER prediction (Study 3)
+- Radial-dual geometry price (C7 honesty): the pre-registered AWGN cost of the radial-dual constellation vs a matched hex-42 baseline (Study 8)
+- Fractional-bits Eb/N0 -> noise mapping (log2(6) senary) and the vectorized folded-decoder membership vs a reference loop
 - Reproducibility metadata checks (provenance dict shape; ran_on_cuda honesty; JSON sidecar)
 - Claim-mapped coverage: every test traces to a specific claim (C1-C8)
 
@@ -99,10 +102,12 @@ The testing framework is built on five pillars:
 tests/
 |-- conftest.py                        # Puts src/ on the import path (no fixtures needed)
 |-- test_tqf_hex_signal.py             # Core library: C1 + primitives + channels + differential
-|-- test_tqf_lattice_graph.py          # Lattice graph + trihexagonal six-colouring (C5)
+|-- test_tqf_lattice_graph.py          # Lattice graph + trihexagonal six-coloring (C5)
 |-- test_symmetry_and_equivariance.py  # Exact orbit reduction (C4) + decoder equivariance (C6)
 |-- test_packing_gain.py               # C3 packing-gain helpers: dB gain + CI band, impulsive floor, McNemar + Holm significance
 |-- test_phasepair_inversion.py        # Phase-pair primitive, exact inversion duality, folded decoder, C7 structure, C6xZ2 (C8) codec
+|-- test_constellation_geometry.py     # Any-size builder + exact Study 3/Study 8 geometry + NN price (C3/C7)
+|-- test_noise_and_decoding.py         # Fractional-bits Eb/N0 mapping + vectorized folded decoder + phase-offset (C1/C3/C6)
 `-- TESTS_README.md                    # This file
 ```
 
@@ -203,21 +208,23 @@ python -m pytest tests/ --cov=tqf_hex_signal --cov=tqf_lattice_graph --cov-repor
 
 ### Overall
 
-- **Total test cases:** 129
-- **Test files:** 5 (+ `conftest.py`)
+- **Total test cases:** 173
+- **Test files:** 7 (+ `conftest.py`)
 - **Full suite execution time:** ~5 seconds (one provenance test triggers a one-time torch import, ~1 s, only if PyTorch is installed)
 - **GPU required:** No
-- **Core-library code coverage:** ~81%
+- **Core-library code coverage:** ~85%
 
 ### Test Suite Breakdown by File
 
 | Test File | Test Cases | Status | Focus Area |
 |-----------|------------|--------|------------|
 | test_tqf_hex_signal.py | 46 | All passing | C1 exact decode vs ML, A2 nearest-point vs brute force, unit-energy normalization, sector/rotation primitives, channel + Eb/N0 mapping, Clopper-Pearson intervals, differential hex, and provenance/reproducibility metadata |
-| test_tqf_lattice_graph.py | 18 | All passing | C5 lattice graph construction, trihexagonal six-colouring properness, colour-class partition, colour-ordered relaxation sweep |
+| test_tqf_lattice_graph.py | 18 | All passing | C5 lattice graph construction, trihexagonal six-coloring properness, color-class partition, color-ordered relaxation sweep |
 | test_symmetry_and_equivariance.py | 15 | All passing | C4 exact orbit reduction (`==`, exact 6x op-count, d_min), C6 decoder equivariance on a real hex constellation + differential round-trip |
 | test_packing_gain.py | 19 | All passing | C3 packing-gain helpers (sim02): log-linear SER interpolation, CI-bounded dB gain + `ci_resolved` flag, impulsive floor `~ p*(1-1/M)` and recovered p; exact McNemar p-value + Holm-Bonferroni correction (the paired per-point significance helpers), and `run_channel` emitting the paired McNemar/Holm columns + `sim02_significance_summary.csv` |
-| test_phasepair_inversion.py | 31 | All passing | Phase-pair primitive + aliases + rotation increment; exact label-space inversion (involution + sector-preserving commutativity, Prop. 4.15); C7 radial-dual structure (phase-pair-uniform, inversion-paired, integer-dual shell pairs, boundary fixed); folded decoder bitwise-ML on grid + Monte-Carlo and the 6x / 10.5x storage folds; inversion-is-not-isometric firewall; C6xZ2 (C8) differential invariance over all 12 actions; corrected colouring equivariance (3-colouring yes, six-colouring no) |
+| test_phasepair_inversion.py | 31 | All passing | Phase-pair primitive + aliases + rotation increment; exact label-space inversion (involution + sector-preserving commutativity, Prop. 4.15); C7 radial-dual structure (phase-pair-uniform, inversion-paired, integer-dual shell pairs, boundary fixed); folded decoder bitwise-ML on grid + Monte-Carlo and the 6x / 10.5x storage folds; inversion-is-not-isometric firewall; C6xZ2 (C8) differential invariance over all 12 actions; corrected coloring equivariance (3-coloring yes, six-coloring no) |
+| test_constellation_geometry.py | 15 | All passing | Constellation construction + exact geometry: the any-size filled builder vs the power-of-two builder and the hex-42 baseline properties; Study 3 exact d_min^2 / nearest-neighbor multiplicity / PAPR / Gray-Hamming for hex and square QAM and the nearest-neighbor gain prediction; Study 8 exact radial-dual/hex-42 geometry, common-random-number pairing, exact-decoder tie-in, and the nearest-neighbor price bracket |
+| test_noise_and_decoding.py | 29 | All passing | Signal-level primitives: the fractional-bits Eb/N0 -> sigma^2 mapping (log2(6) senary) with the integer-bits regression and the label-free Es/N0 clamp; the vectorized folded-decoder membership vs a reference loop and vs exhaustive ML under both folds, plus the derived stored-shell array; a phase-offset sanity check (coherent slips at 60 deg, differential returns to floor) |
 
 ### Claim Coverage (what each claim's invariant is pinned by)
 
@@ -227,19 +234,27 @@ python -m pytest tests/ --cov=tqf_hex_signal --cov=tqf_lattice_graph --cov-repor
 | **C2** | Fast-path coverage rises with SNR (the precondition for the O(1) fast path); folded label-table storage shrinks | `test_fast_path_fraction_increases_with_snr`, `test_folded_decoder_storage_reduction_factors` |
 | **C3** | Matched unit average energy (apples-to-apples precondition) and correct Eb/N0 -> sigma^2 mapping; plus the dB packing-gain readout: log-linear SER interpolation, a CI-bounded gain with an honest `ci_resolved` flag, and the impulsive floor `~ p*(1-1/M)` | `test_filled_constellation_unit_energy`, `test_square_qam_unit_energy`, `test_noise_sigma_mapping`, `test_awgn_empirical_variance_matches_mapping`, `test_gain_ci_band_brackets_the_point_estimate`, `test_gain_ci_resolved_true_when_bands_disjoint`, `test_impulsive_floor_matches_formula_and_recovers_p` |
 | **C4** | Orbit-reduced enumerator equals the full enumerator exactly; exact 6x operation-count reduction; d_min^2 = 1; on the C7 object the Euclidean enumerator folds exactly 6x while a label enumerator folds by the full C6xZ2 group (kept separate) | `test_orbit_reduced_enumerator_equals_full`, `test_exact_six_times_operation_reduction`, `test_disk_min_distance_squared_is_one`, `test_euclidean_enumerator_folds_exactly_six_x_only` |
-| **C5** | Six-colouring is proper (conflict-free schedule), verified against the edge set; the relaxation sweep denoises and is deterministic. The six-colouring is proper but NOT rotation-equivariant; only the 3-colouring is | `test_six_coloring_proper_against_edges`, `test_color_classes_partition_all_vertices`, `test_relaxation_sweep_reduces_mse`, `test_three_coloring_is_rotation_equivariant_six_is_not`, `test_three_coloring_helper_is_proper` |
+| **C5** | Six-coloring is proper (conflict-free schedule), verified against the edge set; the relaxation sweep denoises and is deterministic. The six-coloring is proper but NOT rotation-equivariant; only the 3-coloring is | `test_six_coloring_proper_against_edges`, `test_color_classes_partition_all_vertices`, `test_relaxation_sweep_reduces_mse`, `test_three_coloring_is_rotation_equivariant_six_is_not`, `test_three_coloring_helper_is_proper` |
 | **C6** | Decoder commutes with the order-6 rotation (sector index permutes by +1); differential scheme invariant to any k*60-degree offset | `test_decoder_equivariance_on_real_hex_constellation`, `test_sector_index_in_range_and_rotation_equivariant`, `test_differential_invariant_to_k_times_60deg`, `test_rotation_increments_phase_pair_sector_by_one` |
 | **C7** | Radial-dual constellation is shell-complete, phase-pair-uniform, and inversion-paired about r^2=12 with exact integer-dual shell pairs; inversion is a same-sector involution fixing the boundary; iota_r preserves the sector exactly (Prop. 4.15) | `test_radial_dual_constellation_basic_shape`, `test_radial_dual_phase_pair_uniform_and_inversion_paired`, `test_radial_dual_every_shell_has_one_point_per_sector`, `test_radial_dual_inversion_is_same_sector_involution_fixing_boundary`, `test_dual_shell_norm_integer_pairs_about_r_sq_12`, `test_inversion_involution_and_commutativity_zero_violations`, `test_inversion_is_not_a_euclidean_isometry` |
 | **C8** | Combined rotation+inversion (C6xZ2) differential codec recovers the (sector, inversion-bit) data under all 12 static actions; the inversion bit is a pure label state | `test_t24_codec_roundtrip_no_action`, `test_t24_codec_invariant_under_all_twelve_actions`, `test_t24_inversion_bit_is_pure_label_state` |
 | **Repro.** | Provenance dict carries the Methods-table fields; `ran_on_cuda` can only be True with a CUDA device (keeps Simulation 04's CSV verdict honest); the JSON sidecar round-trips | `test_collect_provenance_has_methods_table_fields`, `test_collect_provenance_ran_on_cuda_requires_a_cuda_device`, `test_emit_provenance_writes_json_roundtrip` |
 
+The two new topic files pin the v1.2.0 additions: `test_constellation_geometry.py`
+covers the any-size builder, the Study 3 exact hex/square geometry with the
+nearest-neighbor gain prediction, and the Study 8 radial-dual geometry-price
+honesty check (exact geometry, CRN pairing, exact-decoder tie-in, NN price bracket);
+`test_noise_and_decoding.py` covers the fractional-bits Eb/N0 mapping, the vectorized
+folded-decoder membership vs a reference loop and vs exhaustive ML, and a
+phase-offset decoding sanity check.
+
 ### Module-Specific Coverage
 
 | Module | Coverage | Notes |
 |--------|----------|-------|
-| tqf_lattice_graph.py | 90% | Graph build, six-colouring + verification, colour-ordered relaxation sweep. |
-| tqf_hex_signal.py | 79% | Primitives, constellations, decoder, AWGN, Clopper-Pearson, differential coding, and the provenance helpers (`collect_provenance` / `emit_provenance`) are exercised. Uncovered lines are mainly the impulsive/Rayleigh channels, the exact-`Fraction` inversion helper, bit-labeling utilities, the torch/CUDA branch of `collect_provenance` (no GPU in CI), and the `__main__` self-test -- all exercised end-to-end by the simulations. |
-| **TOTAL (core library)** | **81%** | The simulation CLIs and the figure generator are validated by end-to-end runs (`run_all.ps1` / `run_all.sh`), not by unit tests; the suite focuses on the reusable library and the claim-bearing simulation helpers (C3 packing-gain helpers in `simulation_02`, the C4/C6 helpers in `simulation_03`/`simulation_05`, and the C7/C8 helpers in `simulation_06`/`simulation_07` — folded-decoder correctness, radial-dual structure, and the C6xZ2 differential check — are imported and tested directly). |
+| tqf_lattice_graph.py | 88% | Graph build, six-coloring + verification, color-ordered relaxation sweep. |
+| tqf_hex_signal.py | 85% | Primitives, constellations (including the any-size builder), the closed-form / ML / folded decoders, the fractional-bits Eb/N0 mapping, AWGN, Clopper-Pearson, differential coding, and the provenance helpers (`collect_provenance` / `emit_provenance`) are exercised. Uncovered lines are mainly the impulsive/Rayleigh channels, the exact-`Fraction` inversion helper, bit-labeling utilities, the torch/CUDA branch of `collect_provenance` (no GPU in CI), and the `__main__` self-test -- all exercised end-to-end by the simulations. |
+| **TOTAL (core library)** | **85%** | The simulation CLIs and the figure generator are validated by end-to-end runs (`run_all.ps1` / `run_all.sh`), not by unit tests; the suite focuses on the reusable library and the claim-bearing simulation helpers (C3 packing-gain helpers in `simulation_02`, the C4/C6 helpers in `simulation_03`/`simulation_05`, and the C7/C8 helpers in `simulation_06`/`simulation_07` — folded-decoder correctness, radial-dual structure, and the C6xZ2 differential check — are imported and tested directly). |
 
 ---
 
@@ -252,14 +267,14 @@ When you run `python -m pytest tests/ -v`, you'll see output like:
 ```
 ======================================================== test session starts ========================================================
 platform linux -- Python 3.12.x, pytest-8.x, pluggy-1.x
-collected 129 items
+collected 173 items
 
 tests/test_tqf_hex_signal.py::test_eisenstein_norm_equals_squared_euclidean PASSED                                          [  1%]
 tests/test_tqf_hex_signal.py::test_decode_fast_equals_ml_on_noisy_stream[16] PASSED                                         [  9%]
 ...
 tests/test_packing_gain.py::test_impulsive_floor_matches_formula_and_recovers_p[256] PASSED                                [100%]
 
-==================================================== 129 passed in 3.46s ====================================================
+==================================================== 173 passed in 4.6s ====================================================
 ```
 
 **Key Elements:**
@@ -279,7 +294,7 @@ tests/test_packing_gain.py::test_impulsive_floor_matches_formula_and_recovers_p[
 | ERROR | `E` | Error during setup/collection | Fix test infrastructure (often an import/path issue) |
 
 This suite has **no conditional skips** and needs no GPU: a healthy run is simply
-`129 passed`. A `SKIPPED` or `ERROR` here is unexpected and worth investigating
+`173 passed`. A `SKIPPED` or `ERROR` here is unexpected and worth investigating
 (usually a missing dependency or a `src/` path problem -- see Troubleshooting).
 
 ### C. Reading a Failure Message
@@ -319,10 +334,10 @@ Output:
 ```
 Name                       Stmts   Miss  Cover   Missing
 ------------------------------------------------------------
-src/tqf_hex_signal.py        338     72    79%   [lines]
-src/tqf_lattice_graph.py      70      7    90%   [lines]
+src/tqf_hex_signal.py        562     85    85%   [lines]
+src/tqf_lattice_graph.py      85     10    88%   [lines]
 ------------------------------------------------------------
-TOTAL                        408     79    81%
+TOTAL                        647     95    85%
 ```
 
 **Interpreting coverage:**
@@ -362,7 +377,7 @@ git diff HEAD~1 -- src tests
 
 [OK] **Healthy test suite:**
 ```
-129 passed in ~5s
+173 passed in ~5s
 ```
 - All claims' invariants hold; no skips; no warnings.
 
@@ -491,7 +506,7 @@ def test_new_property_over_several_M(m):
 - Read the failing assertion and map it to its claim via Section 5.
 - Re-run just that test with `-vv -s` to see the differing values.
 - These tests are intentionally strict (`==`): the fix is to restore the exact
-  behaviour, not to loosen the assertion.
+  behavior, not to loosen the assertion.
 
 ---
 
@@ -546,18 +561,18 @@ python -m pytest tests/ -n auto
 ## 11. Recap Summary
 
 This automated testing framework validates the `radial_dual_signal_processing`
-subproject through **129 test cases** organized across **5 test modules**, pinning
+subproject through **173 test cases** organized across **7 test modules**, pinning
 the exact invariant behind each of the eight claims (C1-C8). It emphasizes exactness
 (integer/rational `==` for the exactness claims), reproducibility (fixed seeds),
 and minimal, dependency-light infrastructure (a single `conftest.py`).
 
 ### Key Statistics
 
-- **Total test cases:** 129
-- **Test modules:** 5 (+ `conftest.py`)
+- **Total test cases:** 173
+- **Test modules:** 7 (+ `conftest.py`)
 - **Skipped tests:** 0
 - **Execution time:** ~5 seconds (full suite; +~1 s one-time torch import if PyTorch is installed)
-- **Core-library code coverage:** ~81% (`tqf_hex_signal.py` 79%, `tqf_lattice_graph.py` 90%)
+- **Core-library code coverage:** ~85% (`tqf_hex_signal.py` 85%, `tqf_lattice_graph.py` 88%)
 - **GPU required:** No
 
 ### Key Strengths
@@ -570,9 +585,9 @@ and minimal, dependency-light infrastructure (a single `conftest.py`).
 
 ### Testing Categories
 
-1. **Primitive/unit tests (~63):** geometry, constellations, channels, statistics, colouring, packing-gain helpers, phase-pair primitive, inversion duality, provenance.
-2. **Property tests (~33):** rotation equivariance, group order, exact orbit reduction, energy normalization, involution/commutativity, radial-dual structure, C6xZ2 invariance, colouring equivariance.
-3. **Correctness-vs-reference tests (~33):** closed-form and folded decode vs exhaustive ML; 3x3 window vs brute-force nearest point; storage-fold factors.
+1. **Primitive/unit tests (~80):** geometry, constellations (incl. the any-size builder), channels, the fractional-bits Eb/N0 mapping, statistics, coloring, packing-gain helpers, exact constellation-geometry values, phase-pair primitive, inversion duality, provenance.
+2. **Property tests (~45):** rotation equivariance, group order, exact orbit reduction, energy normalization, involution/commutativity, radial-dual structure and geometry price, C6xZ2 invariance, coloring equivariance, phase-offset robustness.
+3. **Correctness-vs-reference tests (~48):** closed-form and folded decode vs exhaustive ML; vectorized folded membership vs a reference loop; 3x3 window vs brute-force nearest point; storage-fold factors; nearest-neighbor SER/price predictions vs the measured operating points.
 
 ### Claim Coverage
 
@@ -580,7 +595,7 @@ and minimal, dependency-light infrastructure (a single `conftest.py`).
 - **C2 (constant-time fast path):** fast-path coverage rises with SNR; folded label-table storage shrinks.
 - **C3 (packing gain):** matched unit energy + correct Eb/N0 mapping (fairness preconditions); dB-gain interpolation, CI-bounded gain, and impulsive floor `~ p*(1-1/M)`.
 - **C4 (symmetry-reduced exact metric):** orbit-reduced enumerator == full; exact 6x op-count; C7 label enumerator folds by C6xZ2 (kept separate from the Euclidean 6x).
-- **C5 (conflict-free parallel recovery):** proper six-colouring; denoising relaxation sweep; 3-colouring equivariant while the six-colouring is not.
+- **C5 (conflict-free parallel recovery):** proper six-coloring; denoising relaxation sweep; 3-coloring equivariant while the six-coloring is not.
 - **C6 (equivariant decode):** decoder commutes with the order-6 rotation; differential invariance to k*60 degrees.
 - **C7 (radial-dual constellation):** shell-complete, phase-pair-uniform, inversion-paired about r^2=12; integer-dual shell pairs; folded decoder bitwise-ML with 6x / 10.5x storage folds.
 - **C8 (C6xZ2 differential codec):** combined rotation+inversion differential invariance over all 12 static actions.
@@ -591,8 +606,8 @@ and minimal, dependency-light infrastructure (a single `conftest.py`).
 
 **`QED`**
 
-**Last Updated:** June 23, 2026<br>
-**Version:** 1.0.0<br>
+**Last Updated:** July 4, 2026<br>
+**Version:** 1.2.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

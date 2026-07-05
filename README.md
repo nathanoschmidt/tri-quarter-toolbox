@@ -3,7 +3,7 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Last Dated:** June 24, 2026<br>
+**Last Dated:** July 4, 2026<br>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -318,7 +318,7 @@ All contributions must adhere to the MIT License and maintain the reproducibilit
 
 For tool-specific questions, please consult the relevant tool's documentation first.
 
-**Last Updated:** June 24, 2026<br>
+**Last Updated:** July 4, 2026<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

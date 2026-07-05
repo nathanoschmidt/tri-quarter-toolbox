@@ -9,8 +9,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.1.0<br>
-**Last Updated:** June 27, 2026<br>
+**Version:** 1.2.0<br>
+**Last Updated:** July 4, 2026<br>
 
 ---
 
@@ -114,7 +114,7 @@ sectors, shells) can be done in **exact integer arithmetic**.
 
 ---
 
-**Q: What are sectors, shells, and colours?**
+**Q: What are sectors, shells, and colors?**
 
 A: Three different exact integer labels attached to each lattice point:
 
@@ -123,8 +123,8 @@ A: Three different exact integer labels attached to each lattice point:
   a concrete, countable thing.
 - **Shell** — the squared distance from the origin (an integer, e.g. 3, 4, 9, 12).
   Points on the same shell are related by rotation/reflection.
-- **Colour** — a residue used to partition the lattice for parallel scheduling. The
-  trihexagonal six-colouring is `2·((a−b) mod 3) + ((a+b) mod 2)`.
+- **Color** — a residue used to partition the lattice for parallel scheduling. The
+  trihexagonal six-coloring is `2·((a−b) mod 3) + ((a+b) mod 2)`.
 
 All three are integers, computed without ever touching a float — which is the whole
 point of the "exactness" claims.
@@ -376,14 +376,14 @@ combined fold below 12×, landing at 10.5×. Honest accounting, not a typo.
 
 ---
 
-**Q: What does the six-colouring have to do with parallelism?**
+**Q: What does the six-coloring have to do with parallelism?**
 
 A: To denoise a signal spread over the lattice, you sweep over vertices updating each
 from its neighbors. If two adjacent vertices update simultaneously they conflict. A
-**proper colouring** assigns colours so that no two neighbors share one — so you can
-update all vertices of a given colour *at once*, lock-free, with no conflicts. The
-trihexagonal six-colouring gives a conflict-free schedule, and a colour-ordered
-relaxation sweep denoises the lattice signal. On a GPU, all same-colour vertices
+**proper coloring** assigns colors so that no two neighbors share one — so you can
+update all vertices of a given color *at once*, lock-free, with no conflicts. The
+trihexagonal six-coloring gives a conflict-free schedule, and a color-ordered
+relaxation sweep denoises the lattice signal. On a GPU, all same-color vertices
 become one parallel batch.
 
 ---
@@ -402,19 +402,19 @@ GPU name, memory) so the artifact self-certifies where it ran. Without a real GP
 
 ---
 
-**Q: I heard the six-colouring isn't actually rotation-equivariant. What happened?**
+**Q: I heard the six-coloring isn't actually rotation-equivariant. What happened?**
 
 A: That's the Mark 2 honesty fix, and it's worth stating plainly. An earlier
-description called the six-colouring "order-6-equivariant." That was an over-claim. The
+description called the six-coloring "order-6-equivariant." That was an over-claim. The
 truth:
-- The underlying triangular-lattice **3-colouring** `(a−b) mod 3` (exposed as
+- The underlying triangular-lattice **3-coloring** `(a−b) mod 3` (exposed as
   `three_coloring`) **is** order-6-equivariant — rotation permutes its three classes.
-- The parity refinement `((a+b) mod 2)` that splits three colours into six **breaks**
-  that equivariance. The six-colouring is **proper but not equivariant**.
+- The parity refinement `((a+b) mod 2)` that splits three colors into six **breaks**
+  that equivariance. The six-coloring is **proper but not equivariant**.
 
 Crucially, C5 only ever needed *properness* (for conflict-freedom), not equivariance —
 so the claim itself stands untouched. Simulation 04 now records the corrected fact in
-`sim04_coloring_equivariance.csv` (3-colouring: yes; six-colouring: no). Fixing the
+`sim04_coloring_equivariance.csv` (3-coloring: yes; six-coloring: no). Fixing the
 wording cost nothing and bought correctness.
 
 ---
@@ -524,6 +524,30 @@ object has radial gaps.
 
 ---
 
+**Q: If the radial-dual constellation is so structured, what does it *cost* to use?**
+
+A: This is exactly the question Simulation 08 answers, and the answer is refreshingly
+unflattering — which is the point. The C7 object is optimized for *symmetry*
+(shell-completeness, inversion-pairing), not for raw error rate, so in a plain AWGN
+channel it is **worse** than a constellation that simply packs M=42 points as tightly
+as possible. Simulation 08 measures that penalty honestly: it pits the radial-dual
+constellation against a matched **filled hex-42** baseline at equal order and equal
+average energy, with common random numbers, paired McNemar + Holm significance, and
+Clopper–Pearson bands — and it asserts that *both* decoders are still bitwise-ML at
+every point, so the comparison is pure geometry, not a decoder artifact.
+
+The result is **pre-registered**: before running, the nearest-neighbor approximation
+(the same model that predicts the C3 gains in Simulation 03) is used to compute an
+expected price of **~+3.33 dB at SER 1e-2**, and a bracket of **2.8–4.0 dB** is
+registered around it; the script then reports the measured price against that bracket
+either way. The radial-dual constellation's small minimum distance — its shells are
+spread over a wide radius — costs it a few dB, a cost you pay for the exact inversion
+structure, stated plainly rather than hidden. It is the clearest expression of the
+project's discipline: the geometry that makes C7 *elegant* is not the geometry that
+minimises AWGN SER, and the docs say so with a number.
+
+---
+
 ## Part 10: Philosophy, Caveats, and Running It
 
 ---
@@ -545,7 +569,7 @@ misreading — the project is built specifically to *not* make that claim.
 **Q: Why all the fuss about exact integer/rational arithmetic?**
 
 A: Because the headline claims (C1, C4, C7) are **exactness** claims, and exactness
-with floating point is a contradiction in terms. By keeping sectors, shells, colours,
+with floating point is a contradiction in terms. By keeping sectors, shells, colors,
 inversion, and orbit reductions in integer/rational arithmetic, the tests can assert
 `==` and `array_equal` with **zero tolerance**. A failure then means a real regression,
 not a rounding drift. The Euclidean *decisions* still use true distances, but the
@@ -566,7 +590,7 @@ product.
 
 **Q: How do I reproduce everything?**
 
-A: One command regenerates all seven studies and the figures:
+A: One command regenerates all eight studies and the figures:
 
 ```bash
 ./run_all.sh          # Linux/macOS
@@ -583,11 +607,12 @@ python src/simulation_04_sixcoloring_denoise_gpu.py             # C5
 python src/simulation_05_phase_rotation_robustness.py           # C6, C8
 python src/simulation_06_phasepair_inversion_folded_decoder.py  # C1/C2 storage, C7
 python src/simulation_07_radial_dual_constellation.py           # C7
+python src/simulation_08_radial_dual_geometry_price.py          # C7 honesty (geometry price)
 python src/make_figures.py --format pdf
 ```
 
 Each study writes its tables to `results/` (CSV + a `simNN_provenance.json`) and
-prints a console summary. The full 129-test suite runs in a few seconds with
+prints a console summary. The full 173-test suite runs in a few seconds with
 `python -m pytest tests/ -q` and needs no GPU.
 
 ---
@@ -615,8 +640,8 @@ it never lets a storage trick masquerade as a distance win.
 
 **`QED`**
 
-**Last Updated:** June 26, 2026<br>
-**Version:** 1.1.0<br>
+**Last Updated:** July 2, 2026<br>
+**Version:** 1.2.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

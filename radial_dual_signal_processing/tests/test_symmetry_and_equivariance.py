@@ -1,7 +1,4 @@
-"""
-test_symmetry_and_equivariance.py - Symmetry-Reduced Metric (C4) and Decoder Equivariance (C6) Tests
-
-Tests for the exact symmetry-reduced metric (C4) and decoder equivariance (C6).
+"""Tests for the exact symmetry-reduced metric (C4) and decoder equivariance (C6).
 
 These exercise the shipped simulation helpers directly (importing the simulation
 modules, whose ``main()`` is guarded), so the tests validate the actual code that
@@ -10,8 +7,8 @@ produces the paper's numbers -- not a re-implementation.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 import numpy as np
 import pytest
@@ -73,7 +70,7 @@ def test_disk_min_distance_squared_is_one():
 
 
 # --------------------------------------------------------------------------- #
-# C6 -- decoder equivariance on a real 2D hex constellation + differential
+# C6 -- decoder equivariance on a real 2-D hex constellation + differential
 # --------------------------------------------------------------------------- #
 def test_decoder_equivariance_on_real_hex_constellation():
     # Rotating every constellation point by +60 deg must permute the decoded

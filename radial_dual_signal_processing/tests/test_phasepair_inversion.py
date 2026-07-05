@@ -1,7 +1,7 @@
 """
-test_phasepair_inversion.py - Phase-Pair Primitive, Exact Inversion Duality, Folded Decoder, Radial-Dual Constellation, and T24 Differential Codec (Mark 2)
+test_phasepair_inversion.py - Phase-Pair Primitive, Exact Inversion Duality, Folded Decoder, Radial-Dual Constellation, and T24 Differential Codec
 
-Tests for the Mark 2 additions of the Tri-Quarter Framework (TQF)
+Tests for the following components of the Tri-Quarter Framework (TQF)
 radial_dual_signal_processing subproject:
 
   * the phase-pair sector primitive and its backward-compatible aliases;
@@ -13,8 +13,8 @@ radial_dual_signal_processing subproject:
     ML, with the inversion firewall: storage/label folds only);
   * the combined rotation + inversion (C6 x Z2) differential codec (C8),
     invariant under all 12 static actions;
-  * the corrected colouring equivariance fact (3-colouring equivariant; the
-    conflict-free six-colouring proper but NOT rotation-equivariant).
+  * the coloring equivariance fact (3-coloring equivariant; the conflict-free
+    six-coloring proper but NOT rotation-equivariant).
 
 Where practical the tests exercise the shipped simulation helpers directly, so
 they validate the actual code that produces the paper's numbers.
@@ -22,8 +22,8 @@ they validate the actual code that produces the paper's numbers.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: June 27, 2026
+Version: 1.2.0
+Date: July 4, 2026
 """
 from fractions import Fraction
 
@@ -280,7 +280,7 @@ def test_t24_inversion_bit_is_pure_label_state():
 
 
 # --------------------------------------------------------------------------- #
-# Corrected colouring equivariance (six-coloring is NOT rotation-equivariant)
+# Coloring equivariance (six-coloring is NOT rotation-equivariant)
 # --------------------------------------------------------------------------- #
 def test_three_coloring_is_rotation_equivariant_six_is_not():
     import simulation_04_sixcoloring_denoise_gpu as s4
