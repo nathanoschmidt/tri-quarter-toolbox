@@ -14,8 +14,8 @@ Topic-focused tests for the signal-level primitives:
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.2.0
-Date: July 4, 2026
+Version: 1.3.0
+Date: July 8, 2026
 """
 
 import math
@@ -24,7 +24,7 @@ import numpy as np
 import pytest
 
 import tqf_hex_signal as t
-import simulation_05_phase_rotation_robustness as sim05
+import simulation_04_phase_rotation_and_differential as sim04
 
 
 # --------------------------------------------------------------------------- #
@@ -118,10 +118,10 @@ def test_stored_arr_matches_stored_shells():
                                                          dtype=np.int64))
 
 # --------------------------------------------------------------------------- #
-# Study 5 offset-sweep sanity (per-information-bit Eb/N0)
+# Study 4 offset-sweep sanity (per-information-bit Eb/N0)
 # --------------------------------------------------------------------------- #
-def test_sim05_offset_sweep_sanity():
-    rows = sim05.run_offset_sweep([0.0, 60.0], 5000, 10.0, 42)
+def test_sim04_offset_sweep_sanity():
+    rows = sim04.run_offset_sweep([0.0, 60.0], 5000, 10.0, 42)
     by = {int(r["dtheta_deg"]): r for r in rows}
     # A 60 deg offset slips the coherent sector (SER -> ~1) but the differential
     # scheme returns to the noise floor.

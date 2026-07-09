@@ -7,8 +7,8 @@ rational primitives the framework relies on.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.2.0
-Date: July 4, 2026
+Version: 1.3.0
+Date: July 8, 2026
 """
 import math
 

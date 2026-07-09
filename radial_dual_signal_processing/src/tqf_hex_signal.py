@@ -46,8 +46,8 @@ Design notes / conventions
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.2.0
-Date: July 4, 2026
+Version: 1.3.0
+Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 from scipy import stats
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 # ---------------------------------------------------------------------------
 # Base lattice constants (Eisenstein / A2)
@@ -1338,3 +1338,114 @@ if __name__ == "__main__":
     dec_ml = decode_ml(rx, con.points_unit)
     print(f"fast==ML on {np.mean(dec_fast == dec_ml) * 100:.4f}% of symbols; "
           f"O(1) fast path used on {np.mean(fast_mask) * 100:.2f}%")
+
+
+# ---------------------------------------------------------------------------
+# Square-QAM slicer and exact-predicate referee (added for Study 1)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _QamSlicerContext:
+    """Precomputed constants for the O(1) square-QAM slicer."""
+    side: int
+    scale: float
+    half_bits: int
+    index_of_ampindex: np.ndarray   # (side,) point-index contribution unused; see decode
+
+
+def make_qam_slicer_context(constellation: Constellation) -> _QamSlicerContext:
+    """Precompute the constants a square-QAM independent-axis slicer needs.
+
+    Square QAM decodes in O(1) per symbol: because the constellation is the
+    Cartesian product of two independent PAM axes, the maximum-likelihood symbol
+    is found by clamping each axis to its nearest odd-integer amplitude
+    independently -- two rounds and two clamps, no search. This is the fair
+    O(1) baseline against which the closed-form hexagonal decoder's per-symbol
+    cost is compared.
+    """
+    m = constellation.size
+    nbits = constellation.bits_per_symbol
+    side = int(round(math.sqrt(m)))
+    if side * side != m or nbits % 2 != 0:
+        raise ValueError("QAM slicer requires a square constellation (M an even power of two)")
+    return _QamSlicerContext(side=side, scale=constellation.scale,
+                             half_bits=nbits // 2,
+                             index_of_ampindex=np.arange(side, dtype=np.int64))
+
+
+def decode_qam_slicer(received_unit: np.ndarray,
+                      ctx: _QamSlicerContext) -> np.ndarray:
+    """Constant-time square-QAM demodulator (independent I/Q slicing).
+
+    Returns the index into the ``build_square_qam`` point ordering (i * side + q)
+    of the ML symbol for each received sample. The per-axis amplitude index is
+    recovered by de-scaling, shifting to a 0-based grid, rounding, and clamping to
+    the valid range -- the exact ML decision for a product PAM x PAM constellation.
+    """
+    y = np.asarray(received_unit, dtype=np.complex128) / ctx.scale
+    side = ctx.side
+    # amplitudes are 2*idx - (side-1); invert: idx = round((amp + side - 1) / 2)
+    i_idx = np.round((y.real + (side - 1)) / 2.0).astype(np.int64)
+    q_idx = np.round((y.imag + (side - 1)) / 2.0).astype(np.int64)
+    np.clip(i_idx, 0, side - 1, out=i_idx)
+    np.clip(q_idx, 0, side - 1, out=q_idx)
+    return i_idx * side + q_idx
+
+
+def decode_hex_exact_referee(received_unit: np.ndarray,
+                             ctx: "_HexDecodeContext",
+                             use_filter: bool = True) -> Tuple[np.ndarray, int]:
+    """Exact-predicate hexagonal decode; the reference/referee for Study 1.
+
+    Decodes each symbol by the exact Z[sqrt(3)] nearest-point predicate over the
+    3x3 lattice window (see tqf_exact_predicate), then maps the winning lattice
+    point through the constellation occupancy grid, falling back to exhaustive ML
+    for symbols whose exact nearest lattice point lies outside the constellation.
+    The decision is a provable function of the received-sample bits: independent
+    of BLAS/FMA/vectorization order, hence bit-reproducible across platforms.
+
+    Returns ``(indices, escalations)`` where ``escalations`` counts symbols whose
+    float filter could not certify the sign and fell to the exact rational path
+    (zero when ``use_filter`` is False, since every comparison is already exact).
+    This path is intended as the correctness referee and the source of the
+    escalation-rate figure, not as the throughput headline.
+    """
+    from tqf_exact_predicate import (exact_nearest_in_window,
+                                      filtered_nearest_in_window)
+    z = np.asarray(received_unit, dtype=np.complex128) / ctx.constellation.scale
+    a_real, b_real = complex_to_oblique(z)
+    na = np.round(a_real).astype(np.int64)
+    nb = np.round(b_real).astype(np.int64)
+
+    grid = ctx.index_grid
+    amin, bmin = ctx.amin, ctx.bmin
+    ga, gb = grid.shape
+    n = z.shape[0]
+    out = np.empty(n, dtype=np.int64)
+    escalations = 0
+    need_fallback: List[int] = []
+
+    for i in range(n):
+        base_a = int(na[i])
+        base_b = int(nb[i])
+        cands = [(base_a + da, base_b + db)
+                 for da in (-1, 0, 1) for db in (-1, 0, 1)]
+        if use_filter:
+            (wa, wb), esc = filtered_nearest_in_window(float(z[i].real),
+                                                       float(z[i].imag), cands)
+            escalations += int(esc)
+        else:
+            wa, wb = exact_nearest_in_window(float(z[i].real),
+                                             float(z[i].imag), cands)
+        ia = wa - amin
+        ib = wb - bmin
+        if 0 <= ia < ga and 0 <= ib < gb and grid[ia, ib] >= 0:
+            out[i] = grid[ia, ib]
+        else:
+            need_fallback.append(i)
+
+    if need_fallback:
+        idx = np.array(need_fallback, dtype=np.int64)
+        ml = decode_ml(received_unit[idx], ctx.constellation.points_unit)
+        out[idx] = ml
+    return out, escalations

@@ -3,14 +3,108 @@
 **We're hammering hexagons into the radio waves — it's a work in progress, and this time the tests came along for the ride, so no child gets a mullet!**
 
 All notable changes to this `radial_dual_signal_processing` subproject are
-documented in this file. Every entry maps to one of the eight falsifiable claims
-(C1–C8) described in the [`README.md`](README.md). The exact 6× rotation (Euclidean)
-reduction and the inversion (label-only) fold are always kept distinct here, exactly
-as they are in the code — they are never multiplied into a single headline figure.
+documented in this file. Every entry maps to one of the falsifiable claims
+(C1–C4, C6–C12) described in the [`README.md`](README.md). The exact 6× rotation
+(Euclidean) reduction and the inversion (label-only) fold are always kept distinct
+here, exactly as they are in the code — they are never multiplied into a single
+headline figure.
 
 ---
 
-## [1.2.0] - 2026-07-04 — *"Mark 3"* — Happy 250th Birthday USA!
+## [1.3.0] - 2026-07-08
+
+A structural pass that **renumbers the study set** to a clean Studies 1–8 ladder,
+adds an **exact bit-reproducible nearest-point predicate (C12)**, an **exact
+radial-dual admissibility / Burnside fold audit**, and two new falsifiable studies
+— a **symmetry-reduced design search (C10)** and an **inversion-pair block code
+(C11)**. Claim **C5** (the trihexagonal six-coloring GPU denoiser) is **retired**
+from the study set. The claim set is now **C1–C4, C6–C12**.
+
+### Study renumbering (Mark 3 → Mark 4)
+
+The eight simulations were reorganized so the numbering follows the claim flow:
+
+| Study | File | Backs |
+|-------|------|-------|
+| 1 | `simulation_01_exact_demod_and_throughput.py` | C1 exact ML decode, C2 O(1) cost class, C12 exact-predicate bit-reproducibility |
+| 2 | `simulation_02_hex_vs_square_packing_gain.py` | C3 hex-vs-square packing gain |
+| 3 | `simulation_03_symmetry_reduced_metric.py` | C4 D6 symmetry-reduced exact metric |
+| 4 | `simulation_04_phase_rotation_and_differential.py` | C6 phase-rotation equivariance, C8 C₆×Z₂ differential codec |
+| 5 | `simulation_05_radial_dual_structure_and_folded_decoder.py` | C7 radial-dual structure + folded decoder |
+| 6 | `simulation_06_radial_dual_geometry_price.py` | C7 honest AWGN price, C9 sparse-below-crossover SER win |
+| 7 | `simulation_07_design_search_symmetry.py` | C10 D6-canonical design-search reduction |
+| 8 | `simulation_08_dual_pair_transmission.py` | C11 inversion-pair rate-1/2 block code |
+
+### Added
+
+**New claims**
+- **C9 — Radial-dual geometry crossover.** The shell-sparse inversion-paired
+  constellation has both the smaller nearest-neighbor multiplicity and the smaller
+  minimum distance, so a genuine SER crossover exists: radial-dual wins at low
+  Es/N0 and the matched filled constellation wins at high Es/N0 (a single sign
+  flip, located empirically by the paired sweep).
+- **C10 — Symmetry-reduced design search.** An exhaustive constellation design
+  search that canonicalizes candidate point sets under the dihedral group D6
+  evaluates strictly fewer candidates than the unreduced search while finding the
+  identical exact optimum.
+- **C11 — Inversion-pair block code.** Transmitting the inversion pair
+  (x, ι_r(x)) and decoding both legs with an exact integer consistency
+  cross-check gives a rate-1/2 block code; because inversion is **not** an
+  isometry, the joint (4D) distance spectrum is genuinely thinned relative to the
+  isometric repetition and rotated-repetition baselines.
+- **C12 — Exact, bit-reproducible nearest-point decision.** The A2 nearest-point
+  decision is computed exactly in `Z[sqrt(3)]`, so the decoded symbol is a
+  provable, platform-independent function of the received-sample bits rather than
+  a floating-point verdict that can flip under a different math library, FMA
+  contraction, or vectorization order.
+
+**New library modules in `src/`**
+- **`tqf_exact_predicate.py`** — the exact `Z[sqrt(3)]` nearest-point predicate and
+  its Shewchuk-style adaptive floating-point filter: `sign_a_plus_b_sqrt3`,
+  `compare_candidates_exact`, `exact_nearest_in_window`, and
+  `filtered_nearest_in_window` (the filtered path agrees with the exact referee
+  bit-for-bit and reports its escalation fraction). (C12.)
+- **`tqf_admissibility.py`** — exact radial-dual family enumeration (shell sets
+  closed under circle inversion `N → r⁴/N`) and the exact **Burnside** fold-factor
+  audit for the C6 / D6 geometric groups and the C₆×Z₂ / D₆×Z₂ label groups.
+  Writes `mark4_admissibility.json` for the downstream studies. Integer-only.
+
+**New simulations**
+- **Simulation 07** — symmetry-reduced design search
+  (`simulation_07_design_search_symmetry.py`). The D6-canonical candidate reduction
+  and the inversion firewall. (C10.)
+- **Simulation 08** — dual-pair transmission
+  (`simulation_08_dual_pair_transmission.py`). The inversion-pair codebook, its
+  exact 4D product-distance spectrum vs the isometric baselines, and the
+  consistency-check block decode across AWGN / Rayleigh / impulsive channels. (C11.)
+
+**Tests**
+- Fully realigned to the new study numbering and content. Added
+  `tests/test_tqf_exact_predicate.py` (C12), `tests/test_tqf_admissibility.py`
+  (family enumeration + Burnside folds), and
+  `tests/test_design_search_and_dual_pair.py` (C10 + C11).
+- Suite total: **173 → 186 tests** across 9 files. CPU-only, no GPU required.
+
+### Changed
+- **Header standardization.** All twelve `src/*.py` files carry one consistent
+  docstring header (title line, description, attribution block, `Version: 1.3.0`,
+  `Date: July 8, 2026`). Removed two stray `#!/usr/bin/env`
+  shebangs, corrected `simulation_02`'s stale docstring filename, and fixed
+  `simulation_04`'s in-body banner (it still printed `SIMULATION 05`).
+- **Documentation.** `README.md`, `tests/TESTS_README.md`, and `QA.md` rewritten to
+  the Mark 4 study set and the C1–C4, C6–C12 claim map.
+
+### Removed / Retired
+- **C5 — Conflict-free parallel recovery (six-coloring GPU denoiser).** Retired from
+  the study set; the old `simulation_04_sixcoloring_denoise_gpu.py` is gone.
+  `src/tqf_lattice_graph.py` is retained on disk as a standalone lattice-geometry
+  utility (truncated triangular lattice graph + trihexagonal six-coloring), but it
+  is no longer wired into a numbered study and its dedicated test module
+  (`test_tqf_lattice_graph.py`) has been removed.
+
+---
+
+## [1.2.0] - 2026-07-04 (Happy 250th Birthday USA!!!)
 
 A methodology- and honesty-hardening pass. No new claims (still C1–C8); instead, a
 new **pre-registered geometry-price study** that measures what the radial-dual
@@ -219,8 +313,8 @@ differential codec that shrugs off a static amplitude inversion.
 
 **`QED`**
 
-**Last Updated:** July 2, 2026<br>
-**Version:** 1.2.0<br>
+**Last Updated:** July 8, 2026<br>
+**Version:** 1.3.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

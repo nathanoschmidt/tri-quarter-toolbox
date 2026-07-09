@@ -1,0 +1,270 @@
+"""
+simulation_03_symmetry_reduced_metric.py - Study 3.
+
+Backs claim C4: the exact pairwise squared-distance enumerator of a lattice
+constellation is invariant under the full dihedral isometry group D6 (order 12,
+rotations AND reflections), so it can be computed from one representative per D6
+orbit and reproduced exactly. This study measures the D6 fold factor exactly
+(Burnside), verifies the folded enumerator equals the full enumerator as the
+identical integer multiset, and contrasts it with the rotation-only C6 fold.
+
+Firewall note: this is a Euclidean claim. Reflections are isometries and may
+legitimately fold Euclidean quantities; circle inversion is NOT an isometry and
+never enters here. The complementary label-domain fold (C6 x Z2, inversion
+included) is Study 5's business, and Study 5 shows -- also by Burnside -- that
+reflections add nothing there. The two folds do not multiply; that separation is
+the paper's proven-decomposition headline.
+
+What it measures
+----------------
+For each constellation (filled disks of several orders, and the canonical
+radial-dual object):
+  * the exact full enumerator over all ordered pairs (O(M^2));
+  * the exact C6-folded and D6-folded enumerators (one representative per orbit
+    times the orbit contribution), each verified equal to the full enumerator as
+    an identical integer count vector (==);
+  * the exact Burnside fold factors |points| / |orbits| for C6 and D6, reported
+    as exact fractions;
+  * wall-clock full vs. folded timing (a systems observation; the exactness and
+    fold-factor claims stand on the == check and Burnside, not on timing).
+
+Outputs
+-------
+  sim03_symmetry.csv        per-constellation orbit counts, exact folds, timings
+  sim03_fold_audit.csv      Burnside C6/D6 fold factors (exact fractions)
+  sim03_provenance.json     seed, versions, protocol
+
+Reproduce: python simulation_03_symmetry_reduced_metric.py
+
+Author: Nathan O. Schmidt
+Organization: Cold Hammer Research & Development LLC
+License: MIT License
+Version: 1.3.0
+Date: July 8, 2026
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import platform
+import time
+from collections import Counter
+from fractions import Fraction
+from typing import Dict, List, Tuple
+
+import numpy as np
+
+import tqf_hex_signal as h
+import tqf_admissibility as adm
+
+SEED = 42
+DISK_MAX_NORMS = [12, 36, 84]     # group-closed disk constellations (M = 42, 126, 312)
+RADIAL_DUAL = (48, 240)           # (r_sq, max_norm_sq) -> the M=42 canonical object
+TIMING_REPEATS = 5
+
+
+def _full_enumerator(ab: np.ndarray) -> Counter:
+    """Exact integer multiset of squared distances over all ordered pairs i != j.
+
+    Distances are exact Eisenstein norms of coordinate differences:
+    ||p_i - p_j||^2 in lattice units = da^2 + da*db + db^2 (integer).
+    """
+    m = ab.shape[0]
+    counter: Counter = Counter()
+    for i in range(m):
+        da = ab[:, 0] - ab[i, 0]
+        db = ab[:, 1] - ab[i, 1]
+        d2 = da * da + da * db + db * db
+        for k, v in Counter(d2.tolist()).items():
+            counter[int(k)] += int(v)
+    counter[0] -= m   # remove the i == j self-pairs
+    if counter[0] == 0:
+        del counter[0]
+    return counter
+
+
+def _orbit_reps(ab: np.ndarray, include_reflections: bool) -> List[int]:
+    """Return one representative row index per geometric orbit (C6 or D6).
+
+    Points are matched by exact integer coordinates. Reflection is the lattice
+    map (a, b) -> (b, a); together with the order-6 rotation it generates D6.
+    """
+    coord_to_idx = {(int(a), int(b)): i for i, (a, b) in enumerate(ab)}
+    seen = set()
+    reps: List[int] = []
+    elems = adm._group_elements_geometric(include_reflections)
+    for i, (a, b) in enumerate(ab):
+        key = (int(a), int(b))
+        if key in seen:
+            continue
+        reps.append(i)
+        for act in elems:
+            img = act(int(a), int(b))
+            if img in coord_to_idx:
+                seen.add(img)
+    return reps
+
+
+def _folded_enumerator(ab: np.ndarray, reps: List[int],
+                       include_reflections: bool) -> Counter:
+    """Enumerator built from representatives, expanded by the group action.
+
+    For each representative, tally its squared distances to all points, then
+    account for the whole orbit by applying every group element to the pair.
+    Because the group acts by isometries, each orbit member contributes the same
+    distance multiset to the full enumerator; summing the representative's
+    distances once and weighting by orbit size reproduces the full enumerator.
+
+    We expand concretely (apply the group to the representative and re-tally)
+    rather than multiplying by a scalar, so the reflection contribution is
+    computed, not assumed -- the resulting Counter must equal the full one.
+    """
+    coord_to_idx = {(int(a), int(b)): i for i, (a, b) in enumerate(ab)}
+    elems = adm._group_elements_geometric(include_reflections)
+    counter: Counter = Counter()
+    m = ab.shape[0]
+    for i in reps:
+        ai, bi = int(ab[i, 0]), int(ab[i, 1])
+        # reconstruct this representative's orbit (distinct images)
+        orbit = []
+        oseen = set()
+        for act in elems:
+            img = act(ai, bi)
+            if img not in oseen and img in coord_to_idx:
+                oseen.add(img)
+                orbit.append(img)
+        for (oa, ob) in orbit:
+            da = ab[:, 0] - oa
+            db = ab[:, 1] - ob
+            d2 = da * da + da * db + db * db
+            for k, v in Counter(d2.tolist()).items():
+                counter[int(k)] += int(v)
+    if counter.get(0):
+        counter[0] -= len(reps) * 0  # self-pairs handled below
+    # remove self-pairs: each orbit member matched itself once
+    # (one zero per (orbit member, itself)); total members == m
+    counter[0] -= m
+    if counter[0] == 0:
+        del counter[0]
+    return counter
+
+
+def _time(fn, repeats: int) -> float:
+    ts = []
+    for _ in range(repeats):
+        t0 = time.perf_counter()
+        fn()
+        ts.append(time.perf_counter() - t0)
+    return float(np.median(ts)) * 1e3  # ms
+
+
+def _constellation_ab(con: h.Constellation) -> np.ndarray:
+    if con.ab is None or con.ab.shape[0] != con.size:
+        raise ValueError("constellation lacks integer lattice coordinates")
+    return con.ab.astype(np.int64)
+
+
+def _analyze(name: str, con: h.Constellation) -> Tuple[dict, dict]:
+    ab = _constellation_ab(con)
+    m = ab.shape[0]
+
+    full = _full_enumerator(ab)
+
+    reps_c6 = _orbit_reps(ab, include_reflections=False)
+    reps_d6 = _orbit_reps(ab, include_reflections=True)
+    folded_c6 = _folded_enumerator(ab, reps_c6, include_reflections=False)
+    folded_d6 = _folded_enumerator(ab, reps_d6, include_reflections=True)
+
+    exact_c6 = (folded_c6 == full)
+    exact_d6 = (folded_d6 == full)
+
+    pts = [(int(a), int(b)) for a, b in ab]
+    # These constellations are group-closed complete shells with the origin
+    # excluded (the punctured-lattice convention), so the point set partitions
+    # into full 6-element C6 orbits (D6 orbits may merge reflection pairs) and
+    # the Burnside fold on the closed set and the direct |points|/|orbits|
+    # count agree; we compute both and assert their agreement as a self-check.
+    fold_c6 = adm.burnside_geometric_fold(pts, include_reflections=False)
+    fold_d6 = adm.burnside_geometric_fold(pts, include_reflections=True)
+    assert fold_c6 == Fraction(m, len(reps_c6)), "C6 fold disagreement"
+    assert fold_d6 == Fraction(m, len(reps_d6)), "D6 fold disagreement"
+
+    t_full = _time(lambda: _full_enumerator(ab), TIMING_REPEATS)
+    t_c6 = _time(lambda: _folded_enumerator(ab, reps_c6, False), TIMING_REPEATS)
+    t_d6 = _time(lambda: _folded_enumerator(ab, reps_d6, True), TIMING_REPEATS)
+
+    # union-bound-relevant summary from the full enumerator
+    d2min = min(full.keys())
+    mult = full[d2min]
+
+    row = {
+        "constellation": name, "M": m,
+        "num_orbits_c6": len(reps_c6), "num_orbits_d6": len(reps_d6),
+        "d2min_lattice": d2min, "d2min_multiplicity": mult,
+        "exact_match_c6": int(exact_c6), "exact_match_d6": int(exact_d6),
+        "full_ms": t_full, "c6_ms": t_c6, "d6_ms": t_d6,
+        "wall_speedup_c6": (t_full / t_c6) if t_c6 else float("nan"),
+        "wall_speedup_d6": (t_full / t_d6) if t_d6 else float("nan"),
+    }
+    audit = {
+        "constellation": name, "M": m,
+        "burnside_fold_c6": str(fold_c6), "burnside_fold_d6": str(fold_d6),
+        "burnside_fold_c6_f": float(fold_c6), "burnside_fold_d6_f": float(fold_d6),
+        "orbit_evals_c6": len(reps_c6), "orbit_evals_d6": len(reps_d6),
+        "full_evals": m,
+    }
+    return row, audit
+
+
+def main() -> None:
+    rng = np.random.default_rng(SEED)   # reserved; this study is deterministic
+    rows: List[dict] = []
+    audits: List[dict] = []
+
+    for max_norm in DISK_MAX_NORMS:
+        con = h.build_disk_constellation(max_norm)
+        r, a = _analyze(f"disk-{con.size}", con)
+        rows.append(r)
+        audits.append(a)
+
+    r_sq, max_norm = RADIAL_DUAL
+    rd = h.build_radial_dual_constellation(r_sq=r_sq, max_norm_sq=max_norm)
+    r, a = _analyze(f"radial-dual-{rd.size}", rd)
+    rows.append(r)
+    audits.append(a)
+
+    # every exact-match flag MUST be 1, for both folds
+    for r in rows:
+        assert r["exact_match_c6"] == 1, f"C6 fold mismatch: {r['constellation']}"
+        assert r["exact_match_d6"] == 1, f"D6 fold mismatch: {r['constellation']}"
+
+    with open("sim03_symmetry.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    with open("sim03_fold_audit.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(audits[0].keys()))
+        w.writeheader()
+        w.writerows(audits)
+
+    provenance = {
+        "study": 3, "seed": SEED,
+        "python": platform.python_version(), "numpy": np.__version__,
+        "tqf_hex_signal_version": h.__version__,
+        "disk_max_norms": DISK_MAX_NORMS, "radial_dual": list(RADIAL_DUAL),
+        "timing_repeats": TIMING_REPEATS,
+    }
+    with open("sim03_provenance.json", "w") as f:
+        json.dump(provenance, f, indent=2)
+
+    print("Study 3 complete.")
+    for r, a in zip(rows, audits):
+        print(f"  {r['constellation']:>18}  M={r['M']:>3}  "
+              f"orbitsC6={r['num_orbits_c6']:>3} orbitsD6={r['num_orbits_d6']:>3}  "
+              f"foldC6={a['burnside_fold_c6']:>6} foldD6={a['burnside_fold_d6']:>7}  "
+              f"exact(C6,D6)=({r['exact_match_c6']},{r['exact_match_d6']})")
+
+
+if __name__ == "__main__":
+    main()

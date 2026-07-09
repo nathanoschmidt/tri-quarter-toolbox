@@ -1,6 +1,7 @@
-#!/usr/bin/env python3
 """
-simulation_05_phase_rotation_robustness.py - Phase-Rotation Robustness and Differential Hexagonal Decode (C6)
+simulation_04_phase_rotation_and_differential.py - Study 4.
+
+Phase-rotation robustness and differential hexagonal decode (claims C6, C8).
 
 Demonstrates decoder equivariance and differential-hexagonal phase robustness for
 the Tri-Quarter Framework (TQF) radial_dual_signal_processing subproject.
@@ -48,8 +49,8 @@ independent of this scaling.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.2.0
-Date: July 4, 2026
+Version: 1.3.0
+Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -221,21 +222,21 @@ def main() -> None:
                     help="trials for the C8 combined rotation+inversion (C6 x Z2) "
                          "differential invariance check")
     ap.add_argument("--t24_seed", type=int, default=808,
-                    help="independent seed for the C8 check (keeps the existing "
-                         "sim05 CSVs byte-identical)")
-    ap.add_argument("--results_dir", type=str, default="results")
+                    help="independent seed for the C8 check (uses an "
+                         "independent stream)")
+    ap.add_argument("--results_dir", type=str, default=".")
     args = ap.parse_args()
 
     os.makedirs(args.results_dir, exist_ok=True)
 
     print("=" * 72)
-    print("SIMULATION 05 -- phase-rotation robustness: coherent vs differential (C6)")
+    print("SIMULATION 04 -- phase-rotation robustness: coherent vs differential (C6)")
     es_n0 = args.ebn0 + 10.0 * math.log10(math.log2(6.0))
     print(f"seed={args.seed}  trials={args.trials}  Eb/N0={args.ebn0} dB per "
           f"information bit (log2(6) bits/symbol; Es/N0 = {es_n0:.2f} dB)  "
           f"6-point sector constellation")
     print("=" * 72)
-    t.emit_provenance(args.results_dir, "sim05", args=args)
+    t.emit_provenance(args.results_dir, "sim04", args=args)
 
     # ---- Exact verifications on a REAL 2D hex constellation (before sweep) --
     npts, viol = verify_equivariance_on_hex()
@@ -275,7 +276,7 @@ def main() -> None:
         print(f"   - at 60 deg: coherent={at60['coherent_ser']:.3e} (sector slip), "
               f"differential={at60['differential_ser']:.3e} (back to ~noise floor)")
 
-    csv_path = os.path.join(args.results_dir, "sim05_phase.csv")
+    csv_path = os.path.join(args.results_dir, "sim04_phase.csv")
     with open(csv_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
@@ -283,7 +284,7 @@ def main() -> None:
 
     # Persist the exact equivariance verification so the paper artifact set is
     # complete (not stdout-only): both checks must read PASS for C6.
-    check_path = os.path.join(args.results_dir, "sim05_equivariance_check.csv")
+    check_path = os.path.join(args.results_dir, "sim04_equivariance_check.csv")
     with open(check_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["check", "result", "detail"])
@@ -316,7 +317,7 @@ def main() -> None:
     print("    centrosymmetric hexagonal point group D_6h; stated without")
     print("    overclaiming the full 24-element group.]")
 
-    t24_path = os.path.join(args.results_dir, "sim05_t24_check.csv")
+    t24_path = os.path.join(args.results_dir, "sim04_t24_check.csv")
     with open(t24_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["rotation_k", "inversion_m", "sector_recovered",

@@ -1,8 +1,9 @@
 """pytest configuration for the radial_dual_signal_processing test suite.
 
 Adds the subproject's ``src/`` directory to ``sys.path`` so the test modules can
-``import tqf_hex_signal`` / ``import tqf_lattice_graph`` directly, mirroring how
-the simulation scripts import their sibling modules when run from ``src/``.
+``import tqf_hex_signal`` / ``import tqf_exact_predicate`` / ``import tqf_admissibility``
+(and the simulation helpers) directly, mirroring how the simulation scripts import
+their sibling modules when run from ``src/``.
 """
 import os
 import sys

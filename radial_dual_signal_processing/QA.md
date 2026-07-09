@@ -9,8 +9,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.2.0<br>
-**Last Updated:** July 4, 2026<br>
+**Version:** 1.3.0<br>
+**Last Updated:** July 8, 2026<br>
 
 ---
 
@@ -41,7 +41,8 @@ and in robustness to phase and amplitude ambiguities.
 
 The unifying discipline: every claim in the companion paper is backed by a script here
 that prints a clean results table, *and* by an automated test that pins the underlying
-mathematical invariant. Eight claims, labeled C1 through C8.
+mathematical invariant. Eleven claims, labeled **C1–C4 and C6–C12** (an earlier claim
+**C5**, a six-coloring GPU denoiser, has been retired from the study set).
 
 ---
 
@@ -351,11 +352,13 @@ A: You **cannot** multiply the rotation 6× by the inversion fold to claim a big
 combined Euclidean reduction. Here's why: rotation is an isometry, so it legitimately
 folds a *distance* computation 6×. Inversion is conformal but **not** an isometry, so
 it cannot fold a metric at all — it can only fold a discrete **label** enumerator. So
-Simulation 03 reports two *separate* things in `sim03_inversion_reduction.csv`:
-- The **Euclidean** enumerator folds by rotation **exactly 6×** (and the script
-  explicitly demonstrates inversion is not an isometry — the firewall).
-- A discrete inversion-invariant **label** enumerator folds by the full C₆×Z₂ group
-  (rotation 6×, combined **10.5×**).
+the two folds are reported *separately*, in different studies:
+- **Simulation 03** shows the **Euclidean** squared-distance enumerator folds by
+  rotation **exactly 6×** (and by the full dihedral D6, also exact), cross-checked
+  against the exact Burnside factor (`sim03_symmetry.csv`, `sim03_fold_audit.csv`).
+- **Simulation 05** shows a discrete inversion-invariant **label** enumerator folds by
+  the full C₆×Z₂ group (rotation 6×, combined **10.5×**) on the radial-dual object
+  (`sim05_fold_audit.csv`).
 
 These two numbers are never multiplied into a single headline. The 10.5× is a
 storage/label fold; the 6× is a metric fold; they live in different universes.
@@ -372,50 +375,26 @@ combined fold below 12×, landing at 10.5×. Honest accounting, not a typo.
 
 ---
 
-## Part 7: Conflict-Free Parallel Recovery (C5)
+## Part 7: The Retired Claim (C5)
 
 ---
 
-**Q: What does the six-coloring have to do with parallelism?**
+**Q: Wasn't there a claim C5 about a six-coloring GPU denoiser?**
 
-A: To denoise a signal spread over the lattice, you sweep over vertices updating each
-from its neighbors. If two adjacent vertices update simultaneously they conflict. A
-**proper coloring** assigns colors so that no two neighbors share one — so you can
-update all vertices of a given color *at once*, lock-free, with no conflicts. The
-trihexagonal six-coloring gives a conflict-free schedule, and a color-ordered
-relaxation sweep denoises the lattice signal. On a GPU, all same-color vertices
-become one parallel batch.
+A: There was, in earlier releases. **C5** used the trihexagonal six-coloring of the
+lattice to schedule a lock-free, conflict-free parallel signal denoiser, benchmarked
+CPU vs GPU. As of Mark 4 it has been **retired** from the study set: there is no longer
+a numbered simulation for it, and its dedicated test module was removed. The supporting
+module `src/tqf_lattice_graph.py` (the truncated triangular lattice graph, the
+trihexagonal six-coloring `2·((a−b) mod 3) + ((a+b) mod 2)`, and a color-ordered
+relaxation sweep) is **kept on disk as a standalone lattice-geometry utility**, but it
+is not wired into any current claim. The rest of this document therefore skips from C4
+straight to C6.
 
----
-
-**Q: How much does the GPU actually help?**
-
-A: It depends on lattice size, and the project reports it as a measured systems result
-rather than a fixed promise. On an RTX 4060, the speedup over a single-threaded CPU
-baseline **widens with lattice size**: median **~13.8× at ~290k vertices**, crossing
-unity at ~73k, and *below* unity for small lattices (where kernel-launch overhead
-dominates). Simulation 04 prints a decisive `RAN_ON_CUDA = True/False` verdict, stamps
-every CSV row with the device, and writes `sim04_provenance.json` (torch/CUDA build,
-GPU name, memory) so the artifact self-certifies where it ran. Without a real GPU the
-"GPU" column is just torch-on-CPU and `RAN_ON_CUDA = False` — you're told to report
-*your* measured number, not the headline 13.8×.
-
----
-
-**Q: I heard the six-coloring isn't actually rotation-equivariant. What happened?**
-
-A: That's the Mark 2 honesty fix, and it's worth stating plainly. An earlier
-description called the six-coloring "order-6-equivariant." That was an over-claim. The
-truth:
-- The underlying triangular-lattice **3-coloring** `(a−b) mod 3` (exposed as
-  `three_coloring`) **is** order-6-equivariant — rotation permutes its three classes.
-- The parity refinement `((a+b) mod 2)` that splits three colors into six **breaks**
-  that equivariance. The six-coloring is **proper but not equivariant**.
-
-Crucially, C5 only ever needed *properness* (for conflict-freedom), not equivariance —
-so the claim itself stands untouched. Simulation 04 now records the corrected fact in
-`sim04_coloring_equivariance.csv` (3-coloring: yes; six-coloring: no). Fixing the
-wording cost nothing and bought correctness.
+(One honest footnote worth preserving: the six-coloring is **proper** — no edge joins
+two same-colored vertices, so it gives a valid conflict-free schedule — but it is **not**
+rotation-equivariant. Only the underlying 3-coloring `(a−b) mod 3`, exposed as
+`three_coloring`, is order-6-equivariant.)
 
 ---
 
@@ -428,7 +407,7 @@ wording cost nothing and bought correctness.
 A: The decoder **commutes** with the order-6 rotation: if you rotate the input by 60°
 and decode, you get the same answer as decoding first and rotating the label — the
 sector index just permutes by +1. This is verified *exactly* on a real hex
-constellation (`sim05_equivariance_check.csv`). It means the decoder treats all six
+constellation (`sim04_equivariance_check.csv`). It means the decoder treats all six
 orientations consistently by construction, not by training or tuning.
 
 ---
@@ -441,7 +420,7 @@ cancels out. The hexagonal analogue encodes information in successive **sector**
 differences, making it invariant to any static phase ambiguity that's a multiple of
 **π/3** (60°) — exactly the rotations the lattice can't otherwise distinguish. So if
 your receiver has an unknown but fixed 60°·k phase rotation, the differential hex
-scheme shrugs it off. Simulation 05 sweeps a phase offset crossing 60° to show it.
+scheme shrugs it off. Simulation 04 sweeps a phase offset crossing 60° to show it.
 
 ---
 
@@ -452,9 +431,9 @@ A: Yes. C8 is a **combined rotation+inversion differential codec**. It carries a
 making it invariant under all **12** static C₆×Z₂ actions. So beyond a static 60°·k
 phase ambiguity, it also absorbs a static **amplitude-inversion** ambiguity (the
 inside-out flip). The critical detail: the inversion bit is a **discrete label state**,
-never a Euclidean operation — consistent with the firewall from Part 6. Simulation 05
+never a Euclidean operation — consistent with the firewall from Part 6. Simulation 04
 verifies recovery of *both* the sector data and the inversion bit under all 12 actions
-with zero violations (`sim05_t24_check.csv`), using an independent RNG so it doesn't
+with zero violations (`sim04_t24_check.csv`), using an independent RNG so it doesn't
 perturb the pre-existing C6 outputs.
 
 ---
@@ -517,34 +496,80 @@ exhaustive ML** (every Euclidean decision uses true distances; folding only touc
 - **6×** by rotation (phase-pair fold).
 - **10.5×** by rotation+inversion (phase-pair + inversion fold).
 
-Reported separately, never multiplied — same firewall as always. Simulation 06
-verifies the bitwise-ML equivalence on a dense grid and a Monte-Carlo stream, and
-notes the fast-path coverage is intentionally moderate here because the shell-complete
-object has radial gaps.
+Reported separately, never multiplied — same firewall as always. Simulation 05
+verifies the bitwise-ML equivalence on a noisy stream and reports the storage folds
+and throughput, cross-checking the label folds against the exact Burnside factors.
 
 ---
 
 **Q: If the radial-dual constellation is so structured, what does it *cost* to use?**
 
-A: This is exactly the question Simulation 08 answers, and the answer is refreshingly
+A: This is exactly the question Simulation 06 answers, and the answer is refreshingly
 unflattering — which is the point. The C7 object is optimized for *symmetry*
 (shell-completeness, inversion-pairing), not for raw error rate, so in a plain AWGN
-channel it is **worse** than a constellation that simply packs M=42 points as tightly
-as possible. Simulation 08 measures that penalty honestly: it pits the radial-dual
-constellation against a matched **filled hex-42** baseline at equal order and equal
-average energy, with common random numbers, paired McNemar + Holm significance, and
-Clopper–Pearson bands — and it asserts that *both* decoders are still bitwise-ML at
-every point, so the comparison is pure geometry, not a decoder artifact.
+channel it is **worse** at high SNR than a constellation that simply packs the same
+number of points as tightly as possible. Simulation 06 measures that penalty honestly:
+it pits the radial-dual constellation against a matched **filled** baseline at equal
+order and equal average energy, with common random numbers, paired McNemar + Holm
+significance, and Clopper–Pearson bands.
 
-The result is **pre-registered**: before running, the nearest-neighbor approximation
-(the same model that predicts the C3 gains in Simulation 03) is used to compute an
-expected price of **~+3.33 dB at SER 1e-2**, and a bracket of **2.8–4.0 dB** is
-registered around it; the script then reports the measured price against that bracket
-either way. The radial-dual constellation's small minimum distance — its shells are
-spread over a wide radius — costs it a few dB, a cost you pay for the exact inversion
-structure, stated plainly rather than hidden. It is the clearest expression of the
-project's discipline: the geometry that makes C7 *elegant* is not the geometry that
-minimises AWGN SER, and the docs say so with a number.
+But there's a twist, and that twist is claim **C9**. The radial-dual object has both a
+smaller minimum distance **and** a smaller nearest-neighbor multiplicity than the
+filled baseline. The union-bound proxy for SER has two regimes: at low SNR the smaller
+multiplicity wins, at high SNR the larger minimum distance wins. So a genuine
+**crossover** exists — the radial-dual constellation is actually *better* below a
+crossover Es/N₀ and *worse* above it, a single sign flip. Simulation 06 predicts the
+crossover *direction* from the exact `(d_min, N_nn)` pair (the union bound is too loose
+to pin its dB location), then locates the flip empirically and reports the high-SNR dB
+price. It is the clearest expression of the project's discipline: the geometry that
+makes C7 *elegant* is not the geometry that minimizes AWGN SER at high SNR — and the
+docs say so with a measured number rather than hiding it.
+
+---
+
+## Part 9b: The New Mark 4 Studies (C10, C11, C12)
+
+---
+
+**Q: What is the symmetry-reduced design search (C10)?**
+
+A: If you want to *find* a good constellation by brute force — try every K-point subset
+of a candidate pool and keep the one with the best minimum distance — the search space
+is enormous. But the hexagonal lattice has the dihedral **D6** symmetry (12 isometries:
+6 rotations × reflection), and two subsets related by a D6 isometry have identical
+geometry. So you only need to evaluate **one representative per D6 orbit**. Simulation
+07 canonicalizes each candidate to its lexicographically smallest D6 image and shows
+the reduced search evaluates strictly fewer candidates while finding the **identical
+exact optimum** — a clean symmetry speedup for design, not just decoding.
+
+---
+
+**Q: What is the inversion-pair block code (C11)?**
+
+A: Instead of sending one point per message, you send the **pair** (x, ι_r(x)) — the
+point and its circle-inversion dual (which, on the radial-dual object, is another
+constellation point). The receiver decodes both legs and applies an **exact integer
+consistency check**: the pair is valid only if the second point is the inversion dual
+of the first. It's a rate-1/2 block code with built-in error *detection*. The reason it
+works — and the reason it's more than plain repetition — is the firewall again:
+inversion is **not** an isometry, so the joint 4D distance spectrum of (x, ι_r(x)) is
+genuinely *thinned* compared to the isometric repetition (x, x) or rotated-repetition
+(x, R·x) baselines. Simulation 08 proves that thinning exactly and sweeps the channels.
+
+---
+
+**Q: What is the exact `Z[sqrt(3)]` predicate (C12)?**
+
+A: The A2 nearest-point decision ultimately reduces to the **sign** of an expression of
+the form `α + β·√3`, where α and β are exact rationals derived from the received
+sample's (dyadic-rational) coordinates. Computed in floating point, that sign can flip
+right on a Voronoi bisector depending on your math library, FMA contraction, or
+vectorization order — so the decoded symbol wouldn't be perfectly reproducible across
+platforms. C12 computes the sign **exactly** in `Z[sqrt(3)]` (compare α² against 3β²,
+all exact integers/rationals), so the decision is a *provable* function of the input
+bits. A Shewchuk-style adaptive filter keeps the common case at float speed and
+escalates to the exact path only near a bisector; Simulation 01 reports that small,
+measured escalation fraction.
 
 ---
 
@@ -556,10 +581,12 @@ minimises AWGN SER, and the docs say so with a number.
 
 A: No, and it's not trying to. The closed-form and folded decoders *are* ML, so they
 match ML's error rate exactly — never beating it. The wins are strictly:
-- **Cost** — C1/C2 (O(1) fast-path decode), C4 (exact 6× metric fold), C5 (parallel
-  GPU recovery), C7 (fundamental-domain storage folds).
+- **Cost** — C1/C2 (O(1) fast-path decode), C4 (exact 6× metric fold), C7
+  (fundamental-domain storage folds), C10 (symmetry-reduced design search), C12
+  (exact, bit-reproducible decisions).
 - **Geometry** — C3 (packing gain), C6/C7/C8 (rotation/inversion robustness and the
-  radial-dual structure).
+  radial-dual structure), C9 (the geometry-price crossover), C11 (the inversion-pair
+  block code).
 
 If you ever see a claim that sounds like "TQF beats optimal decoding," it's a
 misreading — the project is built specifically to *not* make that claim.
@@ -590,40 +617,23 @@ product.
 
 **Q: How do I reproduce everything?**
 
-A: One command regenerates all eight studies and the figures:
+A: Step through the eight studies (each runs standalone, prints its table, and writes
+its CSV/JSON sidecars):
 
 ```bash
-./run_all.sh          # Linux/macOS
-.\run_all.ps1         # Windows (also tees to results/run_all_console.log)
+python src/simulation_01_exact_demod_and_throughput.py             # C1, C2, C12
+python src/simulation_02_hex_vs_square_packing_gain.py             # C3
+python src/simulation_03_symmetry_reduced_metric.py                # C4
+python src/simulation_04_phase_rotation_and_differential.py        # C6, C8
+python src/simulation_05_radial_dual_structure_and_folded_decoder.py  # C7
+python src/simulation_06_radial_dual_geometry_price.py             # C7 honesty, C9
+python src/simulation_07_design_search_symmetry.py                 # C10
+python src/simulation_08_dual_pair_transmission.py                 # C11
 ```
 
-Or step through individually:
-
-```bash
-python src/simulation_01_hex_demod_correctness_and_latency.py   # C1, C2
-python src/simulation_02_hex_vs_square_ber_packing_gain.py      # C3
-python src/simulation_03_symmetry_reduced_metric_exact.py       # C4
-python src/simulation_04_sixcoloring_denoise_gpu.py             # C5
-python src/simulation_05_phase_rotation_robustness.py           # C6, C8
-python src/simulation_06_phasepair_inversion_folded_decoder.py  # C1/C2 storage, C7
-python src/simulation_07_radial_dual_constellation.py           # C7
-python src/simulation_08_radial_dual_geometry_price.py          # C7 honesty (geometry price)
-python src/make_figures.py --format pdf
-```
-
-Each study writes its tables to `results/` (CSV + a `simNN_provenance.json`) and
-prints a console summary. The full 173-test suite runs in a few seconds with
-`python -m pytest tests/ -q` and needs no GPU.
-
----
-
-**Q: What's the one number that depends on my hardware?**
-
-A: Simulation 04's GPU speedup. It counts as a real result **only** when the printed
-`RAN_ON_CUDA = True` verdict and `sim04_provenance.json` confirm an actual CUDA run. A
-torch-on-CPU fallback is a reference backend, not the headline. So report the *measured*
-GPU speedup from your own machine rather than the ~13.8× figure quoted here — that one
-was an RTX 4060 at ~290k vertices, and your mileage will vary.
+Each study writes its tables plus a `simNN_provenance.json` into the working directory
+(or a `--results_dir` you supply) and prints a console summary. The full 186-test suite
+runs in ~90 seconds with `python -m pytest tests/ -q` and needs no GPU.
 
 ---
 
@@ -640,8 +650,8 @@ it never lets a storage trick masquerade as a distance win.
 
 **`QED`**
 
-**Last Updated:** July 2, 2026<br>
-**Version:** 1.2.0<br>
+**Last Updated:** July 8, 2026<br>
+**Version:** 1.3.0<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

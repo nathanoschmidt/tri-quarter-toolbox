@@ -1,13 +1,15 @@
 """
 tqf_lattice_graph.py - Truncated Triangular Lattice Graph and Trihexagonal Six-Coloring
 
-The truncated triangular lattice graph and trihexagonal six-coloring used by the
-conflict-free parallel signal-recovery benchmark of the Tri-Quarter Framework
-(TQF) radial_dual_signal_processing subproject.
+The truncated triangular lattice graph and trihexagonal six-coloring of the
+Tri-Quarter Framework (TQF) radial_dual_signal_processing subproject. This is a
+standalone lattice-geometry utility: it is not wired into any of the current
+numbered studies (the Mark 3 study set is Studies 1-8), but is retained for the
+conflict-free parallel signal-recovery construction it encodes.
 
 This helper constructs the hexagonal sampling lattice on which a signal field
 lives: the base triangular lattice L truncated to a Euclidean radius R, with
-nearest-neighbour edges (each interior vertex has six neighbours). It also
+nearest-neighbor edges (each interior vertex has six neighbors). It also
 builds a proper six-coloring of that graph. (The six-coloring is proper but is
 *not* rotation-equivariant; only the underlying triangular-lattice 3-coloring
 c3 = (a - b) mod 3 is equivariant under the order-6 rotation -- see
@@ -16,18 +18,18 @@ c3 = (a - b) mod 3 is equivariant under the order-6 rotation -- see
 The trihexagonal six-coloring partitions the vertices into six independent sets
 (no edge lies within a class), so the six classes can be relaxed in turn with
 fully data-parallel, lock-free updates. We construct it from the exact integer
-coordinates and *verify* it is proper, so the benchmark's parallelism rests on a
-checked structural property rather than a heuristic coloring.
+coordinates and *verify* it is proper, so the parallelism rests on a checked
+structural property rather than a heuristic coloring.
 
-The data structures (padded neighbour-index array, neighbour counts, list of
-colour-class index arrays) are shared verbatim by the NumPy (CPU) and PyTorch
-(GPU) backends in simulation_04 so that both execute the identical workload.
+The data structures (padded neighbor-index array, neighbor counts, list of
+color-class index arrays) let a NumPy (CPU) or PyTorch (GPU) backend execute an
+identical, conflict-free, color-scheduled relaxation workload.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.1.0
-Date: July 4, 2026
+Version: 1.3.0
+Date: July 8, 2026
 """
 
 from __future__ import annotations

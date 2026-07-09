@@ -12,13 +12,13 @@ and the ``sq_`` counterparts).
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.2.0
-Date: July 4, 2026
+Version: 1.3.0
+Date: July 8, 2026
 """
 import numpy as np
 import pytest
 
-import simulation_02_hex_vs_square_ber_packing_gain as s2
+import simulation_02_hex_vs_square_packing_gain as s2
 import tqf_hex_signal as t
 
 

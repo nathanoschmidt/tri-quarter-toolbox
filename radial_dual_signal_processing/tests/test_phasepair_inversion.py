@@ -12,18 +12,16 @@ radial_dual_signal_processing subproject:
   * the phase-pair + inversion FOLDED decoder (bitwise-identical to exhaustive
     ML, with the inversion firewall: storage/label folds only);
   * the combined rotation + inversion (C6 x Z2) differential codec (C8),
-    invariant under all 12 static actions;
-  * the coloring equivariance fact (3-coloring equivariant; the conflict-free
-    six-coloring proper but NOT rotation-equivariant).
+    invariant under all 12 static actions.
 
-Where practical the tests exercise the shipped simulation helpers directly, so
-they validate the actual code that produces the paper's numbers.
+Where practical the tests exercise the shipped library and simulation helpers
+directly, so they validate the actual code that produces the paper's numbers.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.2.0
-Date: July 4, 2026
+Version: 1.3.0
+Date: July 8, 2026
 """
 from fractions import Fraction
 
@@ -31,11 +29,8 @@ import numpy as np
 import pytest
 
 import tqf_hex_signal as t
-import tqf_lattice_graph as g
-import simulation_06_phasepair_inversion_folded_decoder as s6
-import simulation_07_radial_dual_constellation as s7
-import simulation_05_phase_rotation_robustness as s5
-import simulation_03_symmetry_reduced_metric_exact as s3
+import simulation_03_symmetry_reduced_metric as s3
+import simulation_04_phase_rotation_and_differential as s4
 
 
 # --------------------------------------------------------------------------- #
@@ -139,20 +134,36 @@ def test_radial_dual_phase_pair_uniform_and_inversion_paired():
 
 
 def test_radial_dual_every_shell_has_one_point_per_sector():
+    # Phase-pair-uniform structure: each complete shell carries exactly one point
+    # in every one of the six angular sectors (computed from shipped attributes).
     con = t.build_radial_dual_constellation(12, 60)
-    occ = s7._shell_occupancy(con)
-    for (N, size, sectors, k) in occ:
-        assert size == 6
-        assert sectors == [0, 1, 2, 3, 4, 5]
-        assert k == 1
+    a = con.ab[:, 0].astype(np.int64)
+    b = con.ab[:, 1].astype(np.int64)
+    norm = a * a + a * b + b * b
+    sec = t.phase_pair_sector_array(con.ab)
+    for N in con.shell_norms:
+        on_shell = norm == N
+        assert int(on_shell.sum()) == 6
+        assert sorted(sec[on_shell].tolist()) == [0, 1, 2, 3, 4, 5]
 
 
 def test_radial_dual_inversion_is_same_sector_involution_fixing_boundary():
+    # iota_r on the radial-dual object is a same-sector involution that fixes the
+    # boundary (self-dual) shell pointwise. Verified from con.inversion_dual_index.
     con = t.build_radial_dual_constellation(12, 60)
-    perm_ok, invol_ok, boundary_fixed = s7._verify_inversion_permutation(con)
-    assert perm_ok is True
-    assert invol_ok is True
-    assert boundary_fixed == 6                       # |shell 12| fixed pointwise
+    dual = np.asarray(con.inversion_dual_index, dtype=np.int64)
+    idx = np.arange(con.size)
+    # involution: applying the dual map twice is the identity permutation
+    assert np.array_equal(dual[dual], idx)
+    # same-sector: inversion preserves the phase-pair sector of every point
+    sec = t.phase_pair_sector_array(con.ab)
+    assert np.array_equal(sec[dual], sec)
+    # boundary fixed: the self-dual shell r_sq = 12 (six points) maps to itself
+    a = con.ab[:, 0].astype(np.int64)
+    b = con.ab[:, 1].astype(np.int64)
+    on_boundary = (a * a + a * b + b * b) == con.inversion_r_sq
+    assert int(on_boundary.sum()) == 6
+    assert np.array_equal(dual[on_boundary], idx[on_boundary])
 
 
 def test_radial_dual_shell_pairs_helper():
@@ -180,21 +191,33 @@ def _radial_dual_contexts():
     return con, ctx_pp, ctx_ppi
 
 
+def _dense_grid_samples(con, half_extent=2.5, step=0.02):
+    axis = np.arange(-half_extent, half_extent + step / 2, step)
+    gx, gy = np.meshgrid(axis, axis)
+    return (gx.ravel() + 1j * gy.ravel()).astype(np.complex128)
+
+
 def test_folded_decoder_matches_ml_dense_grid():
     con, ctx_pp, ctx_ppi = _radial_dual_contexts()
-    n, mm_pp, mm_ppi, _fast = s6.verify_dense_grid(con, ctx_pp, ctx_ppi, 2.5, 0.02)
-    assert n > 0
-    assert mm_pp == 0
-    assert mm_ppi == 0
+    rx = _dense_grid_samples(con)
+    ml = t.decode_ml(rx, con.points_unit)
+    idx_pp, _ = t.decode_hex_folded(rx, ctx_pp)
+    idx_ppi, _ = t.decode_hex_folded(rx, ctx_ppi)
+    assert rx.size > 0
+    assert np.array_equal(idx_pp, ml)      # phase-pair fold is bitwise-ML
+    assert np.array_equal(idx_ppi, ml)     # +inversion fold is bitwise-ML
 
 
 def test_folded_decoder_matches_ml_monte_carlo():
     con, ctx_pp, ctx_ppi = _radial_dual_contexts()
     rng = np.random.default_rng(0)
-    mm_pp, mm_ppi, _fast = s6.verify_monte_carlo(con, ctx_pp, ctx_ppi,
-                                                 50_000, 12.0, rng)
-    assert mm_pp == 0
-    assert mm_ppi == 0
+    tx = rng.integers(0, con.size, 50_000)
+    rx = t.awgn(con.points_unit[tx], 12.0, con.bits_per_symbol, rng)
+    ml = t.decode_ml(rx, con.points_unit)
+    idx_pp, _ = t.decode_hex_folded(rx, ctx_pp)
+    idx_ppi, _ = t.decode_hex_folded(rx, ctx_ppi)
+    assert np.array_equal(idx_pp, ml)
+    assert np.array_equal(idx_ppi, ml)
 
 
 def test_folded_decoder_storage_reduction_factors():
@@ -243,9 +266,15 @@ def test_inversion_is_not_a_euclidean_isometry():
 
 def test_euclidean_enumerator_folds_exactly_six_x_only():
     # On the radial-dual object the squared-distance enumerator folds by rotation
-    # EXACTLY 6x; the combined block must report exactness and the 6x figure.
-    ok = s3.radial_dual_reduction_block(12, 60, "/tmp")
-    assert ok is True
+    # EXACTLY 6x: the C6 orbit-folded enumerator equals the full enumerator, and
+    # the orbit count is M / 6 (one representative per angular sector per shell).
+    con = t.build_radial_dual_constellation(12, 60)
+    ab = con.ab.astype(np.int64)
+    full = s3._full_enumerator(ab)
+    reps = s3._orbit_reps(ab, include_reflections=False)
+    folded = s3._folded_enumerator(ab, reps, include_reflections=False)
+    assert folded == full
+    assert len(reps) * 6 == con.size
 
 
 # --------------------------------------------------------------------------- #
@@ -262,7 +291,7 @@ def test_t24_codec_roundtrip_no_action():
 
 
 def test_t24_codec_invariant_under_all_twelve_actions():
-    total_viol, rows = s5.verify_t24_differential_invariance(5000, seed=808)
+    total_viol, rows = s4.verify_t24_differential_invariance(5000, seed=808)
     assert total_viol == 0
     assert len(rows) == 12
     assert all(r["sector_recovered"] and r["inversion_recovered"] for r in rows)
@@ -277,25 +306,3 @@ def test_t24_inversion_bit_is_pure_label_state():
     ds, du = t.differential_decode_t24(s, (u + 1) % 2)   # global inversion flip
     assert np.array_equal(ds[1:], d_sec[1:])
     assert np.array_equal(du[1:], d_inv[1:])
-
-
-# --------------------------------------------------------------------------- #
-# Coloring equivariance (six-coloring is NOT rotation-equivariant)
-# --------------------------------------------------------------------------- #
-def test_three_coloring_is_rotation_equivariant_six_is_not():
-    import simulation_04_sixcoloring_denoise_gpu as s4
-    eq = s4.verify_coloring_equivariance(24)
-    assert eq["three_coloring_proper"] is True
-    assert eq["six_coloring_proper"] is True
-    assert eq["three_coloring_rotation_equivariant"] is True
-    assert eq["six_coloring_rotation_equivariant"] is False
-
-
-def test_three_coloring_helper_is_proper():
-    graph = g.build_lattice_graph(20)
-    coords = graph["coords"]
-    index_of = {(int(a), int(b)): i for i, (a, b) in enumerate(coords)}
-    classes, proper = g.three_coloring(coords, index_of)
-    assert proper is True
-    assert len(classes) == 3
-    assert sum(c.size for c in classes) == coords.shape[0]

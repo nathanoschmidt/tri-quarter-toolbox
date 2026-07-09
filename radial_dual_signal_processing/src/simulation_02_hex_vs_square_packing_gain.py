@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-simulation_02_hex_vs_square_ber_packing_gain.py - Hexagonal vs. Square-QAM BER/SER Packing Gain (C3)
+simulation_02_hex_vs_square_packing_gain.py - Study 2.
 
 Compares the hexagonal constellation against square QAM, at matched order and
 energy, for the Tri-Quarter Framework (TQF) radial_dual_signal_processing
@@ -43,16 +42,15 @@ Methodology
 
 Output: the per-channel tables and the packing-gain summary.
 
+Determinism: with the fixed master seed, common random numbers drive both
+constellations (the RNG state is rewound between the paired hex and square
+channel calls) so the hex-vs-square comparison is variance-matched.
+
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.2.0
-Date: July 4, 2026
-
-Reproducibility invariant: this script's RNG consumption order is load-bearing.
-The committed sim02_*.csv files reproduce byte-identically under seed 42 only if
-no computation, loop order, or random draw is changed; treat the draw sequence
-as fixed when editing.
+Version: 1.3.0
+Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -267,7 +265,7 @@ def main() -> None:
     ap.add_argument("--targets", type=float, nargs="+", default=[1e-2, 1e-3],
                     help="target SER values for the packing-gain readout")
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--results_dir", type=str, default="results")
+    ap.add_argument("--results_dir", type=str, default=".")
     args = ap.parse_args()
 
     rng = np.random.default_rng(args.seed)
