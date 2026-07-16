@@ -9,8 +9,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.3.0<br>
-**Last Updated:** July 8, 2026<br>
+**Version:** 1.3.1<br>
+**Last Updated:** July 15, 2026<br>
 
 ---
 
@@ -42,7 +42,9 @@ and in robustness to phase and amplitude ambiguities.
 The unifying discipline: every claim in the companion paper is backed by a script here
 that prints a clean results table, *and* by an automated test that pins the underlying
 mathematical invariant. Eleven claims, labeled **C1–C4 and C6–C12** (an earlier claim
-**C5**, a six-coloring GPU denoiser, has been retired from the study set).
+**C5**, a six-coloring GPU denoiser, has been retired from the study set). The
+eight studies that carry them are grouped into three Episodes — Episode I
+(Studies 1–2), Episode II (Studies 3–4), and Episode III (Studies 5–8).
 
 ---
 
@@ -90,7 +92,7 @@ A: It is the 2D sequel. The lineage:
 1. The foundational TQF paper (complex coordinates with topological and reflective
    duality across circles of any radius).
 2. The BPSK case study (TQF applied to the simplest 1D modulation).
-3. The radial-dual triangular lattice graph companion (the geometric/graph object).
+3. The radial dual triangular lattice graph companion (the geometric/graph object).
 4. **This subproject** — carrying all of that into 2D hexagonal signal processing.
 
 You don't need to have read the others; this document is self-contained. But the
@@ -137,7 +139,7 @@ point of the "exactness" claims.
 A: It's the integer primitive that maps a lattice point `(a, b)` to its phase-pair
 label — its directional orientation on the hexagonal lattice. It used to be called
 `sector_index`, but that name undersold it: it encodes the full phase-pair, not merely
-a sector number. So as of Mark 2 the primary function is `phase_pair_sector`, with
+a sector number. So the primary function is now `phase_pair_sector`, with
 `sector_index` retained as a backward-compatible alias so existing callers keep
 working. The key property: rotating by 60° increments the phase-pair sector by exactly
 one, and the label is preserved under all the symmetry operations the framework cares
@@ -357,7 +359,7 @@ the two folds are reported *separately*, in different studies:
   rotation **exactly 6×** (and by the full dihedral D6, also exact), cross-checked
   against the exact Burnside factor (`sim03_symmetry.csv`, `sim03_fold_audit.csv`).
 - **Simulation 05** shows a discrete inversion-invariant **label** enumerator folds by
-  the full C₆×Z₂ group (rotation 6×, combined **10.5×**) on the radial-dual object
+  the full Z₆×Z₂ group (rotation 6×, combined **10.5×**) on the radial dual object
   (`sim05_fold_audit.csv`).
 
 These two numbers are never multiplied into a single headline. The 10.5× is a
@@ -367,7 +369,7 @@ storage/label fold; the 6× is a metric fold; they live in different universes.
 
 **Q: Where does 10.5× come from? That's a weird non-integer fold.**
 
-A: It's not a clean 12× (the order of C₆×Z₂) because of the **self-dual boundary
+A: It's not a clean 12× (the order of Z₆×Z₂) because of the **self-dual boundary
 shell**. Most shells pair up under inversion (N ↔ 144/N), so they fold cleanly. But
 shell 12 maps to itself — it's its own dual — so it can't be folded by the inversion
 half of the group the way the paired shells can. That boundary shell drags the
@@ -383,7 +385,7 @@ combined fold below 12×, landing at 10.5×. Honest accounting, not a typo.
 
 A: There was, in earlier releases. **C5** used the trihexagonal six-coloring of the
 lattice to schedule a lock-free, conflict-free parallel signal denoiser, benchmarked
-CPU vs GPU. As of Mark 4 it has been **retired** from the study set: there is no longer
+CPU vs GPU. It has since been **retired** from the study set: there is no longer
 a numbered simulation for it, and its dedicated test module was removed. The supporting
 module `src/tqf_lattice_graph.py` (the truncated triangular lattice graph, the
 trihexagonal six-coloring `2·((a−b) mod 3) + ((a+b) mod 2)`, and a color-ordered
@@ -428,7 +430,7 @@ scheme shrugs it off. Simulation 04 sweeps a phase offset crossing 60° to show 
 
 A: Yes. C8 is a **combined rotation+inversion differential codec**. It carries a pair
 — a sector value in ℤ₆ *and* an inversion bit in ℤ₂ — as component-wise differences,
-making it invariant under all **12** static C₆×Z₂ actions. So beyond a static 60°·k
+making it invariant under all **12** static Z₆×Z₂ actions. So beyond a static 60°·k
 phase ambiguity, it also absorbs a static **amplitude-inversion** ambiguity (the
 inside-out flip). The critical detail: the inversion bit is a **discrete label state**,
 never a Euclidean operation — consistent with the firewall from Part 6. Simulation 04
@@ -438,7 +440,7 @@ perturb the pre-existing C6 outputs.
 
 ---
 
-## Part 9: The Radial-Dual Constellation (C7)
+## Part 9: The Radial Dual Constellation (C7)
 
 ---
 
@@ -447,14 +449,14 @@ perturb the pre-existing C6 outputs.
 A: A specific **filled hexagonal constellation** with M=42 points, built from the
 shells {3, 4, 9, 12, 16, 36, 48}. It is the centerpiece of the "radial dual" idea
 because it has three exact structural properties at once:
-1. **Shell-complete** — each included shell is fully populated, giving exact C₆
+1. **Shell-complete** — each included shell is fully populated, giving exact Z₆
    (order-6 rotational symmetry).
 2. **Phase-pair-uniform** — every complete shell has the same number of points per
    sector; all six sectors are equally occupied.
 3. **Inversion-paired** — closed under the exact circle inversion ι_r about r²=12,
    which maps each shell N to its integer-dual shell 144/N.
 
-Put together, it's invariant under the full order-**12** C₆×Z₂ group.
+Put together, it's invariant under the full order-**12** Z₆×Z₂ group.
 
 ---
 
@@ -475,14 +477,14 @@ inversion storage fold comes out to 10.5× rather than a clean 12× (Part 6).
 
 ---
 
-**Q: Why insist it's order-12 (C₆×Z₂) and not the full order-24 group?**
+**Q: Why insist it's order-12 (Z₆×Z₂) and not the full order-24 group?**
 
 A: Because over-claiming is the one sin this project won't commit. The full
 centrosymmetric hexagonal point group D₆ₕ has 24 elements (rotations, reflections, and
 inversion combined). The C7 object is verified invariant under the **rotation×inversion
-subgroup** — C₆ (6 rotations) × Z₂ (identity + inversion) = **12** elements. It is
+subgroup** — Z₆ (6 rotations) × Z₂ (identity + inversion) = **12** elements. It is
 *not* claimed invariant under the full 24 (which would add the reflections). So the
-docs say order-12 C₆×Z₂, full stop, rather than rounding up to a more impressive number.
+docs say order-12 Z₆×Z₂, full stop, rather than rounding up to a more impressive number.
 
 ---
 
@@ -502,22 +504,22 @@ and throughput, cross-checking the label folds against the exact Burnside factor
 
 ---
 
-**Q: If the radial-dual constellation is so structured, what does it *cost* to use?**
+**Q: If the radial dual constellation is so structured, what does it *cost* to use?**
 
 A: This is exactly the question Simulation 06 answers, and the answer is refreshingly
 unflattering — which is the point. The C7 object is optimized for *symmetry*
 (shell-completeness, inversion-pairing), not for raw error rate, so in a plain AWGN
 channel it is **worse** at high SNR than a constellation that simply packs the same
 number of points as tightly as possible. Simulation 06 measures that penalty honestly:
-it pits the radial-dual constellation against a matched **filled** baseline at equal
+it pits the radial dual constellation against a matched **filled** baseline at equal
 order and equal average energy, with common random numbers, paired McNemar + Holm
 significance, and Clopper–Pearson bands.
 
-But there's a twist, and that twist is claim **C9**. The radial-dual object has both a
+But there's a twist, and that twist is claim **C9**. The radial dual object has both a
 smaller minimum distance **and** a smaller nearest-neighbor multiplicity than the
 filled baseline. The union-bound proxy for SER has two regimes: at low SNR the smaller
 multiplicity wins, at high SNR the larger minimum distance wins. So a genuine
-**crossover** exists — the radial-dual constellation is actually *better* below a
+**crossover** exists — the radial dual constellation is actually *better* below a
 crossover Es/N₀ and *worse* above it, a single sign flip. Simulation 06 predicts the
 crossover *direction* from the exact `(d_min, N_nn)` pair (the union bound is too loose
 to pin its dB location), then locates the flip empirically and reports the high-SNR dB
@@ -527,7 +529,7 @@ docs say so with a measured number rather than hiding it.
 
 ---
 
-## Part 9b: The New Mark 4 Studies (C10, C11, C12)
+## Part 9b: The Newest Claims (C10, C11, C12)
 
 ---
 
@@ -547,7 +549,7 @@ exact optimum** — a clean symmetry speedup for design, not just decoding.
 **Q: What is the inversion-pair block code (C11)?**
 
 A: Instead of sending one point per message, you send the **pair** (x, ι_r(x)) — the
-point and its circle-inversion dual (which, on the radial-dual object, is another
+point and its circle-inversion dual (which, on the radial dual object, is another
 constellation point). The receiver decodes both legs and applies an **exact integer
 consistency check**: the pair is valid only if the second point is the inversion dual
 of the first. It's a rate-1/2 block code with built-in error *detection*. The reason it
@@ -585,7 +587,7 @@ match ML's error rate exactly — never beating it. The wins are strictly:
   (fundamental-domain storage folds), C10 (symmetry-reduced design search), C12
   (exact, bit-reproducible decisions).
 - **Geometry** — C3 (packing gain), C6/C7/C8 (rotation/inversion robustness and the
-  radial-dual structure), C9 (the geometry-price crossover), C11 (the inversion-pair
+  radial dual structure), C9 (the geometry-price crossover), C11 (the inversion-pair
   block code).
 
 If you ever see a claim that sounds like "TQF beats optimal decoding," it's a
@@ -650,8 +652,8 @@ it never lets a storage trick masquerade as a distance win.
 
 **`QED`**
 
-**Last Updated:** July 8, 2026<br>
-**Version:** 1.3.0<br>
+**Last Updated:** July 15, 2026<br>
+**Version:** 1.3.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

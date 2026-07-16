@@ -11,11 +11,26 @@ headline figure.
 
 ---
 
+## [1.3.1] - 2026-07-15
+
+A documentation- and naming-consistency pass. **No behavioral change** — every
+simulation, decoder, and test produces byte-identical results, and the full suite
+still reports **186 passing tests**. This release aligns the code comments, prose
+docs, and terminology across the subproject.
+
+### Added
+- Sample results in the [`EXAMPLE_RESULTS.md`](EXAMPLE_RESULTS.md).
+
+### Changed
+- Minor notational and terminology adjustments.
+
+---
+
 ## [1.3.0] - 2026-07-08
 
 A structural pass that **renumbers the study set** to a clean Studies 1–8 ladder,
 adds an **exact bit-reproducible nearest-point predicate (C12)**, an **exact
-radial-dual admissibility / Burnside fold audit**, and two new falsifiable studies
+radial dual admissibility / Burnside fold audit**, and two new falsifiable studies
 — a **symmetry-reduced design search (C10)** and an **inversion-pair block code
 (C11)**. Claim **C5** (the trihexagonal six-coloring GPU denoiser) is **retired**
 from the study set. The claim set is now **C1–C4, C6–C12**.
@@ -29,8 +44,8 @@ The eight simulations were reorganized so the numbering follows the claim flow:
 | 1 | `simulation_01_exact_demod_and_throughput.py` | C1 exact ML decode, C2 O(1) cost class, C12 exact-predicate bit-reproducibility |
 | 2 | `simulation_02_hex_vs_square_packing_gain.py` | C3 hex-vs-square packing gain |
 | 3 | `simulation_03_symmetry_reduced_metric.py` | C4 D6 symmetry-reduced exact metric |
-| 4 | `simulation_04_phase_rotation_and_differential.py` | C6 phase-rotation equivariance, C8 C₆×Z₂ differential codec |
-| 5 | `simulation_05_radial_dual_structure_and_folded_decoder.py` | C7 radial-dual structure + folded decoder |
+| 4 | `simulation_04_phase_rotation_and_differential.py` | C6 phase-rotation equivariance, C8 Z₆×Z₂ differential codec |
+| 5 | `simulation_05_radial_dual_structure_and_folded_decoder.py` | C7 radial dual structure + folded decoder |
 | 6 | `simulation_06_radial_dual_geometry_price.py` | C7 honest AWGN price, C9 sparse-below-crossover SER win |
 | 7 | `simulation_07_design_search_symmetry.py` | C10 D6-canonical design-search reduction |
 | 8 | `simulation_08_dual_pair_transmission.py` | C11 inversion-pair rate-1/2 block code |
@@ -38,9 +53,9 @@ The eight simulations were reorganized so the numbering follows the claim flow:
 ### Added
 
 **New claims**
-- **C9 — Radial-dual geometry crossover.** The shell-sparse inversion-paired
+- **C9 — Radial dual geometry crossover.** The shell-sparse inversion-paired
   constellation has both the smaller nearest-neighbor multiplicity and the smaller
-  minimum distance, so a genuine SER crossover exists: radial-dual wins at low
+  minimum distance, so a genuine SER crossover exists: radial dual wins at low
   Es/N0 and the matched filled constellation wins at high Es/N0 (a single sign
   flip, located empirically by the paired sweep).
 - **C10 — Symmetry-reduced design search.** An exhaustive constellation design
@@ -64,9 +79,9 @@ The eight simulations were reorganized so the numbering follows the claim flow:
   `compare_candidates_exact`, `exact_nearest_in_window`, and
   `filtered_nearest_in_window` (the filtered path agrees with the exact referee
   bit-for-bit and reports its escalation fraction). (C12.)
-- **`tqf_admissibility.py`** — exact radial-dual family enumeration (shell sets
+- **`tqf_admissibility.py`** — exact radial dual family enumeration (shell sets
   closed under circle inversion `N → r⁴/N`) and the exact **Burnside** fold-factor
-  audit for the C6 / D6 geometric groups and the C₆×Z₂ / D₆×Z₂ label groups.
+  audit for the Z6 / D6 geometric groups and the Z₆×Z₂ / D₆×Z₂ label groups.
   Writes `mark4_admissibility.json` for the downstream studies. Integer-only.
 
 **New simulations**
@@ -107,7 +122,7 @@ The eight simulations were reorganized so the numbering follows the claim flow:
 ## [1.2.0] - 2026-07-04 (Happy 250th Birthday USA!!!)
 
 A methodology- and honesty-hardening pass. No new claims (still C1–C8); instead, a
-new **pre-registered geometry-price study** that measures what the radial-dual
+new **pre-registered geometry-price study** that measures what the radial dual
 constellation *costs* in raw AWGN, an exact **per-information-bit Eb/N0** correction,
 an **Es/N0 axis relabel**, **apples-to-apples throughput** timing, and an exact
 **constellation-geometry / fairness block** that predicts the C3 gains from first
@@ -116,10 +131,10 @@ principles — plus a reorganized, larger test suite.
 ### Added
 
 **New simulation**
-- **Simulation 08** — radial-dual AWGN geometry price
+- **Simulation 08** — radial dual AWGN geometry price
   (`simulation_08_radial_dual_geometry_price.py`). A **pre-registered
   null-to-negative result** backing C7's honesty: it measures the AWGN SER *cost* of
-  the C7 radial-dual constellation against a matched filled hex-42 baseline at equal
+  the C7 radial dual constellation against a matched filled hex-42 baseline at equal
   order (M=42) and equal average energy — common random numbers, paired **McNemar +
   Holm**, Clopper–Pearson bands — with **both** practical decoders asserted
   bitwise-identical to ML at every point (the C1 tie-in). The nearest-neighbor
@@ -160,7 +175,7 @@ principles — plus a reorganized, larger test suite.
 - Reorganized and expanded. The version-named test grouping is gone; its coverage now
   lives in two topic files — `tests/test_constellation_geometry.py` (the any-size
   builder, the Simulation 03 exact hex/square geometry and NN gain prediction, and the
-  Simulation 08 radial-dual/hex-42 exact geometry, CRN pairing, decoder tie-in, and NN
+  Simulation 08 radial dual/hex-42 exact geometry, CRN pairing, decoder tie-in, and NN
   price) and `tests/test_noise_and_decoding.py` (the fractional-bits Eb/N0 → noise
   mapping, the vectorized folded decoder vs a reference loop and vs exhaustive ML, and
   a phase-offset decoding sanity check).
@@ -179,7 +194,7 @@ principles — plus a reorganized, larger test suite.
   shift slightly; the qualitative story (collapse at 60°, ~2× differential penalty at
   0°, return to floor at 60°) and the exact zero-noise equivariance / round-trip
   checks are unchanged.
-- **Es/N0 axis relabel (Simulation 06).** The radial-dual constellation carries no bit
+- **Es/N0 axis relabel (Simulation 06).** The radial dual constellation carries no bit
   labeling, so the SNR knob parameterizes **Es/N0** directly, not Eb/N0. The flags are
   now `--esn0` / `--esn0_grid` (`--ebn0` / `--ebn0_grid` retained as aliases) and the
   coverage CSV column is `esn0_db`. The coverage values are **byte-identical** — a
@@ -198,22 +213,22 @@ principles — plus a reorganized, larger test suite.
 
 ## [1.1.0] - 2026-06-27 — *"Mark 2"*
 
-The radial-dual half of the project arrives: the constellation that is closed under
+The radial dual half of the project arrives: the constellation that is closed under
 circle inversion, the decoder that stores only its fundamental domain, and the
 differential codec that shrugs off a static amplitude inversion.
 
 ### Added
 
 **New claims**
-- **C7 — Radial-dual constellation.** A filled hexagonal constellation
+- **C7 — Radial dual constellation.** A filled hexagonal constellation
   (shells {3,4,9,12,16,36,48}, M=42) that is simultaneously shell-complete (exact
-  C₆), phase-pair-uniform (identical sector occupancy per shell), and inversion-paired
+  Z₆), phase-pair-uniform (identical sector occupancy per shell), and inversion-paired
   under the exact circle inversion ι_r about r²=12 (mapping shell N to its
   integer-dual shell 144/N: 3↔48, 4↔36, 9↔16, 12 self-dual). Invariant under the
-  full order-12 **C₆×Z₂** group — stated as such, not over-claimed as the full 24.
+  full order-12 **Z₆×Z₂** group — stated as such, not over-claimed as the full 24.
 - **C8 — Combined rotation+inversion differential codec.** A differential codec
   carrying a (sector ∈ ℤ₆, inversion-bit ∈ ℤ₂) pair as component-wise differences,
-  invariant under all 12 static C₆×Z₂ actions. Extends the C6 DPSK analogue to
+  invariant under all 12 static Z₆×Z₂ actions. Extends the C6 DPSK analogue to
   absorb a static amplitude-inversion ambiguity. The inversion bit is a discrete
   label state, never a Euclidean operation.
 
@@ -224,7 +239,7 @@ differential codec that shrugs off a static amplitude inversion.
   only the fundamental domain; reports the storage ablation (6× rotation, 10.5×
   rotation+inversion — separately), fast-path coverage vs SNR, and the exact
   involution/commutativity of the label-space inversion. (C1/C2 storage; C7 object.)
-- **Simulation 07** — radial-dual constellation structure
+- **Simulation 07** — radial dual constellation structure
   (`simulation_07_radial_dual_constellation.py`). Verifies the integer-dual shell
   pairs, phase-pair uniformity, and inversion pairing of the C7 object. (C7.)
 
@@ -233,27 +248,27 @@ differential codec that shrugs off a static amplitude inversion.
 - The exact label-space inversion duality: `invert_label`, `invert_sector_shell`,
   `dual_shell_norm`, and `verify_inversion_commutativity` (the lattice paper's
   Prop. 4.15 — cited and empirically verified, not re-derived).
-- The radial-dual constellation builder `build_radial_dual_constellation`.
+- The radial dual constellation builder `build_radial_dual_constellation`.
 - The phase-pair + inversion **folded** ML decoder: `make_folded_decode_context`
   and `decode_hex_folded`.
-- The combined rotation+inversion (C₆×Z₂) differential codec:
+- The combined rotation+inversion (Z₆×Z₂) differential codec:
   `differential_encode_t24` / `differential_decode_t24`.
 
 **New readouts on existing simulations**
 - Simulation 03 now also writes `sim03_inversion_reduction.csv` for the C7 object:
   the **Euclidean** enumerator folds by rotation exactly 6×, while a discrete
-  inversion-invariant **label** enumerator folds by the full C₆×Z₂ group (rotation
+  inversion-invariant **label** enumerator folds by the full Z₆×Z₂ group (rotation
   6×, combined 10.5×). The two reductions are reported separately and never multiplied.
-- Simulation 05 now also verifies the **C8** C₆×Z₂ differential codec
+- Simulation 05 now also verifies the **C8** Z₆×Z₂ differential codec
   (`sim05_t24_check.csv`), recovering both the senary sector data and the inversion
   bit under all 12 static actions with zero violations. The C8 block uses an
   independent RNG (`--t24_seed`) so the two pre-existing CSVs stay byte-identical.
 
 **Tests**
 - New `tests/test_phasepair_inversion.py` (31 tests): the phase-pair primitive and
-  aliases, the exact inversion involution/commutativity, the C7 radial-dual
+  aliases, the exact inversion involution/commutativity, the C7 radial dual
   structure, the folded decoder's bitwise-ML equivalence and storage folds, the
-  C₆×Z₂ (C8) differential invariance, and the corrected coloring equivariance.
+  Z₆×Z₂ (C8) differential invariance, and the corrected coloring equivariance.
 - Suite total: **98 → 129 tests**. Still ~5 seconds, still no GPU required.
 
 ### Changed
@@ -313,8 +328,8 @@ differential codec that shrugs off a static amplitude inversion.
 
 **`QED`**
 
-**Last Updated:** July 8, 2026<br>
-**Version:** 1.3.0<br>
+**Last Updated:** July 15, 2026<br>
+**Version:** 1.3.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 """
-simulation_02_hex_vs_square_packing_gain.py - Study 2.
+simulation_02_hex_vs_square_packing_gain.py - Study 2 (Episode I): Hexagonal vs. Square-QAM BER/SER Packing Gain (C3)
 
 Compares the hexagonal constellation against square QAM, at matched order and
 energy, for the Tri-Quarter Framework (TQF) radial_dual_signal_processing
@@ -42,15 +43,13 @@ Methodology
 
 Output: the per-channel tables and the packing-gain summary.
 
-Determinism: with the fixed master seed, common random numbers drive both
-constellations (the RNG state is rewound between the paired hex and square
-channel calls) so the hex-vs-square comparison is variance-matched.
-
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
+
+Determinism: with the fixed master seed, common random numbers drive both
+constellations (the RNG state is rewound between the paired hex and square
+channel calls) so the hex-vs-square comparison is variance-matched.
 """
 
 from __future__ import annotations

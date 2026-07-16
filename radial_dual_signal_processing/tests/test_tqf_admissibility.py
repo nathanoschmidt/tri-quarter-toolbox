@@ -1,13 +1,13 @@
 """
-test_tqf_admissibility.py - Radial-Dual Family Enumeration and Exact Fold-Factor Audit Tests
+test_tqf_admissibility.py - Radial Dual Family Enumeration and Exact Fold-Factor Audit Tests
 
 Exact, integer-only tests for the two structural questions the design-search and
 fold-at-scale studies depend on:
 
-  * which radial-dual constellations exist (shell sets closed under circle
+  * which radial dual constellations exist (shell sets closed under circle
     inversion N -> r^4 / N), and their orders M; and
   * by how much symmetry folds the work -- the Burnside fold factors for the
-    geometric groups C6 / D6 and the label groups C6 x Z2 / D6 x Z2, each equal
+    geometric groups Z6 / D6 and the label groups Z6 x Z2 / D6 x Z2, each equal
     to |points| / |orbits| exactly.
 
 Everything is verified with exact integer / Fraction arithmetic (no tolerance):
@@ -18,7 +18,7 @@ Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
 Version: 1.3.0
-Date: July 8, 2026
+Date: July 6, 2026
 """
 
 from fractions import Fraction
@@ -63,7 +63,7 @@ def test_shell_size_is_a_multiple_of_six(n):
 
 
 # --------------------------------------------------------------------------- #
-# Radial-dual family enumeration (closed under N -> r^4 / N)
+# Radial dual family enumeration (closed under N -> r^4 / N)
 # --------------------------------------------------------------------------- #
 def test_shell_pairs_for_r_sq_12_are_the_four_integer_duals():
     pairs = adm.radial_dual_shell_pairs(12, 48)
@@ -105,7 +105,7 @@ def _canonical_points():
 
 def test_geometric_fold_is_six_on_the_canonical_object():
     pts, _ = _canonical_points()
-    # Origin-free, C6-closed: every orbit has size 6, so the fold is exactly 6.
+    # Origin-free, Z6-closed: every orbit has size 6, so the fold is exactly 6.
     assert adm.burnside_geometric_fold(pts, include_reflections=False) == Fraction(6)
     assert adm.burnside_geometric_fold(pts, include_reflections=True) == Fraction(6)
 

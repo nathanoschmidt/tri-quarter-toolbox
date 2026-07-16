@@ -7,7 +7,7 @@ radial_dual_signal_processing subproject.
 This module provides the exact, reusable building blocks for the experiments:
 
   * The base triangular (Eisenstein/A2) lattice L with basis omega0 = 1 and
-    omega1 = exp(i*pi/3), and the order-6 rotation R(a, b) = (-b, a + b).
+    omega1 = exp(i*pi/3), and the order-6 rotation R_{pi/3}(a, b) = (-b, a + b).
   * Hexagonal signal constellations carved from L:
         - build_filled_constellation(M): the M lowest-energy lattice points
           (textbook minimum-energy "hexagonal QAM"); used for the binary
@@ -46,8 +46,7 @@ Design notes / conventions
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
+Version: 1.3.1
 """
 
 from __future__ import annotations
@@ -65,7 +64,7 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 from scipy import stats
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 # ---------------------------------------------------------------------------
 # Base lattice constants (Eisenstein / A2)
@@ -78,7 +77,7 @@ OMEGA0 = complex(1.0, 0.0)
 OMEGA1 = complex(_OMEGA1_RE, _OMEGA1_IM)
 
 # The six primary ray directions d_k = R^k(1, 0), as integer (a, b) pairs.
-# R is the +60 degree rotation R(a, b) = (-b, a + b); see rotate60().
+# R_{pi/3} is the +60 degree rotation R_{pi/3}(a, b) = (-b, a + b); see rotate60().
 PRIMARY_DIRECTIONS: Tuple[Tuple[int, int], ...] = (
     (1, 0),    # 0   degrees  (omega0)
     (0, 1),    # 60  degrees  (omega1)
@@ -90,7 +89,7 @@ PRIMARY_DIRECTIONS: Tuple[Tuple[int, int], ...] = (
 
 
 def rotate60(a: int, b: int) -> Tuple[int, int]:
-    """Return R(a, b) = (-b, a + b), the exact +60 degree lattice rotation.
+    """Return R_{pi/3}(a, b) = (-b, a + b), the exact +60 degree lattice rotation.
 
     R is an order-6 integer automorphism of the triangular lattice
     (R**6 == identity) realizing the Eisenstein unit-group action.
@@ -255,7 +254,7 @@ def inversion(a: int, b: int, r_sq: int) -> complex:
 def inversion_exact(a: int, b: int, r_sq: int) -> Tuple[Fraction, Fraction]:
     """Return iota_r(v) as exact oblique rational coordinates (a', b').
 
-    Because R(a, b) keeps the basis, the inverse map is linear in (a, b); here we
+    Because R_{pi/3}(a, b) keeps the basis, the inverse map is linear in (a, b); here we
     return the oblique coordinates as exact Fractions so that the involution can
     be checked with ``==`` rather than a floating-point tolerance.
     """
@@ -407,7 +406,7 @@ class Constellation:
     name: str
     ab: np.ndarray = field(default_factory=lambda: np.zeros((0, 2), dtype=np.int64))
     scale_sq_exact: Fraction | None = None
-    # Optional radial-dual metadata, set only by
+    # Optional radial dual metadata, set only by
     # build_radial_dual_constellation; None/empty for the other constellations.
     shell_norms: Tuple[int, ...] | None = None        # the complete shells present
     inversion_r_sq: int | None = None                 # inversion radius^2 (e.g. 12)
@@ -508,7 +507,7 @@ def build_filled_constellation_any(m: int) -> Constellation:
     axis for a label-free object).
 
     Used as the matched filled M=42 baseline that Study 8 compares against the
-    radial-dual constellation at equal order and equal average energy. For
+    radial dual constellation at equal order and equal average energy. For
     power-of-two m the selected point set and exact scale agree with
     :func:`build_filled_constellation` (only labels/bits differ).
     """
@@ -543,7 +542,7 @@ def build_disk_constellation(max_norm_sq: int) -> Constellation:
     with 0 < ||v||^2 <= max_norm_sq.
 
     The origin is excluded (consistent with the TQF puncture), so the point set
-    is closed under the order-6 rotation R and partitions into full 6-element
+    is closed under the order-6 rotation R_{pi/3} and partitions into full 6-element
     orbits -- the symmetric "core" exploited by the symmetry-reduced metric
     study. Energy-normalized to unit average energy; no bit labeling is attached
     (this constellation is used for exact metric computation, not BER).
@@ -608,11 +607,11 @@ def radial_dual_shell_pairs(r_sq: int, max_norm_sq: int
 
 def build_radial_dual_constellation(r_sq: int = 12, max_norm_sq: int = 60
                                     ) -> Constellation:
-    """Build the phase-pair-uniform, inversion-paired radial-dual constellation (C7).
+    """Build the phase-pair-uniform, inversion-paired radial dual constellation (C7).
 
     This is the "Option B" (shell-complete, full rotation x inversion symmetry)
     constellation: the union of *complete* lattice shells that close under both
-    the order-6 rotation R (phase-pair / C6 symmetry) and circle inversion
+    the order-6 rotation R_{pi/3} (phase-pair / Z6 symmetry) and circle inversion
     iota_r about radius r (radial Z2 duality). Concretely it takes every shell
     that participates in a :func:`radial_dual_shell_pairs` pair about ``r_sq``
     (inner shell, its exact integer dual outer shell, and the self-dual boundary
@@ -622,7 +621,7 @@ def build_radial_dual_constellation(r_sq: int = 12, max_norm_sq: int = 60
     "filled" region, so this object is a symmetry/duality demonstrator (like the
     disk constellation), not a binary-M comparison constellation.
 
-    The returned :class:`Constellation` carries the radial-dual metadata:
+    The returned :class:`Constellation` carries the radial dual metadata:
     ``shell_norms``, ``inversion_r_sq``, ``phase_pair_uniform`` (every complete
     shell has exactly ``k`` points per sector, here k=1), ``inversion_paired``
     (closed under the exact iota_r point permutation), ``fundamental_domain_size``
@@ -862,11 +861,11 @@ def decode_hex_fast(received_unit: np.ndarray,
 
 
 # ---------------------------------------------------------------------------
-# Phase-pair + inversion FOLDED decoder (shell-complete radial-dual constellation)
+# Phase-pair + inversion FOLDED decoder (shell-complete radial dual constellation)
 # ---------------------------------------------------------------------------
 #
 # For a shell-complete, phase-pair-uniform, inversion-paired constellation (the
-# C7 radial-dual object), the membership/label structure folds to the
+# C7 radial dual object), the membership/label structure folds to the
 # fundamental domain while the decision stays exact ML. The fold is purely a
 # storage/label operation -- the inversion firewall: the Euclidean nearest-point
 # test below uses true distances only; inversion never touches a metric.
@@ -898,7 +897,7 @@ def _reconstruct_full_shells(stored_inner: Sequence[int], r_sq: int) -> Tuple[in
 
 @dataclass
 class _FoldedDecodeContext:
-    """Folded membership/label table for the radial-dual constellation decoder."""
+    """Folded membership/label table for the radial dual constellation decoder."""
     constellation: Constellation
     r_sq: int
     fold_inversion: bool
@@ -911,7 +910,7 @@ class _FoldedDecodeContext:
 
 def make_folded_decode_context(constellation: Constellation,
                                fold_inversion: bool = True) -> _FoldedDecodeContext:
-    """Precompute the folded decode table for a radial-dual constellation.
+    """Precompute the folded decode table for a radial dual constellation.
 
     With ``fold_inversion=False`` the table keeps one representative per complete
     shell (the phase-pair / rotation fold). With ``fold_inversion=True`` it keeps
@@ -922,7 +921,7 @@ def make_folded_decode_context(constellation: Constellation,
     sector points are regenerated by rotation rather than stored.
     """
     if constellation.shell_norms is None or constellation.inversion_r_sq is None:
-        raise ValueError("folded decode requires a radial-dual constellation "
+        raise ValueError("folded decode requires a radial dual constellation "
                          "(build_radial_dual_constellation)")
     r_sq = int(constellation.inversion_r_sq)
     full_shells = tuple(int(n) for n in constellation.shell_norms)
@@ -942,7 +941,7 @@ def make_folded_decode_context(constellation: Constellation,
 
 def decode_hex_folded(received_unit: np.ndarray,
                       ctx: _FoldedDecodeContext) -> Tuple[np.ndarray, np.ndarray]:
-    """Exact ML decode for a radial-dual constellation using only the folded table.
+    """Exact ML decode for a radial dual constellation using only the folded table.
 
     Bitwise-identical to exhaustive ML. The fast path fires when the true nearest
     lattice point is itself a constellation point (then it is the ML point); its
@@ -1018,14 +1017,14 @@ def differential_decode(received_sectors: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Combined rotation + inversion (C6 x Z2) differential coding -- the T24 codec
+# Combined rotation + inversion (Z6 x Z2) differential coding -- the T24 codec
 # ---------------------------------------------------------------------------
 #
 # The plain differential codec above absorbs a static carrier-phase ambiguity
-# (a multiple of pi/3, i.e. an element of the order-6 rotation group C6). The
+# (a multiple of pi/3, i.e. an element of the order-6 rotation group Z6). The
 # T24 codec additionally absorbs a static amplitude-inversion ambiguity (an
 # element of the order-2 radial inversion group Z2), so it is invariant under
-# the full order-12 rotation x inversion group C6 x Z2 -- the operationally
+# the full order-12 rotation x inversion group Z6 x Z2 -- the operationally
 # relevant rotation-and-inversion subgroup of the centrosymmetric hexagonal
 # point group D_6h. The carried state is a (sector in Z6, inversion bit in Z2)
 # pair; data is transmitted as consecutive differences of each component, so a
@@ -1043,7 +1042,7 @@ def differential_encode_t24(d_sector: np.ndarray,
     rotation by k*pi/3 shifts every s_n by k; a static amplitude inversion flips
     every u_n by 1. Both are constant offsets that cancel in the receiver's
     consecutive differences, so the codec is invariant under all 12 elements of
-    the combined rotation x inversion group C6 x Z2.
+    the combined rotation x inversion group Z6 x Z2.
 
     Returns the (sector_stream, inversion_stream) pair to transmit.
     """
@@ -1061,7 +1060,7 @@ def differential_decode_t24(sector_stream: np.ndarray,
     inversion-state) streams via component-wise consecutive differences
     (mod 6 and mod 2), assuming an initial reference state (0, 0).
 
-    Any static C6 x Z2 action applied uniformly to both streams (a constant
+    Any static Z6 x Z2 action applied uniformly to both streams (a constant
     sector offset and/or a global inversion flip) cancels in the differences,
     leaving the data unchanged from the second symbol onward.
     """

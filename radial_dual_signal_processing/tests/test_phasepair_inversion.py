@@ -1,5 +1,5 @@
 """
-test_phasepair_inversion.py - Phase-Pair Primitive, Exact Inversion Duality, Folded Decoder, Radial-Dual Constellation, and T24 Differential Codec
+test_phasepair_inversion.py - Phase-Pair Primitive, Exact Inversion Duality, Folded Decoder, Radial Dual Constellation, and T24 Differential Codec
 
 Tests for the following components of the Tri-Quarter Framework (TQF)
 radial_dual_signal_processing subproject:
@@ -7,11 +7,11 @@ radial_dual_signal_processing subproject:
   * the phase-pair sector primitive and its backward-compatible aliases;
   * the exact label-space inversion duality (involution + sector-preserving
     commutativity, the lattice paper's Prop. 4.15);
-  * the C7 radial-dual constellation structure (phase-pair-uniform, inversion-
+  * the C7 radial dual constellation structure (phase-pair-uniform, inversion-
     paired, integer-dual shell pairs, exact involution permutation);
   * the phase-pair + inversion FOLDED decoder (bitwise-identical to exhaustive
     ML, with the inversion firewall: storage/label folds only);
-  * the combined rotation + inversion (C6 x Z2) differential codec (C8),
+  * the combined rotation + inversion (Z6 x Z2) differential codec (C8),
     invariant under all 12 static actions.
 
 Where practical the tests exercise the shipped library and simulation helpers
@@ -21,7 +21,7 @@ Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
 Version: 1.3.0
-Date: July 8, 2026
+Date: July 6, 2026
 """
 from fractions import Fraction
 
@@ -111,7 +111,7 @@ def test_invert_sector_shell_preserves_sector_maps_shell():
 
 
 # --------------------------------------------------------------------------- #
-# C7 radial-dual constellation structure
+# C7 radial dual constellation structure
 # --------------------------------------------------------------------------- #
 def test_radial_dual_constellation_basic_shape():
     con = t.build_radial_dual_constellation(12, 60)
@@ -148,7 +148,7 @@ def test_radial_dual_every_shell_has_one_point_per_sector():
 
 
 def test_radial_dual_inversion_is_same_sector_involution_fixing_boundary():
-    # iota_r on the radial-dual object is a same-sector involution that fixes the
+    # iota_r on the radial dual object is a same-sector involution that fixes the
     # boundary (self-dual) shell pointwise. Verified from con.inversion_dual_index.
     con = t.build_radial_dual_constellation(12, 60)
     dual = np.asarray(con.inversion_dual_index, dtype=np.int64)
@@ -265,8 +265,8 @@ def test_inversion_is_not_a_euclidean_isometry():
 
 
 def test_euclidean_enumerator_folds_exactly_six_x_only():
-    # On the radial-dual object the squared-distance enumerator folds by rotation
-    # EXACTLY 6x: the C6 orbit-folded enumerator equals the full enumerator, and
+    # On the radial dual object the squared-distance enumerator folds by rotation
+    # EXACTLY 6x: the Z6 orbit-folded enumerator equals the full enumerator, and
     # the orbit count is M / 6 (one representative per angular sector per shell).
     con = t.build_radial_dual_constellation(12, 60)
     ab = con.ab.astype(np.int64)
@@ -278,7 +278,7 @@ def test_euclidean_enumerator_folds_exactly_six_x_only():
 
 
 # --------------------------------------------------------------------------- #
-# C8 -- combined rotation + inversion (C6 x Z2) differential codec
+# C8 -- combined rotation + inversion (Z6 x Z2) differential codec
 # --------------------------------------------------------------------------- #
 def test_t24_codec_roundtrip_no_action():
     rng = np.random.default_rng(1)

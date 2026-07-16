@@ -5,8 +5,8 @@
 **Author:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 **License:** MIT<br>
-**Version:** 1.3.0<br>
-**Date:** July 8, 2026<br>
+**Version:** 1.3.1<br>
+**Date:** July 15, 2026<br>
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![NumPy](https://img.shields.io/badge/NumPy-1.24+-013243.svg)](https://numpy.org/)
@@ -35,8 +35,8 @@
 ## 1. Overview
 
 This automated testing framework pins the mathematical invariant behind each of
-the subproject's falsifiable claims (C1-C4, C6-C12), so that the Mark 3
-experiments and the paper rest on continuously-verified foundations rather than
+the subproject's falsifiable claims (C1-C4, C6-C12), so that the paper's
+eight studies rest on continuously-verified foundations rather than
 one-off runs.
 
 Key Features:
@@ -53,15 +53,15 @@ Key Features:
 - C3 packing-gain helpers: log-linear SER interpolation, CI-bounded dB gain, impulsive floor
 - Phase-pair + inversion exactness: involution, sector-preserving commutativity, folded ML
 - Exact constellation geometry: min-distance enumerator and the hexagonal packing
-  advantage over square QAM at matched energy (Study 3)
-- Radial-dual geometry price (C7/C9): the exact `(d_min, N_nn)` crossover direction
+  advantage over square QAM at matched energy (Studies 2 and 3)
+- Radial dual geometry price (C7/C9): the exact `(d_min, N_nn)` crossover direction
   and the CRN-paired AWGN low-/high-SNR sign flip (Study 6)
 - Fractional-bits Eb/N0 -> noise mapping (log2(6) senary) and the vectorized
   folded-decoder membership vs a reference loop
 - **Exact nearest-point predicate (C12):** the `Z[sqrt(3)]` sign law and the
   float-filtered path agreeing bit-for-bit with the exact-rational referee
-- **Radial-dual admissibility (Burnside):** family enumeration closed under circle
-  inversion and exact fold factors for C6 / D6 / C6xZ2
+- **Radial dual admissibility (Burnside):** family enumeration closed under circle
+  inversion and exact fold factors for Z6 / D6 / Z6xZ2
 - **Design search (C10)** and **dual-pair transmission (C11):** the D6-canonical
   candidate reduction and the exact inversion-pair consistency cross-check
 - Reproducibility metadata checks (provenance dict shape; `ran_on_cuda` honesty; JSON sidecar)
@@ -69,7 +69,8 @@ Key Features:
 
 All tests are compatible with Python 3.10+ and run under `pytest`.
 
-> **Mark 3 note.** The Mark 3 study set is Studies 1-8, backing claims C1-C4 and
+> **Study set note.** The paper's study set is Studies 1-8, organized into
+> Episodes I-III and backing claims C1-C4 and
 > C6-C12. Claim **C5** (the trihexagonal six-coloring GPU denoiser) has been
 > retired from the study set; `src/tqf_lattice_graph.py` is retained on disk as a
 > standalone lattice-geometry utility but is no longer exercised by a dedicated
@@ -125,11 +126,11 @@ tests/
 |-- conftest.py                           # Puts src/ on the import path (no fixtures needed)
 |-- test_tqf_hex_signal.py                # Core library: C1 + primitives + channels + differential
 |-- test_tqf_exact_predicate.py           # Exact Z[sqrt(3)] nearest-point predicate (C12)
-|-- test_tqf_admissibility.py             # Radial-dual family enumeration + Burnside fold factors
+|-- test_tqf_admissibility.py             # Radial dual family enumeration + Burnside fold factors
 |-- test_symmetry_and_equivariance.py     # Exact orbit reduction (C4) + decoder equivariance (C6)
 |-- test_packing_gain.py                  # C3 packing-gain helpers: dB gain + CI band, impulsive floor, McNemar + Holm
-|-- test_phasepair_inversion.py           # Phase-pair primitive, exact inversion duality, folded decoder, C7 structure, C6xZ2 (C8) codec
-|-- test_constellation_geometry.py        # Any-size builder + exact Study 3 geometry + Study 6 radial-dual price (C3/C7/C9)
+|-- test_phasepair_inversion.py           # Phase-pair primitive, exact inversion duality, folded decoder, C7 structure, Z6xZ2 (C8) codec
+|-- test_constellation_geometry.py        # Any-size builder + exact Study 3 geometry + Study 6 radial dual price (C3/C7/C9)
 |-- test_noise_and_decoding.py            # Fractional-bits Eb/N0 mapping + vectorized folded decoder + phase-offset (C1/C3/C6)
 |-- test_design_search_and_dual_pair.py   # D6-canonical design search (C10) + inversion-pair block code (C11)
 `-- TESTS_README.md                       # This file
@@ -245,11 +246,11 @@ python -m pytest tests/ --cov=tqf_hex_signal --cov=tqf_exact_predicate --cov=tqf
 |-----------|------------|--------|------------|
 | test_tqf_hex_signal.py | 46 | All passing | C1 exact decode vs ML, A2 nearest-point vs brute force, unit-energy normalization, sector/rotation primitives, channel + Eb/N0 mapping, Clopper-Pearson intervals, differential hex, and provenance/reproducibility metadata |
 | test_tqf_exact_predicate.py | 6 | All passing | C12 exact `Z[sqrt(3)]` sign law, exact decision vs a 100k-sample brute-force argmin, the float-filtered path agreeing bit-for-bit with the exact referee, and an engineered near-bisector escalation |
-| test_tqf_admissibility.py | 19 | All passing | Exact lattice primitives (Eisenstein norm, order-6 rotation, reflection involution), Loeschian shell enumeration, radial-dual family enumeration closed under `N -> r^4/N`, and exact Burnside fold factors for C6 / D6 / C6xZ2 (incl. the non-group-closed rejection) |
-| test_symmetry_and_equivariance.py | 19 | All passing | C4 exact orbit-reduced enumerator (`==` Counter) for C6 and D6, exact 6x op-count, unit `d_min`; C6 decoder equivariance on a real hex constellation + differential round-trip |
+| test_tqf_admissibility.py | 19 | All passing | Exact lattice primitives (Eisenstein norm, order-6 rotation, reflection involution), Loeschian shell enumeration, radial dual family enumeration closed under `N -> r^4/N`, and exact Burnside fold factors for Z6 / D6 / Z6xZ2 (incl. the non-group-closed rejection) |
+| test_symmetry_and_equivariance.py | 19 | All passing | C4 exact orbit-reduced enumerator (`==` Counter) for Z6 and D6, exact 6x op-count, unit `d_min`; C6 decoder equivariance on a real hex constellation + differential round-trip |
 | test_packing_gain.py | 19 | All passing | C3 packing-gain helpers (sim02): log-linear SER interpolation, CI-bounded dB gain + `ci_resolved` flag, impulsive floor `~ p*(1-1/M)` and recovered p; exact McNemar p-value + Holm-Bonferroni correction, and `run_channel` emitting the paired significance columns |
-| test_phasepair_inversion.py | 29 | All passing | Phase-pair primitive + aliases + rotation increment; exact label-space inversion (involution + sector-preserving commutativity, Prop. 4.15); C7 radial-dual structure (phase-pair-uniform, inversion-paired, integer-dual shell pairs, boundary fixed); folded decoder bitwise-ML on grid + Monte-Carlo and the 6x / 10.5x storage folds; inversion-is-not-isometric firewall; the exact 6x Euclidean fold on the radial-dual object; C6xZ2 (C8) differential invariance over all 12 actions |
-| test_constellation_geometry.py | 13 | All passing | The any-size filled builder vs the power-of-two builder and the hex-42 baseline; Study 3 exact min-distance enumerator + the hexagonal packing advantage over square QAM at matched energy; Study 6 radial-dual geometry price: the exact `(d_min, N_nn)` crossover direction and the CRN-paired AWGN low-/high-SNR sign flip |
+| test_phasepair_inversion.py | 29 | All passing | Phase-pair primitive + aliases + rotation increment; exact label-space inversion (involution + sector-preserving commutativity, Prop. 4.15); C7 radial dual structure (phase-pair-uniform, inversion-paired, integer-dual shell pairs, boundary fixed); folded decoder bitwise-ML on grid + Monte-Carlo and the 6x / 10.5x storage folds; inversion-is-not-isometric firewall; the exact 6x Euclidean fold on the radial dual object; Z6xZ2 (C8) differential invariance over all 12 actions |
+| test_constellation_geometry.py | 13 | All passing | The any-size filled builder vs the power-of-two builder and the hex-42 baseline; Study 3 exact min-distance enumerator + the hexagonal packing advantage over square QAM at matched energy; Study 6 radial dual geometry price: the exact `(d_min, N_nn)` crossover direction and the CRN-paired AWGN low-/high-SNR sign flip |
 | test_noise_and_decoding.py | 29 | All passing | The fractional-bits Eb/N0 -> sigma^2 mapping (log2(6) senary) with the integer-bits regression and the label-free Es/N0 clamp; the vectorized folded-decoder membership vs a reference loop and vs exhaustive ML under both folds, plus the derived stored-shell array; a phase-offset sanity check (coherent slips at 60 deg, differential returns to floor) |
 | test_design_search_and_dual_pair.py | 6 | All passing | C10 exact objective + D6-canonical candidate reduction that preserves the exact optimum + canonical invariance under the group action; C11 inversion-pair codebook (inversion-paired, self-dual boundary), the exact 4D product-distance spectrum thinned vs the isometric repetition baseline, and the exact integer consistency cross-check (noiseless recovery + corruption detection) |
 
@@ -260,11 +261,11 @@ python -m pytest tests/ --cov=tqf_hex_signal --cov=tqf_exact_predicate --cov=tqf
 | **C1** | Closed-form decode is bitwise-identical to exhaustive ML; the 3x3 window equals a wide brute-force nearest-point search (incl. deep holes); folding preserves bitwise-ML | `test_decode_fast_equals_ml_on_noisy_stream`, `test_nearest_lattice_point_matches_bruteforce`, `test_folded_decoder_matches_ml_dense_grid`, `test_folded_decode_equals_ml` |
 | **C2** | Fast-path coverage rises with SNR (the precondition for the O(1) fast path); folded label-table storage shrinks (6x / 10.5x) | `test_fast_path_fraction_increases_with_snr`, `test_folded_decoder_storage_reduction_factors` |
 | **C3** | Matched unit average energy and correct Eb/N0 -> sigma^2 mapping; the hexagonal minimum-distance advantage; the dB packing-gain readout with a CI-bounded gain and impulsive floor | `test_hex_packs_tighter_than_square_at_matched_energy`, `test_noise_sigma_mapping`, `test_gain_ci_band_brackets_the_point_estimate`, `test_impulsive_floor_matches_formula_and_recovers_p` |
-| **C4** | Orbit-reduced squared-distance enumerator equals the full enumerator exactly for C6 and D6; exact 6x operation-count reduction; `d_min^2 = 1` | `test_orbit_reduced_enumerator_equals_full`, `test_d6_orbit_reduced_enumerator_equals_full`, `test_exact_six_times_operation_reduction`, `test_disk_min_distance_squared_is_one` |
+| **C4** | Orbit-reduced squared-distance enumerator equals the full enumerator exactly for Z6 and D6; exact 6x operation-count reduction; `d_min^2 = 1` | `test_orbit_reduced_enumerator_equals_full`, `test_d6_orbit_reduced_enumerator_equals_full`, `test_exact_six_times_operation_reduction`, `test_disk_min_distance_squared_is_one` |
 | **C6** | Decoder commutes with the order-6 rotation (sector index permutes by +1); differential scheme invariant to any k*60-degree offset | `test_decoder_equivariance_on_real_hex_constellation`, `test_rotation_increments_phase_pair_sector_by_one`, `test_sim04_offset_sweep_sanity` |
-| **C7** | Radial-dual constellation is shell-complete, phase-pair-uniform, and inversion-paired about r^2=12 with exact integer-dual shell pairs; inversion is a same-sector involution fixing the boundary; the folded decoder is bitwise-ML | `test_radial_dual_constellation_basic_shape`, `test_radial_dual_every_shell_has_one_point_per_sector`, `test_radial_dual_inversion_is_same_sector_involution_fixing_boundary`, `test_inversion_is_not_a_euclidean_isometry` |
-| **C8** | Combined rotation+inversion (C6xZ2) differential codec recovers the (sector, inversion-bit) data under all 12 static actions; the inversion bit is a pure label state | `test_t24_codec_invariant_under_all_twelve_actions`, `test_t24_inversion_bit_is_pure_label_state` |
-| **C9** | Radial-dual has both the smaller `N_nn` and the smaller `d_min`, so a crossover exists; the CRN-paired AWGN sweep shows radial-dual winning at low Es/N0 and losing at high Es/N0 | `test_radial_dual_smaller_dmin_and_nn_predicts_crossover`, `test_paired_sweep_shows_low_high_snr_sign_flip` |
+| **C7** | Radial dual constellation is shell-complete, phase-pair-uniform, and inversion-paired about r^2=12 with exact integer-dual shell pairs; inversion is a same-sector involution fixing the boundary; the folded decoder is bitwise-ML | `test_radial_dual_constellation_basic_shape`, `test_radial_dual_every_shell_has_one_point_per_sector`, `test_radial_dual_inversion_is_same_sector_involution_fixing_boundary`, `test_inversion_is_not_a_euclidean_isometry` |
+| **C8** | Combined rotation+inversion (Z6xZ2) differential codec recovers the (sector, inversion-bit) data under all 12 static actions; the inversion bit is a pure label state | `test_t24_codec_invariant_under_all_twelve_actions`, `test_t24_inversion_bit_is_pure_label_state` |
+| **C9** | Radial dual has both the smaller `N_nn` and the smaller `d_min`, so a crossover exists; the CRN-paired AWGN sweep shows radial dual winning at low Es/N0 and losing at high Es/N0 | `test_radial_dual_smaller_dmin_and_nn_predicts_crossover`, `test_paired_sweep_shows_low_high_snr_sign_flip` |
 | **C10** | The D6-canonical design search evaluates strictly fewer candidates than the unreduced search yet finds the identical exact optimum; canonicalization is invariant under the group action | `test_d6_canonicalization_reduces_and_preserves_optimum`, `test_d6_canonical_is_invariant_under_the_group_action` |
 | **C11** | The inversion-pair codebook is inversion-paired with a self-dual boundary; the exact 4D product-distance spectrum is thinned vs the isometric repetition baseline; the integer consistency cross-check recovers noiselessly and detects corruption | `test_pair_codebook_is_inversion_paired_and_has_a_boundary`, `test_exact_product_distance_thins_the_spectrum_vs_isometric_baselines`, `test_consistency_check_recovers_message_noiselessly_and_flags_corruption` |
 | **C12** | The `Z[sqrt(3)]` sign law is exact; the exact decision matches a brute-force float argmin except at genuine near-bisector ties; the float-filtered path agrees bit-for-bit with the exact referee and escalates on the bisector | `test_sign_basic`, `test_exact_matches_float_argmin`, `test_filtered_equals_exact`, `test_engineered_bisector_escalates` |
@@ -275,7 +276,7 @@ python -m pytest tests/ --cov=tqf_hex_signal --cov=tqf_exact_predicate --cov=tqf
 | Module | Coverage | Notes |
 |--------|----------|-------|
 | tqf_exact_predicate.py | 95% | The exact `Z[sqrt(3)]` sign law, the exact-rational window decision, and the float-filtered path (including escalation) are exercised end-to-end. |
-| tqf_admissibility.py | 83% | Lattice primitives, Loeschian shells, radial-dual family enumeration, and the exact Burnside geometric/label folds are exercised. Uncovered lines are mainly the `__main__` table printer and JSON emitter. |
+| tqf_admissibility.py | 83% | Lattice primitives, Loeschian shells, radial dual family enumeration, and the exact Burnside geometric/label folds are exercised. Uncovered lines are mainly the `__main__` table printer and JSON emitter. |
 | tqf_hex_signal.py | 82% | Primitives, constellations (including the any-size builder and square QAM), the closed-form / ML / folded decoders, the fractional-bits Eb/N0 mapping, AWGN, Clopper-Pearson, McNemar/Holm, differential coding, and the provenance helpers are exercised. Uncovered lines are mainly the impulsive/Rayleigh channels, some bit-labeling utilities, the torch/CUDA branch of `collect_provenance` (no GPU in CI), and the `__main__` self-test -- all exercised end-to-end by the simulations. |
 | **TOTAL (tested core)** | **83%** | The simulation CLIs are validated by end-to-end runs, not by unit tests; the suite focuses on the reusable libraries and the claim-bearing simulation helpers, which are imported and tested directly. `tqf_lattice_graph.py` is a retired standalone utility (no dedicated test). |
 
@@ -562,7 +563,7 @@ python -m pytest tests/ -n auto
 
 This automated testing framework validates the `radial_dual_signal_processing`
 subproject through **186 test cases** organized across **9 test modules**, pinning
-the exact invariant behind each Mark 3 claim (C1-C4, C6-C12). It emphasizes
+the exact invariant behind each paper claim (C1-C4, C6-C12). It emphasizes
 exactness (integer/rational/`Counter` `==` for the exactness claims),
 reproducibility (fixed seeds), and minimal, dependency-light infrastructure
 (a single `conftest.py`).
@@ -587,7 +588,7 @@ reproducibility (fixed seeds), and minimal, dependency-light infrastructure
 ### Testing Categories
 
 1. **Primitive/unit tests:** geometry, constellations (incl. the any-size builder and square QAM), channels, the fractional-bits Eb/N0 mapping, statistics, exact lattice primitives, packing-gain helpers, phase-pair primitive, inversion duality, provenance.
-2. **Property tests:** rotation equivariance, group order, exact orbit reduction, exact Burnside fold factors, energy normalization, involution/commutativity, radial-dual structure and geometry price, C6xZ2 invariance, phase-offset robustness, D6-canonical invariance.
+2. **Property tests:** rotation equivariance, group order, exact orbit reduction, exact Burnside fold factors, energy normalization, involution/commutativity, radial dual structure and geometry price, Z6xZ2 invariance, phase-offset robustness, D6-canonical invariance.
 3. **Correctness-vs-reference tests:** closed-form and folded decode vs exhaustive ML; the exact predicate vs a 100k-sample brute-force argmin; vectorized folded membership vs a reference loop; storage-fold factors; the inversion-pair consistency cross-check.
 
 ### Claim Coverage
@@ -595,11 +596,11 @@ reproducibility (fixed seeds), and minimal, dependency-light infrastructure
 - **C1 (exact decode):** decode == ML on a dense grid and a noisy stream; nearest-point vs brute force; folded decode == ML.
 - **C2 (constant-time fast path):** fast-path coverage rises with SNR; folded label-table storage shrinks (6x / 10.5x).
 - **C3 (packing gain):** matched unit energy + correct Eb/N0 mapping; hex `d_min` > square `d_min`; dB-gain interpolation, CI-bounded gain, and impulsive floor `~ p*(1-1/M)`.
-- **C4 (symmetry-reduced exact metric):** orbit-reduced enumerator == full for C6 and D6; exact 6x op-count.
+- **C4 (symmetry-reduced exact metric):** orbit-reduced enumerator == full for Z6 and D6; exact 6x op-count.
 - **C6 (equivariant decode):** decoder commutes with the order-6 rotation; differential invariance to k*60 degrees.
-- **C7 (radial-dual constellation):** shell-complete, phase-pair-uniform, inversion-paired about r^2=12; integer-dual shell pairs; folded decoder bitwise-ML.
-- **C8 (C6xZ2 differential codec):** combined rotation+inversion differential invariance over all 12 static actions.
-- **C9 (radial-dual geometry price):** smaller `(d_min, N_nn)` predicts a crossover; the paired sweep shows the low-/high-SNR sign flip.
+- **C7 (radial dual constellation):** shell-complete, phase-pair-uniform, inversion-paired about r^2=12; integer-dual shell pairs; folded decoder bitwise-ML.
+- **C8 (Z6xZ2 differential codec):** combined rotation+inversion differential invariance over all 12 static actions.
+- **C9 (radial dual geometry price):** smaller `(d_min, N_nn)` predicts a crossover; the paired sweep shows the low-/high-SNR sign flip.
 - **C10 (symmetry-reduced design search):** D6 canonicalization reduces the candidate count while preserving the exact optimum.
 - **C11 (inversion-pair block code):** inversion-paired codebook with a thinned product-distance spectrum and an exact integer consistency cross-check.
 - **C12 (exact nearest-point predicate):** the `Z[sqrt(3)]` sign law and the float-filtered path agreeing bit-for-bit with the exact referee.
@@ -610,8 +611,8 @@ reproducibility (fixed seeds), and minimal, dependency-light infrastructure
 
 **`QED`**
 
-**Last Updated:** July 8, 2026<br>
-**Version:** 1.3.0<br>
+**Last Updated:** July 15, 2026<br>
+**Version:** 1.3.1<br>
 **Maintainer:** Nathan O. Schmidt<br>
 **Organization:** Cold Hammer Research & Development LLC (https://coldhammer.net)<br>
 

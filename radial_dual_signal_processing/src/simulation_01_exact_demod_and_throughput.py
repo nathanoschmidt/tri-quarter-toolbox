@@ -1,5 +1,5 @@
 """
-simulation_01_exact_demod_and_throughput.py - Study 1.
+simulation_01_exact_demod_and_throughput.py - Study 1 (Episode I).
 
 Backs claims C1 (the closed-form hexagonal demodulator returns the exact ML
 decision), C2 (its per-symbol cost is in the same O(1) class as a square-QAM
@@ -38,8 +38,6 @@ Reproduce: python simulation_01_exact_demod_and_throughput.py
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations

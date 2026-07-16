@@ -1,5 +1,5 @@
 """
-simulation_08_dual_pair_transmission.py - Study 8.
+simulation_08_dual_pair_transmission.py - Study 8 (Episode III).
 
 Backs claim C11: transmitting the inversion PAIR (x, iota_r(x)) -- an outer-zone
 point and its mirrored inner-zone dual -- and decoding both with an exact integer
@@ -68,8 +68,6 @@ Reproduce: python simulation_08_dual_pair_transmission.py
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -90,7 +88,7 @@ import tqf_hex_signal as h
 import tqf_admissibility as adm
 
 SEED = 42
-R_SQ = 12                       # inversion radius^2 (the M=54 radial-dual object)
+R_SQ = 12                       # inversion radius^2 (the M=54 radial dual object)
 MAX_NORM = 144
 ESN0_GRID_DB = list(range(0, 25))
 TRIALS = 100_000
@@ -100,7 +98,7 @@ IMPULSE_AMP = 5.0
 
 
 def _build_pair_codebook(r_sq: int, max_norm: int):
-    """Build the dual-pair codebook from the radial-dual constellation.
+    """Build the dual-pair codebook from the radial dual constellation.
 
     Each message m is a constellation point x_m; the transmitted pair is
     (x_m, iota_r(x_m)) where the inversion dual is another constellation point

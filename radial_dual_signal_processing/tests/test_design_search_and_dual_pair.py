@@ -1,7 +1,7 @@
 """
 test_design_search_and_dual_pair.py - Symmetry-Reduced Design Search (C10) and Dual-Pair Transmission (C11) Tests
 
-Topic-focused tests for the two Mark 3 studies that build on the exact
+Topic-focused tests for the two Episode III studies (Studies 7 and 8) that build on the exact
 admissibility machinery:
 
   * Study 7 (C10): an exhaustive constellation design search that canonicalizes
@@ -19,7 +19,7 @@ Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
 Version: 1.3.0
-Date: July 8, 2026
+Date: July 6, 2026
 """
 
 import itertools
@@ -73,7 +73,7 @@ def test_d6_canonical_is_invariant_under_the_group_action():
     pool_set = set(pool)
     elems = adm._group_elements_geometric(include_reflections=True)
     subset = (pool[0], pool[4], pool[9])
-    rot = elems[1]                              # a single order-6 rotation R^1
+    rot = elems[1]                              # the single-step order-6 rotation R_{pi/3}
     rotated = tuple(sorted(rot(a, b) for (a, b) in subset))
     assert (sim07._d6_canonical(subset, elems, pool_set)
             == sim07._d6_canonical(rotated, elems, pool_set))

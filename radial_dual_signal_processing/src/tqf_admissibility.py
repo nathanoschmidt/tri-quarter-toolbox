@@ -1,10 +1,10 @@
 """
-tqf_admissibility.py - Radial-dual family enumeration and exact fold-factor audit.
+tqf_admissibility.py - Radial dual family enumeration and exact fold-factor audit.
 
 This module answers the two structural questions the design-search and
 fold-at-scale studies depend on, both in exact integer arithmetic:
 
-  1. Which radial-dual constellations exist? A radial-dual constellation about
+  1. Which radial dual constellations exist? A radial dual constellation about
      inversion radius r (r^2 = r_sq) is the union of complete lattice shells that
      is closed under circle inversion: every shell norm N present has its integer
      dual r^4 / N present too. Enumerating the admissible (r_sq, shell-set) pairs
@@ -16,8 +16,8 @@ fold-at-scale studies depend on, both in exact integer arithmetic:
      representative per orbit costs |orbits| instead of |points|. The reduction
      factor is |points| / |orbits|, which by Burnside's lemma equals the average
      number of points fixed by a group element. We compute this exactly for the
-     rotation group C6, the full isometry group D6 (rotations and reflections),
-     and the label-domain group C6 x Z2 and D6 x Z2 (adjoining circle inversion),
+     rotation group Z6, the full isometry group D6 (rotations and reflections),
+     and the label-domain group Z6 x Z2 and D6 x Z2 (adjoining circle inversion),
      counting fixed points honestly rather than assuming the round group order.
 
 Neither computation uses floating point: shells are integer Eisenstein norms,
@@ -30,8 +30,6 @@ Run as a script to print the family table and the fold-factor table and to write
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -52,7 +50,7 @@ def shell_norm_sq(a: int, b: int) -> int:
 
 
 def rotate60(a: int, b: int) -> Tuple[int, int]:
-    """Order-6 rotation R(a, b) = (-b, a + b); R applied six times is identity."""
+    """Order-6 rotation R_{pi/3}(a, b) = (-b, a + b); applied six times it is the identity."""
     return (-b, a + b)
 
 
@@ -124,13 +122,13 @@ def shell_points(n_sq: int) -> List[Tuple[int, int]]:
 
 
 # ---------------------------------------------------------------------------
-# Radial-dual family enumeration
+# Radial dual family enumeration
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class RadialDualCandidate:
-    """One admissible radial-dual constellation."""
+    """One admissible radial dual constellation."""
     r_sq: int
     max_norm_sq: int
     shells: Tuple[int, ...]           # complete shell norms present
@@ -163,7 +161,7 @@ def radial_dual_shell_pairs(r_sq: int, max_norm_sq: int) -> List[Tuple[int, int]
 
 
 def build_candidate(r_sq: int, max_norm_sq: int) -> RadialDualCandidate | None:
-    """Assemble the admissible radial-dual constellation for (r_sq, max_norm_sq),
+    """Assemble the admissible radial dual constellation for (r_sq, max_norm_sq),
     or None if no inversion-dual shell pair exists within the bound."""
     pairs = radial_dual_shell_pairs(r_sq, max_norm_sq)
     if not pairs:
@@ -194,7 +192,7 @@ def build_candidate(r_sq: int, max_norm_sq: int) -> RadialDualCandidate | None:
 
 def enumerate_family(r_sq_values: Sequence[int],
                      max_norm_sq: int) -> List[RadialDualCandidate]:
-    """Enumerate admissible radial-dual constellations over a range of radii.
+    """Enumerate admissible radial dual constellations over a range of radii.
 
     For each r_sq we take the richest admissible shell set within the energy
     bound (all inversion-dual pairs up to max_norm_sq). Returns the candidates
@@ -222,7 +220,7 @@ def enumerate_family(r_sq_values: Sequence[int],
 def _group_elements_geometric(include_reflections: bool):
     """Return the geometric group elements as integer coordinate maps.
 
-    Each element is a callable (a, b) -> (a', b'). C6 is the six rotations;
+    Each element is a callable (a, b) -> (a', b'). Z6 is the six rotations;
     adding reflections gives all twelve elements of D6.
     """
     elems = []
@@ -246,11 +244,11 @@ def _group_elements_geometric(include_reflections: bool):
 
 def burnside_geometric_fold(points: Sequence[Tuple[int, int]],
                             include_reflections: bool) -> Fraction:
-    """Exact fold factor |points| / |orbits| under C6 (or D6) on a point set.
+    """Exact fold factor |points| / |orbits| under Z6 (or D6) on a point set.
 
     By the orbit-counting theorem, |orbits| = (1/|G|) * sum over g of |Fix(g)|.
     Everything here is integer; the returned reduction factor is an exact
-    Fraction. The point set must be closed under the group (radial-dual shells
+    Fraction. The point set must be closed under the group (radial dual shells
     are). Points are matched by exact integer coordinates.
     """
     pset = set(points)
@@ -275,9 +273,9 @@ def burnside_label_fold(shells: Sequence[int], r_sq: int,
     """Exact label-domain fold adjoining circle inversion (the Z2 factor).
 
     The label domain is the set of (shell, sector) cells. The geometric group
-    (C6 or D6) acts on the sector; inversion iota_r acts by swapping shell N with
+    (Z6 or D6) acts on the sector; inversion iota_r acts by swapping shell N with
     its dual r^4 / N while fixing the sector. We build the full label-cell set,
-    apply Burnside over the direct-product group (order 12 for C6 x Z2, 24 for
+    apply Burnside over the direct-product group (order 12 for Z6 x Z2, 24 for
     D6 x Z2), and return |cells| / |orbits| exactly.
 
     Reflections act on the sector as a dihedral flip; we realize the whole action
@@ -328,13 +326,17 @@ def burnside_label_fold(shells: Sequence[int], r_sq: int,
 
 @dataclass
 class FoldAudit:
-    """Exact fold factors for one radial-dual constellation."""
+    """Exact fold factors for one radial dual constellation.
+
+    Field names keep the historical c6/d6 spelling for continuity with the
+    committed result CSVs; the paper writes the rotation group as Z6.
+    """
     r_sq: int
     M: int
     shells: Tuple[int, ...]
-    geo_c6: str          # Euclidean point fold under C6 (exact Fraction as str)
+    geo_c6: str          # Euclidean point fold under Z6 (exact Fraction as str)
     geo_d6: str          # Euclidean point fold under D6 (rotations + reflections)
-    label_c6_z2: str     # label fold under C6 x Z2 (10.5x at M=42)
+    label_c6_z2: str     # label fold under Z6 x Z2 (10.5x at M=42)
     label_d6_z2: str     # label fold under D6 x Z2 (the full T24 label ceiling)
     geo_c6_f: float
     geo_d6_f: float
@@ -343,7 +345,7 @@ class FoldAudit:
 
 
 def audit_candidate(cand: RadialDualCandidate) -> FoldAudit:
-    """Compute all four exact fold factors for a radial-dual candidate."""
+    """Compute all four exact fold factors for a radial dual candidate."""
     pts: List[Tuple[int, int]] = []
     for n in cand.shells:
         pts.extend(shell_points(n))
@@ -367,14 +369,14 @@ def audit_candidate(cand: RadialDualCandidate) -> FoldAudit:
 
 def main() -> None:
     # Search a generous range of inversion radii and a moderate energy bound; the
-    # the canonical radial-dual object here is r_sq = 48, max_norm_sq = 240 (M = 42).
+    # the canonical radial dual object here is r_sq = 48, max_norm_sq = 240 (M = 42).
     r_sq_values = list(range(1, 61))
     max_norm_sq = 240
 
     family = enumerate_family(r_sq_values, max_norm_sq)
 
     print("=" * 78)
-    print("RADIAL-DUAL FAMILY  (max_norm_sq = %d)" % max_norm_sq)
+    print("RADIAL DUAL FAMILY  (max_norm_sq = %d)" % max_norm_sq)
     print("=" * 78)
     print(f"{'r_sq':>5} {'M':>6} {'#shells':>8} {'uniform':>8}  shells")
     for c in family:
@@ -385,8 +387,8 @@ def main() -> None:
     print("=" * 78)
     print("EXACT FOLD FACTORS  (Burnside; reported as exact fractions)")
     print("=" * 78)
-    print(f"{'r_sq':>5} {'M':>6} {'geoC6':>7} {'geoD6':>8} "
-          f"{'labC6xZ2':>10} {'labD6xZ2':>10}")
+    print(f"{'r_sq':>5} {'M':>6} {'geoZ6':>7} {'geoD6':>8} "
+          f"{'labZ6xZ2':>10} {'labD6xZ2':>10}")
     audits = []
     for c in family:
         au = audit_candidate(c)

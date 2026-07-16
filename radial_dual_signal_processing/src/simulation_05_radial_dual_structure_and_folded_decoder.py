@@ -1,7 +1,7 @@
 """
-simulation_05_radial_dual_structure_and_folded_decoder.py - Study 5.
+simulation_05_radial_dual_structure_and_folded_decoder.py - Study 5 (Episode III).
 
-Backs claim C7: the radial-dual constellation (shell-complete, closed under the
+Backs claim C7: the radial dual constellation (shell-complete, closed under the
 order-6 rotation and circle inversion iota_r) admits an exact folded decoder that
 stores only the inner + boundary shells and regenerates the outer shells from
 their exact integer duals, while every decode decision remains a true Euclidean
@@ -18,14 +18,14 @@ Structure (exact, integer):
   * the self-dual boundary shell (N == r^2), when present.
 
 Fold (exact, Burnside cross-checked against tqf_admissibility):
-  * the C6 label fold (rotation only): store one shell representative, regenerate
+  * the Z6 label fold (rotation only): store one shell representative, regenerate
     six sector points -> 6x;
-  * the C6 x Z2 label fold (rotation + inversion): store inner + boundary shells,
+  * the Z6 x Z2 label fold (rotation + inversion): store inner + boundary shells,
     regenerate outer shells by exact dual -> the measured factor, whose ceiling
     is 12 and which falls short exactly on self-dual members (their boundary
     shell is inversion-fixed and does not fold): 21/2 = 10.5 at M = 42, 54/5 =
     10.8 at M = 54, 12 at the non-self-dual M = 48 and 60;
-  * confirmation (Burnside) that D6 x Z2 = C6 x Z2 here -- reflections add nothing
+  * confirmation (Burnside) that D6 x Z2 = Z6 x Z2 here -- reflections add nothing
     to the label fold;
   * absolute stored table size (stored shells vs. full shells) and stored bytes.
 
@@ -40,17 +40,17 @@ Decode (exact + timed):
 Outputs
 -------
   sim05_structure.csv     per-member structure flags, folds, stored sizes, bytes
-  sim05_fold_audit.csv    exact C6 / C6xZ2 / D6xZ2 folds (fractions) per member
+  sim05_fold_audit.csv    exact Z6 / Z6xZ2 / D6xZ2 folds (fractions) per member
   sim05_throughput.csv    folded / unfolded / ML ns-per-symbol per member
   sim05_provenance.json
+  (CSV column names keep the historical c6/d6 spelling for continuity with
+  committed results; the paper writes the rotation group as Z6.)
 
 Reproduce: python simulation_05_radial_dual_structure_and_folded_decoder.py
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -192,7 +192,7 @@ def main() -> None:
 
     # invariants: reflections never help the label fold; folds never exceed 12
     for a in audits:
-        assert a["reflections_add_nothing"] == 1, f"D6 != C6 label fold at M={a['M']}"
+        assert a["reflections_add_nothing"] == 1, f"D6 != Z6 label fold at M={a['M']}"
         assert a["label_fold_c6_z2_f"] <= 12.0 + 1e-9, f"label fold > 12 at M={a['M']}"
         # self-dual members must fall short of 12; non-self-dual must reach 12
         if a["is_self_dual"]:
@@ -228,7 +228,7 @@ def main() -> None:
     for s, a, t in zip(structures, audits, throughputs):
         print(f"  M={s['M']:>3}  shells={s['num_shells']} "
               f"stored(rot->inv)={s['stored_shells_rotfold']}->{s['stored_shells_invfold']}  "
-              f"labelfold C6xZ2={a['label_fold_c6_z2']:>5} "
+              f"labelfold Z6xZ2={a['label_fold_c6_z2']:>5} "
               f"(self_dual={a['is_self_dual']})  "
               f"folded/ML={t['folded_over_ml']:.2f}x")
 

@@ -9,7 +9,7 @@ geometry machinery:
   * the Study 3 exact constellation geometry (exact squared-distance enumerator,
     lattice d_min^2, nearest-neighbor multiplicity) and the hexagonal packing
     advantage over square QAM at matched energy (C3 / C4);
-  * the Study 6 radial-dual geometry price: the exact structure of the radial-dual
+  * the Study 6 radial dual geometry price: the exact structure of the radial dual
     / hex-42 pair, the (d_min, N_nn) crossover DIRECTION prediction, the common-
     random-number paired AWGN sweep, and the low-/high-SNR sign flip (C7 / C9).
 
@@ -20,7 +20,7 @@ Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
 Version: 1.3.0
-Date: July 8, 2026
+Date: July 6, 2026
 """
 
 from fractions import Fraction
@@ -94,7 +94,7 @@ def test_hex_packs_tighter_than_square_at_matched_energy(m):
 
 
 # --------------------------------------------------------------------------- #
-# Study 6 radial-dual geometry, crossover direction, and paired price (C7 / C9)
+# Study 6 radial dual geometry, crossover direction, and paired price (C7 / C9)
 # --------------------------------------------------------------------------- #
 def _rd_hex_pair():
     rd = t.build_radial_dual_constellation(48, 192)     # Study 6 canonical M=42 object
@@ -110,9 +110,9 @@ def test_radial_dual_canonical_shape_and_pairing():
 
 
 def test_radial_dual_smaller_dmin_and_nn_predicts_crossover():
-    # C9: radial-dual has BOTH the smaller mean nearest-neighbor count and the
+    # C9: radial dual has BOTH the smaller mean nearest-neighbor count and the
     # smaller d_min, so the union-bound proxy predicts a genuine crossover
-    # (radial-dual better at low SNR, filled better at high SNR).
+    # (radial dual better at low SNR, filled better at high SNR).
     rd, fl = _rd_hex_pair()
     d_rd, _, nn_rd = sim06._dmin_and_nn(rd)
     d_fl, _, nn_fl = sim06._dmin_and_nn(fl)
@@ -124,14 +124,14 @@ def test_radial_dual_smaller_dmin_and_nn_predicts_crossover():
 
 def test_paired_sweep_shows_low_high_snr_sign_flip(monkeypatch):
     # The shipped CRN-paired AWGN sweep must reproduce the predicted DIRECTION:
-    # radial-dual at least ties/beats filled at low Es/N0 and loses at high Es/N0.
+    # radial dual at least ties/beats filled at low Es/N0 and loses at high Es/N0.
     monkeypatch.setattr(sim06, "TRIALS", 6000)
     monkeypatch.setattr(sim06, "ESN0_GRID_DB", [0, 12, 30])
     rd, fl = _rd_hex_pair()
     rng = np.random.default_rng(42)
     rows = sim06._paired_sweep(rd, fl, rng)
     assert [r["esn0_db"] for r in rows] == [0, 12, 30]
-    assert rows[0]["rd_ser"] <= rows[0]["fl_ser"]      # radial-dual wins low SNR
+    assert rows[0]["rd_ser"] <= rows[0]["fl_ser"]      # radial dual wins low SNR
     assert rows[-1]["fl_ser"] <= rows[-1]["rd_ser"]    # filled wins high SNR
 
 

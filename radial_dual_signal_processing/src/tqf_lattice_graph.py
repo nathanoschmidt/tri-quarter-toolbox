@@ -1,35 +1,32 @@
 """
 tqf_lattice_graph.py - Truncated Triangular Lattice Graph and Trihexagonal Six-Coloring
 
-The truncated triangular lattice graph and trihexagonal six-coloring of the
-Tri-Quarter Framework (TQF) radial_dual_signal_processing subproject. This is a
-standalone lattice-geometry utility: it is not wired into any of the current
-numbered studies (the Mark 3 study set is Studies 1-8), but is retained for the
-conflict-free parallel signal-recovery construction it encodes.
+The truncated triangular lattice graph and trihexagonal six-coloring used by the
+conflict-free parallel signal-recovery benchmark of the Tri-Quarter Framework
+(TQF) radial_dual_signal_processing subproject.
 
 This helper constructs the hexagonal sampling lattice on which a signal field
 lives: the base triangular lattice L truncated to a Euclidean radius R, with
 nearest-neighbor edges (each interior vertex has six neighbors). It also
 builds a proper six-coloring of that graph. (The six-coloring is proper but is
 *not* rotation-equivariant; only the underlying triangular-lattice 3-coloring
-c3 = (a - b) mod 3 is equivariant under the order-6 rotation -- see
+c3 = (a - b) mod 3 is equivariant under the order-6 rotation R_{pi/3} -- see
 ``six_coloring`` for the precise statement.)
 
 The trihexagonal six-coloring partitions the vertices into six independent sets
 (no edge lies within a class), so the six classes can be relaxed in turn with
 fully data-parallel, lock-free updates. We construct it from the exact integer
-coordinates and *verify* it is proper, so the parallelism rests on a checked
-structural property rather than a heuristic coloring.
+coordinates and *verify* it is proper, so the benchmark's parallelism rests on a
+checked structural property rather than a heuristic coloring.
 
 The data structures (padded neighbor-index array, neighbor counts, list of
-color-class index arrays) let a NumPy (CPU) or PyTorch (GPU) backend execute an
-identical, conflict-free, color-scheduled relaxation workload.
+color-class index arrays) are shared verbatim by the NumPy (CPU) and PyTorch
+(GPU) backends in simulation_04 so that both execute the identical workload.
 
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
+Version: 1.3.1
 """
 
 from __future__ import annotations
@@ -43,7 +40,7 @@ import numpy as np
 _OMEGA1_RE = 0.5
 _OMEGA1_IM = math.sqrt(3.0) / 2.0
 
-# The six nearest-neighbour offsets in oblique (a, b) coordinates.
+# The six nearest-neighbor offsets in oblique (a, b) coordinates.
 _NEIGHBOR_OFFSETS: Tuple[Tuple[int, int], ...] = (
     (1, 0), (-1, 0), (0, 1), (0, -1), (1, -1), (-1, 1),
 )
@@ -60,17 +57,17 @@ def build_lattice_graph(radius: float) -> Dict[str, object]:
     Returns a dictionary with:
       ``num_vertices`` : int
       ``coords``       : (N, 2) int array of oblique (a, b) coordinates
-      ``neighbor_idx`` : (N, 6) int array of neighbour vertex indices, padded
+      ``neighbor_idx`` : (N, 6) int array of neighbor vertex indices, padded
                           with the sentinel value N (a zero slot) where a vertex
-                          has fewer than six in-graph neighbours
-      ``neighbor_cnt`` : (N,) int array of actual neighbour counts
+                          has fewer than six in-graph neighbors
+      ``neighbor_cnt`` : (N,) int array of actual neighbor counts
       ``num_edges``    : int (undirected edge count)
-      ``color_classes``: list of six int arrays (vertex indices per colour)
+      ``color_classes``: list of six int arrays (vertex indices per color)
       ``proper``       : bool, True iff the six-coloring is verified proper
 
-    The padded neighbour scheme lets a relaxation sweep gather neighbour states
+    The padded neighbor scheme lets a relaxation sweep gather neighbor states
     with a single fancy-index over a state vector that has one extra zero entry
-    appended at index N, then divide by ``neighbor_cnt`` to form neighbour means.
+    appended at index N, then divide by ``neighbor_cnt`` to form neighbor means.
     """
     r_sq = radius * radius
     # Enumerate vertices: lattice points strictly within the truncation radius.
@@ -118,17 +115,17 @@ def six_coloring(coords: np.ndarray,
     """Return the trihexagonal six-coloring as six index arrays, plus a proper flag.
 
     Construction: combine the exact triangular-lattice 3-coloring residue
-    c3 = (a - b) mod 3 with the parity c2 = (a + b) mod 2 into the six-colour
-    label  colour = 2 * c3 + c2.  Because adjacent lattice vertices never share
+    c3 = (a - b) mod 3 with the parity c2 = (a + b) mod 2 into the six-color
+    label  color = 2 * c3 + c2.  Because adjacent lattice vertices never share
     c3, any refinement of the 3-coloring (here by c2) is automatically a proper
     coloring. The function verifies properness against the actual edge set
     before returning.
 
     Equivariance (important, and easy to overclaim): the *3-coloring* c3 is
-    equivariant under the order-6 rotation R -- R sends c3 to (-c3) mod 3, a
+    equivariant under the order-6 rotation R_{pi/3} -- it sends c3 to (-c3) mod 3, a
     permutation of the three classes -- but the *six-coloring* is NOT. The
     refining parity c2 = (a + b) mod 2 maps to (a) mod 2 under R, which is not a
-    function of the colour pair alone, so R does not permute the six classes.
+    function of the color pair alone, so R_{pi/3} does not permute the six classes.
     The six-coloring is used for conflict-free parallelism (a checked proper
     coloring), not for any rotational-equivariance claim.
     """
@@ -136,27 +133,27 @@ def six_coloring(coords: np.ndarray,
     b = coords[:, 1]
     c3 = np.mod(a - b, 3)
     c2 = np.mod(a + b, 2)
-    colour = (2 * c3 + c2).astype(np.int64)
+    color = (2 * c3 + c2).astype(np.int64)
 
-    # Note: the 3-coloring c3 alone is already proper (every nearest-neighbour
-    # offset changes (a - b) mod 3), so three colour classes would already be
+    # Note: the 3-coloring c3 alone is already proper (every nearest-neighbor
+    # offset changes (a - b) mod 3), so three color classes would already be
     # conflict-free. The refinement to six classes by the parity c2 is chosen for
     # continuity with the lattice paper. Only the 3-coloring is rotation-
     # equivariant; the six-coloring is proper but not order-6-equivariant (the
-    # parity c2 does not transform as a function of the colour pair under R).
+    # parity c2 does not transform as a function of the color pair under R_{pi/3}).
 
-    # Verify properness: no edge connects two equally-coloured vertices.
+    # Verify properness: no edge connects two equally-colored vertices.
     proper = True
     for (av, bv), i in index_of.items():
         for da, db in _NEIGHBOR_OFFSETS:
             j = index_of.get((av + da, bv + db))
-            if j is not None and colour[i] == colour[j]:
+            if j is not None and color[i] == color[j]:
                 proper = False
                 break
         if not proper:
             break
 
-    classes = [np.where(colour == c)[0].astype(np.int64) for c in range(6)]
+    classes = [np.where(color == c)[0].astype(np.int64) for c in range(6)]
     return classes, proper
 
 
@@ -167,24 +164,24 @@ def three_coloring(coords: np.ndarray,
     flag.
 
     Unlike the trihexagonal six-coloring, this 3-coloring *is* equivariant under
-    the order-6 rotation R: R sends c3 to (-c3) mod 3, a permutation of the three
-    classes. It is the colouring to use when a rotation-equivariant partition is
+    the order-6 rotation R_{pi/3}: it sends c3 to (-c3) mod 3, a permutation of the three
+    classes. It is the coloring to use when a rotation-equivariant partition is
     required; the six-coloring refines it (by parity) for a finer conflict-free
     schedule but loses equivariance. Properness is verified against the edge set.
     """
     a = coords[:, 0]
     b = coords[:, 1]
-    colour = np.mod(a - b, 3).astype(np.int64)
+    color = np.mod(a - b, 3).astype(np.int64)
     proper = True
     for (av, bv), i in index_of.items():
         for da, db in _NEIGHBOR_OFFSETS:
             j = index_of.get((av + da, bv + db))
-            if j is not None and colour[i] == colour[j]:
+            if j is not None and color[i] == color[j]:
                 proper = False
                 break
         if not proper:
             break
-    classes = [np.where(colour == c)[0].astype(np.int64) for c in range(3)]
+    classes = [np.where(color == c)[0].astype(np.int64) for c in range(3)]
     return classes, proper
 
 
@@ -194,10 +191,10 @@ def relaxation_sweep_numpy(state: np.ndarray, neighbor_idx: np.ndarray,
                            alpha: float) -> np.ndarray:
     """One color-ordered relaxation (graph-diffusion / MRF smoothing) sweep, CPU.
 
-    For each of the six (mutually non-adjacent) colour classes in turn, every
-    vertex updates to  alpha * (own state) + (1 - alpha) * (mean of neighbours).
+    For each of the six (mutually non-adjacent) color classes in turn, every
+    vertex updates to  alpha * (own state) + (1 - alpha) * (mean of neighbors).
     Updates within a class are independent, so they are issued as one vectorized
-    batch -- the colour class is the unit of parallelism. This is the shared
+    batch -- the color class is the unit of parallelism. This is the shared
     computational kernel of graph diffusion, iterative smoothing, and the
     message-passing layers of graph neural networks, here used as a lattice-
     signal denoiser.
@@ -211,7 +208,7 @@ def relaxation_sweep_numpy(state: np.ndarray, neighbor_idx: np.ndarray,
         nbr = neighbor_idx[cls]                      # (k, 6), sentinel -> N
         neighbor_sum = state_ext[nbr].sum(axis=1)    # zero slot adds nothing
         # Guard the degenerate isolated-vertex case (cnt == 0, possible only at
-        # tiny radii): such a vertex has no neighbour mean, so it is left
+        # tiny radii): such a vertex has no neighbor mean, so it is left
         # unchanged rather than dividing by zero.
         denom = np.where(cnt > 0, cnt, 1)
         updated = alpha * state[cls] + (1.0 - alpha) * (neighbor_sum / denom)

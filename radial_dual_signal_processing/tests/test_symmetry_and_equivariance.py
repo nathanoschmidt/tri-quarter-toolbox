@@ -8,7 +8,7 @@ Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
 Version: 1.3.0
-Date: July 8, 2026
+Date: July 6, 2026
 """
 import numpy as np
 import pytest
@@ -25,7 +25,7 @@ NORMS = [7, 19, 37, 61]
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("T", NORMS)
 def test_orbit_reduced_enumerator_equals_full(T):
-    # The headline exactness check: the C6 orbit-folded squared-distance
+    # The headline exactness check: the Z6 orbit-folded squared-distance
     # enumerator is BITWISE identical to the full enumerator (exact integer
     # multiset equality on the Counter, not a floating-point tolerance).
     ab = t.build_disk_constellation(T).ab.astype(np.int64)
@@ -47,7 +47,7 @@ def test_d6_orbit_reduced_enumerator_equals_full(T):
 
 @pytest.mark.parametrize("T", NORMS)
 def test_orbit_count_is_one_sixth(T):
-    # A disk constellation is C6-closed with the origin excluded, so every orbit
+    # A disk constellation is Z6-closed with the origin excluded, so every orbit
     # has size 6 and the representative count is exactly M / 6.
     ab = t.build_disk_constellation(T).ab.astype(np.int64)
     reps = s3._orbit_reps(ab, include_reflections=False)

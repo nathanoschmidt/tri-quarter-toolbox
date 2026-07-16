@@ -1,7 +1,7 @@
 """
-simulation_06_radial_dual_geometry_price.py - Study 6.
+simulation_06_radial_dual_geometry_price.py - Study 6 (Episode III).
 
-Backs claims C7 (the radial-dual constellation's AWGN cost, priced honestly) and
+Backs claims C7 (the radial dual constellation's AWGN cost, priced honestly) and
 C9 (below a model-predicted crossover Es/N0, the shell-sparse inversion-paired
 constellation attains a LOWER symbol-error rate than the matched filled
 constellation of equal order and energy).
@@ -11,7 +11,7 @@ The two-factor model
 For a label-free constellation the union-bound symbol-error rate is governed by
 two exact geometric quantities: the minimum distance d_min (sets the high-SNR
 exponent) and the mean nearest-neighbor multiplicity N_nn (sets the low-SNR
-prefactor). SER ~ (N_nn / 2) * erfc(d_min * sqrt(Es/N0-scaled)). The radial-dual
+prefactor). SER ~ (N_nn / 2) * erfc(d_min * sqrt(Es/N0-scaled)). The radial dual
 constellation has a SMALLER d_min (it spends energy on outer shells) but a much
 LOWER N_nn (sparse neighbors); the filled constellation is the reverse. The
 prefactor advantage dominates at low Es/N0 and the exponent advantage dominates
@@ -24,13 +24,13 @@ received samples; inversion only defines the constellation, never a decision.
 
 What it measures, per inversion-paired member (M = 42, 48, 54, 60)
 ------------------------------------------------------------------
-  * exact d_min and mean N_nn for radial-dual and matched filled;
+  * exact d_min and mean N_nn for radial dual and matched filled;
   * the predicted crossover Es/N0 (two-factor model) and its +/-1.5 dB bracket;
   * a CRN-paired AWGN Es/N0 sweep with exact Clopper-Pearson SER intervals and a
     Holm-corrected paired McNemar test per point (identical stream and noise for
     both constellations), locating the measured crossover;
   * the high-SNR AWGN price (dB at a target SER where the filled set wins), the
-    honest cost of the radial-dual object.
+    honest cost of the radial dual object.
 
 Outputs
 -------
@@ -44,8 +44,6 @@ Reproduce: python simulation_06_radial_dual_geometry_price.py
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -95,11 +93,11 @@ def _predicted_direction(dmin_a: float, nn_a: float,
     at low g the prefactor N_nn dominates and the lower-N_nn constellation wins;
     at high g the exponent (larger d_min) dominates. A crossover therefore EXISTS
     whenever one constellation has both the smaller N_nn and the smaller d_min
-    (here: radial-dual has smaller N_nn AND smaller d_min, filled the reverse), so
-    radial-dual is predicted to win below the crossover and lose above it. The
+    (here: radial dual has smaller N_nn AND smaller d_min, filled the reverse), so
+    radial dual is predicted to win below the crossover and lose above it. The
     union bound is loose at low SNR, so the crossover's dB location is NOT
     predicted to +/-1.5 dB here; it is located empirically by the sweep. What is
-    pre-registered and falsifiable is the DIRECTION: radial-dual significantly
+    pre-registered and falsifiable is the DIRECTION: radial dual significantly
     better at low Es/N0, filled significantly better at high Es/N0, with a single
     sign flip between them.
     """
@@ -189,7 +187,7 @@ def _measured_crossover(rows: List[dict]) -> float | None:
 
 
 def _db_price(rows: List[dict], target: float) -> float | None:
-    """Extra dB the radial-dual needs vs filled to reach target SER (high-SNR
+    """Extra dB the radial dual needs vs filled to reach target SER (high-SNR
     price), via linear interpolation in dB on log10(SER)."""
     def interp(key):
         xs, ys = [], []

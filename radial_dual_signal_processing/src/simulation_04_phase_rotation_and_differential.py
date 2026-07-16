@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 """
-simulation_04_phase_rotation_and_differential.py - Study 4.
+simulation_04_phase_rotation_and_differential.py - Study 4 (Episode II).
 
 Phase-rotation robustness and differential hexagonal decode (claims C6, C8).
 
@@ -49,8 +50,6 @@ independent of this scaling.
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -119,7 +118,7 @@ def verify_differential_roundtrip(trials: int = 2000) -> bool:
 
 def verify_t24_differential_invariance(trials: int, seed: int
                                        ) -> Tuple[int, List[dict]]:
-    """Exact invariance of the combined rotation + inversion (C6 x Z2) differential
+    """Exact invariance of the combined rotation + inversion (Z6 x Z2) differential
     codec under all 12 static (rotation k*pi/3, inversion m) actions.
 
     The T24 codec carries data as a (sector in Z6, inversion-bit in Z2) pair and
@@ -219,7 +218,7 @@ def main() -> None:
     ap.add_argument("--ebn0", type=float, default=10.0)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--t24_trials", type=int, default=20_000,
-                    help="trials for the C8 combined rotation+inversion (C6 x Z2) "
+                    help="trials for the C8 combined rotation+inversion (Z6 x Z2) "
                          "differential invariance check")
     ap.add_argument("--t24_seed", type=int, default=808,
                     help="independent seed for the C8 check (uses an "
@@ -295,14 +294,14 @@ def main() -> None:
     print(f"\nWrote {csv_path}")
     print(f"Wrote {check_path}")
 
-    # ---- C8: combined rotation + inversion (C6 x Z2) differential codec -----
+    # ---- C8: combined rotation + inversion (Z6 x Z2) differential codec -----
     # Additive and independent: uses its own RNG (args.t24_seed), so the two CSVs
     # written above remain byte-identical. The inversion bit is a discrete label
     # state, never a Euclidean operation (firewall).
     t24_viol, t24_rows = verify_t24_differential_invariance(
         args.t24_trials, args.t24_seed)
     t24_pass = (t24_viol == 0)
-    print("\n[C8 verify] combined rotation + inversion (C6 x Z2) differential codec:")
+    print("\n[C8 verify] combined rotation + inversion (Z6 x Z2) differential codec:")
     print(f"   carries (sector in Z6, inversion-bit in Z2); transmits component-")
     print(f"   wise differences. Invariance over all 12 static (rotation,inversion)")
     print(f"   actions on a {args.t24_trials}-symbol stream -> "
@@ -313,7 +312,7 @@ def main() -> None:
         print(f"   {r['rotation_k']:>6} {r['inversion_m']:>6} "
               f"{str(r['sector_recovered']):>10} {str(r['inversion_recovered']):>8} "
               f"{r['violations']:>6}")
-    print("   [order-12 C6 x Z2 = the rotation x inversion subgroup of the")
+    print("   [order-12 Z6 x Z2 = the rotation x inversion subgroup of the")
     print("    centrosymmetric hexagonal point group D_6h; stated without")
     print("    overclaiming the full 24-element group.]")
 

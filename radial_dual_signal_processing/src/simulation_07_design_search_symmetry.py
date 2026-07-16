@@ -1,5 +1,5 @@
 """
-simulation_07_design_search_symmetry.py - Study 7.
+simulation_07_design_search_symmetry.py - Study 7 (Episode III).
 
 Backs claim C10: an exhaustive constellation design search that canonicalizes
 candidate point sets under the isometry group D6 (order 12, rotations and
@@ -53,8 +53,6 @@ Reproduce: python simulation_07_design_search_symmetry.py
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations

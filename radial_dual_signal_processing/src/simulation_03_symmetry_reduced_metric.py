@@ -1,16 +1,16 @@
 """
-simulation_03_symmetry_reduced_metric.py - Study 3.
+simulation_03_symmetry_reduced_metric.py - Study 3 (Episode II).
 
 Backs claim C4: the exact pairwise squared-distance enumerator of a lattice
 constellation is invariant under the full dihedral isometry group D6 (order 12,
 rotations AND reflections), so it can be computed from one representative per D6
 orbit and reproduced exactly. This study measures the D6 fold factor exactly
 (Burnside), verifies the folded enumerator equals the full enumerator as the
-identical integer multiset, and contrasts it with the rotation-only C6 fold.
+identical integer multiset, and contrasts it with the rotation-only Z6 fold.
 
 Firewall note: this is a Euclidean claim. Reflections are isometries and may
 legitimately fold Euclidean quantities; circle inversion is NOT an isometry and
-never enters here. The complementary label-domain fold (C6 x Z2, inversion
+never enters here. The complementary label-domain fold (Z6 x Z2, inversion
 included) is Study 5's business, and Study 5 shows -- also by Burnside -- that
 reflections add nothing there. The two folds do not multiply; that separation is
 the paper's proven-decomposition headline.
@@ -18,12 +18,12 @@ the paper's proven-decomposition headline.
 What it measures
 ----------------
 For each constellation (filled disks of several orders, and the canonical
-radial-dual object):
+radial dual object):
   * the exact full enumerator over all ordered pairs (O(M^2));
-  * the exact C6-folded and D6-folded enumerators (one representative per orbit
+  * the exact Z6-folded and D6-folded enumerators (one representative per orbit
     times the orbit contribution), each verified equal to the full enumerator as
     an identical integer count vector (==);
-  * the exact Burnside fold factors |points| / |orbits| for C6 and D6, reported
+  * the exact Burnside fold factors |points| / |orbits| for Z6 and D6, reported
     as exact fractions;
   * wall-clock full vs. folded timing (a systems observation; the exactness and
     fold-factor claims stand on the == check and Burnside, not on timing).
@@ -31,7 +31,9 @@ radial-dual object):
 Outputs
 -------
   sim03_symmetry.csv        per-constellation orbit counts, exact folds, timings
-  sim03_fold_audit.csv      Burnside C6/D6 fold factors (exact fractions)
+  sim03_fold_audit.csv      Burnside Z6/D6 fold factors (exact fractions)
+  (CSV column names keep the historical c6/d6 spelling for continuity with
+  committed results; the paper writes the rotation group as Z6.)
   sim03_provenance.json     seed, versions, protocol
 
 Reproduce: python simulation_03_symmetry_reduced_metric.py
@@ -39,8 +41,6 @@ Reproduce: python simulation_03_symmetry_reduced_metric.py
 Author: Nathan O. Schmidt
 Organization: Cold Hammer Research & Development LLC
 License: MIT License
-Version: 1.3.0
-Date: July 8, 2026
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def _full_enumerator(ab: np.ndarray) -> Counter:
 
 
 def _orbit_reps(ab: np.ndarray, include_reflections: bool) -> List[int]:
-    """Return one representative row index per geometric orbit (C6 or D6).
+    """Return one representative row index per geometric orbit (Z6 or D6).
 
     Points are matched by exact integer coordinates. Reflection is the lattice
     map (a, b) -> (b, a); together with the order-6 rotation it generates D6.
@@ -182,12 +182,12 @@ def _analyze(name: str, con: h.Constellation) -> Tuple[dict, dict]:
     pts = [(int(a), int(b)) for a, b in ab]
     # These constellations are group-closed complete shells with the origin
     # excluded (the punctured-lattice convention), so the point set partitions
-    # into full 6-element C6 orbits (D6 orbits may merge reflection pairs) and
+    # into full 6-element Z6 orbits (D6 orbits may merge reflection pairs) and
     # the Burnside fold on the closed set and the direct |points|/|orbits|
     # count agree; we compute both and assert their agreement as a self-check.
     fold_c6 = adm.burnside_geometric_fold(pts, include_reflections=False)
     fold_d6 = adm.burnside_geometric_fold(pts, include_reflections=True)
-    assert fold_c6 == Fraction(m, len(reps_c6)), "C6 fold disagreement"
+    assert fold_c6 == Fraction(m, len(reps_c6)), "Z6 fold disagreement"
     assert fold_d6 == Fraction(m, len(reps_d6)), "D6 fold disagreement"
 
     t_full = _time(lambda: _full_enumerator(ab), TIMING_REPEATS)
@@ -236,7 +236,7 @@ def main() -> None:
 
     # every exact-match flag MUST be 1, for both folds
     for r in rows:
-        assert r["exact_match_c6"] == 1, f"C6 fold mismatch: {r['constellation']}"
+        assert r["exact_match_c6"] == 1, f"Z6 fold mismatch: {r['constellation']}"
         assert r["exact_match_d6"] == 1, f"D6 fold mismatch: {r['constellation']}"
 
     with open("sim03_symmetry.csv", "w", newline="") as f:
@@ -261,9 +261,9 @@ def main() -> None:
     print("Study 3 complete.")
     for r, a in zip(rows, audits):
         print(f"  {r['constellation']:>18}  M={r['M']:>3}  "
-              f"orbitsC6={r['num_orbits_c6']:>3} orbitsD6={r['num_orbits_d6']:>3}  "
-              f"foldC6={a['burnside_fold_c6']:>6} foldD6={a['burnside_fold_d6']:>7}  "
-              f"exact(C6,D6)=({r['exact_match_c6']},{r['exact_match_d6']})")
+              f"orbitsZ6={r['num_orbits_c6']:>3} orbitsD6={r['num_orbits_d6']:>3}  "
+              f"foldZ6={a['burnside_fold_c6']:>6} foldD6={a['burnside_fold_d6']:>7}  "
+              f"exact(Z6,D6)=({r['exact_match_c6']},{r['exact_match_d6']})")
 
 
 if __name__ == "__main__":
